@@ -1,0 +1,23 @@
+# Dependencias
+node_modules/
+back-end/node_modules/
+front-end/node_modules/
+
+# Variables de entorno (contienen credenciales)
+back-end/.env
+
+# Uploads y certificados generados
+back-end/uploads/
+back-end/certs/*.p12
+back-end/certs/*.pfx
+
+# Build
+front-end/dist/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/

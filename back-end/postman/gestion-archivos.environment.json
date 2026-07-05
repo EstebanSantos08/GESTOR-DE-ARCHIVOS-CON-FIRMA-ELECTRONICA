@@ -1,0 +1,20 @@
+{
+  "id": "env-gestion-archivos",
+  "name": "Gestión de Archivos - Local",
+  "values": [
+    { "key": "base_url",       "value": "http://localhost:3000/api", "type": "default", "enabled": true },
+    { "key": "token",          "value": "",  "type": "secret",  "enabled": true },
+    { "key": "documento_id",   "value": "",  "type": "default", "enabled": true },
+    { "key": "universidad_id", "value": "",  "type": "default", "enabled": true },
+    { "key": "facultad_id",    "value": "",  "type": "default", "enabled": true },
+    { "key": "criterio_id",    "value": "",  "type": "default", "enabled": true },
+    { "key": "actividad_id",   "value": "",  "type": "default", "enabled": true },
+    { "key": "email_docente",  "value": "docente@universidad.edu", "type": "default", "enabled": true },
+    { "key": "pass_docente",   "value": "Docente123!", "type": "secret", "enabled": true },
+    { "key": "email_decano",   "value": "decano@universidad.edu",  "type": "default", "enabled": true },
+    { "key": "pass_decano",    "value": "Decano123!",  "type": "secret", "enabled": true },
+    { "key": "email_rector",   "value": "rector@universidad.edu",  "type": "default", "enabled": true },
+    { "key": "pass_rector",    "value": "Rector123!",  "type": "secret", "enabled": true }
+  ],
+  "_postman_variable_scope": "environment"
+}

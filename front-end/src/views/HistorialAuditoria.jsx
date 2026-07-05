@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Search, Filter } from 'lucide-react';
 import Badge from '../components/common/Badge';
-import { useApp } from '../context/AppContext';
+import { useApp } from '../context/useApp';
 
 const TIPOS = ['Todos', 'CARGA', 'FIRMA', 'RECHAZO', 'CREACION'];
 
@@ -102,3 +102,4 @@ export default function HistorialAuditoria() {
     </div>
   );
 }
+

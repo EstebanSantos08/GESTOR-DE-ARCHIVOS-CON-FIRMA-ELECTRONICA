@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Plus, Check, Building2, BookOpen, Microscope, ClipboardList } from 'lucide-react';
-import { useApp } from '../context/AppContext';
+import { useApp } from '../context/useApp';
 
 function Toggle({ value, onChange, label }) {
   return (
@@ -276,3 +276,4 @@ export default function ParametrizacionAdmin() {
     </div>
   );
 }
+

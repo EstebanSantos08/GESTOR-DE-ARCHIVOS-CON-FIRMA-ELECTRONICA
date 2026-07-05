@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { X, Eye, EyeOff, Shield, CheckCircle, Loader } from 'lucide-react';
-import { useApp } from '../../context/AppContext';
+import { useApp } from '../../context/useApp';
 
 export default function ModalFirma({ documento, onClose }) {
   const { firmarDocumento } = useApp();
@@ -143,3 +143,4 @@ export default function ModalFirma({ documento, onClose }) {
     </div>
   );
 }
+

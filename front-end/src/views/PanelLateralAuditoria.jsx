@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { X, Check, Circle, Clock, PenLine } from 'lucide-react';
 import Badge from '../components/common/Badge';
 import ModalFirma from '../components/modals/ModalFirma';
-import { useApp } from '../context/AppContext';
+import { useApp } from '../context/useApp';
 
 function PasoTimeline({ numero, titulo, completado, activo }) {
   return (
@@ -145,3 +145,4 @@ export default function PanelLateralAuditoria() {
     </>
   );
 }
+

@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { Folder, FolderOpen, Upload, Eye, PenLine, Info, FileText, ChevronRight } from 'lucide-react';
 import Breadcrumbs from '../components/common/Breadcrumbs';
 import Badge from '../components/common/Badge';
-import { useApp } from '../context/AppContext';
+import { useApp } from '../context/useApp';
 
 function CarpetaCard({ nombre, descripcion, onClick }) {
   return (
@@ -260,3 +260,4 @@ export default function ExploradorDeArchivos() {
     </div>
   );
 }
+

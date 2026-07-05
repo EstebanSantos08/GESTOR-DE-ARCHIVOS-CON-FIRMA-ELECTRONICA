@@ -1,16 +1,46 @@
-import React, { createContext, useContext, useState } from 'react';
-import { mockUser, mockUniversidades, mockAuditoria, mockAlertas } from '../data/mockData';
+import React, { createContext, useState } from 'react';
+import { mockUniversidades, mockAuditoria, mockAlertas } from '../data/mockData';
 
-const AppContext = createContext(null);
+const API_URL = 'http://localhost:3000/api';
+
+export const AppContext = createContext(null);
 
 export function AppProvider({ children }) {
   const [vistaActual, setVistaActual] = useState('dashboard');
-  const [usuario] = useState(mockUser);
+  const [usuario, setUsuario] = useState(null);
+  const [token, setToken] = useState(null);
+  const [isAutenticado, setIsAutenticado] = useState(false);
   const [universidades, setUniversidades] = useState(mockUniversidades);
   const [auditoria, setAuditoria] = useState(mockAuditoria);
   const [alertas] = useState(mockAlertas);
   const [documentoSeleccionado, setDocumentoSeleccionado] = useState(null);
   const [modalFirmaAbierto, setModalFirmaAbierto] = useState(false);
+
+  async function login(email, password) {
+    const res = await fetch(`${API_URL}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Error al iniciar sesión');
+    setToken(data.token);
+    setUsuario({
+      ...data.usuario,
+      avatar: data.usuario.nombre.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase(),
+      rol: data.usuario.rol?.nombre || data.usuario.rol,
+    });
+    setIsAutenticado(true);
+    setVistaActual('dashboard');
+  }
+
+  function logout() {
+    setToken(null);
+    setUsuario(null);
+    setIsAutenticado(false);
+    setVistaActual('dashboard');
+    setDocumentoSeleccionado(null);
+  }
 
   function navegarA(vista) {
     setVistaActual(vista);
@@ -184,7 +214,8 @@ export function AppProvider({ children }) {
   return (
     <AppContext.Provider value={{
       vistaActual, navegarA,
-      usuario,
+      usuario, token,
+      isAutenticado, login, logout,
       universidades, setUniversidades,
       auditoria, alertas,
       documentoSeleccionado, setDocumentoSeleccionado,
@@ -199,6 +230,3 @@ export function AppProvider({ children }) {
   );
 }
 
-export function useApp() {
-  return useContext(AppContext);
-}

@@ -6,7 +6,7 @@ import HistorialAuditoria from '../../views/HistorialAuditoria';
 import ParametrizacionAdmin from '../../views/ParametrizacionAdmin';
 import PerfilCertificado from '../../views/PerfilCertificado';
 import PanelLateralAuditoria from '../../views/PanelLateralAuditoria';
-import { useApp } from '../../context/AppContext';
+import { useApp } from '../../context/useApp';
 
 const VISTAS = {
   dashboard:       { componente: Dashboard,           titulo: 'Dashboard Analítico' },
@@ -50,3 +50,4 @@ export default function Layout() {
     </div>
   );
 }
+

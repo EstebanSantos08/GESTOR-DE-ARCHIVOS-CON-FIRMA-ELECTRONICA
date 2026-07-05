@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { User, Shield, Eye, EyeOff, Upload, Trash2, AlertTriangle, Check } from 'lucide-react';
 import Badge from '../components/common/Badge';
-import { useApp } from '../context/AppContext';
+import { useApp } from '../context/useApp';
 
 export default function PerfilCertificado() {
   const { usuario } = useApp();
@@ -196,3 +196,4 @@ export default function PerfilCertificado() {
     </div>
   );
 }
+

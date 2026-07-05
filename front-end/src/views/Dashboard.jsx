@@ -1,6 +1,6 @@
 import React from 'react';
 import { FileText, Clock, CheckCircle, XCircle, AlertTriangle, Activity } from 'lucide-react';
-import { useApp } from '../context/AppContext';
+import { useApp } from '../context/useApp';
 import Badge from '../components/common/Badge';
 
 function MetricaCard({ titulo, valor, icon: Icon, colorIcon, colorBg, colorNum }) {
@@ -129,3 +129,4 @@ export default function Dashboard() {
     </div>
   );
 }
+

@@ -7,10 +7,14 @@ const {
   facultadCtrl,
   criterioCtrl,
   actividadCtrl,
+  estructura,
 } = require('../Controller/parametrizacion.controller');
 
 // Solo DECANO y RECTOR (nivel >= 2) gestionan parametrización
 const soloAdmins = [autenticar, autorizarNivel(2)];
+
+// Árbol completo para el explorador de archivos
+router.get('/estructura', autenticar, estructura);
 
 // ─── Universidad ───────────────────────────────────────────────────────────
 router.get('/universidades', autenticar, universidadCtrl.listar);

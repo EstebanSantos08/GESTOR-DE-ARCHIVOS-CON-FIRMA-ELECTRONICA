@@ -64,8 +64,11 @@ async function subirDocumento(req, res) {
 async function listarDocumentos(req, res) {
   try {
     const where = {};
-    // Docente solo ve sus propios documentos; Decano/Rector ven los asignados a ellos
-    if (req.usuario.rol === 'DOCENTE') {
+
+    if (req.query.actividad_id) {
+      // Con actividad_id: todos los roles ven todos los docs de esa actividad
+      where.actividad_id = parseInt(req.query.actividad_id);
+    } else if (req.usuario.rol === 'DOCENTE') {
       where.subido_por_id = req.usuario.id;
     } else {
       where.firmante_actual_id = req.usuario.id;

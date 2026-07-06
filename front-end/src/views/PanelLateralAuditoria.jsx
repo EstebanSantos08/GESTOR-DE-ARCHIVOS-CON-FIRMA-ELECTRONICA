@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Check, Circle, Clock, PenLine } from 'lucide-react';
+import { X, Check, Circle, Clock, PenLine, XCircle } from 'lucide-react';
 import Badge from '../components/common/Badge';
 import ModalFirma from '../components/modals/ModalFirma';
 import { useApp } from '../context/useApp';
@@ -42,6 +42,11 @@ export default function PanelLateralAuditoria() {
   const puedeFiremar =
     (usuario.rol === 'DECANO' && doc.estado === 'PENDIENTE') ||
     (usuario.rol === 'RECTOR' && doc.estado === 'FIRMADO_DECANO');
+
+  const puedeVerModal =
+    puedeFiremar ||
+    doc.estado === 'RECHAZADO' ||
+    doc.estado === 'COMPLETADO';
 
   const paso2Completado = doc.estado === 'FIRMADO_DECANO' || doc.estado === 'COMPLETADO';
   const paso3Completado = doc.estado === 'COMPLETADO';
@@ -122,16 +127,28 @@ export default function PanelLateralAuditoria() {
           )}
         </div>
 
-        {/* Botón firmar */}
-        {puedeFiremar && (
+        {/* Botón de acción */}
+        {puedeVerModal && (
           <div className="p-5 border-t border-gray-100 flex-shrink-0">
-            <button
-              onClick={() => setModalAbierto(true)}
-              className="w-full flex items-center justify-center space-x-2 px-4 py-3 bg-navy-900 text-white rounded-xl font-medium text-sm hover:bg-navy-800 transition-colors shadow-lg"
-            >
-              <PenLine size={16} />
-              <span>Firmar Documento</span>
-            </button>
+            {puedeFiremar ? (
+              <button
+                onClick={() => setModalAbierto(true)}
+                className="w-full flex items-center justify-center space-x-2 px-4 py-3 bg-navy-900 text-white rounded-xl font-medium text-sm hover:bg-navy-800 transition-colors shadow-lg"
+              >
+                <PenLine size={16} />
+                <span>Firmar / Rechazar Documento</span>
+              </button>
+            ) : doc.estado === 'RECHAZADO' ? (
+              <div className="flex items-center justify-center space-x-2 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm font-medium">
+                <XCircle size={16} />
+                <span>Documento rechazado — sin acciones</span>
+              </div>
+            ) : (
+              <div className="flex items-center justify-center space-x-2 px-4 py-3 bg-green-50 border border-green-200 rounded-xl text-green-700 text-sm font-medium">
+                <Check size={16} />
+                <span>Documento completado</span>
+              </div>
+            )}
           </div>
         )}
       </aside>

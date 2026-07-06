@@ -17,6 +17,9 @@ Facultad.hasMany(Usuario, { foreignKey: 'facultad_id', as: 'usuarios' });
 Facultad.belongsTo(Universidad, { foreignKey: 'universidad_id', as: 'universidad' });
 Universidad.hasMany(Facultad, { foreignKey: 'universidad_id', as: 'facultades' });
 
+Criterio.belongsTo(Facultad, { foreignKey: 'facultad_id', as: 'facultad' });
+Facultad.hasMany(Criterio, { foreignKey: 'facultad_id', as: 'criterios' });
+
 Actividad.belongsTo(Criterio, { foreignKey: 'criterio_id', as: 'criterio' });
 Criterio.hasMany(Actividad, { foreignKey: 'criterio_id', as: 'actividades' });
 

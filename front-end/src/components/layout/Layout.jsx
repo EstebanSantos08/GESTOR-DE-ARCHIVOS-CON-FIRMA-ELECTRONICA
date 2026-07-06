@@ -6,12 +6,14 @@ import HistorialAuditoria from '../../views/HistorialAuditoria';
 import ParametrizacionAdmin from '../../views/ParametrizacionAdmin';
 import PerfilCertificado from '../../views/PerfilCertificado';
 import PanelLateralAuditoria from '../../views/PanelLateralAuditoria';
+import GestionUsuarios from '../../views/GestionUsuarios';
 import { useApp } from '../../context/useApp';
 
 const VISTAS = {
   dashboard:       { componente: Dashboard,           titulo: 'Dashboard Analítico' },
   explorador:      { componente: ExploradorDeArchivos, titulo: 'Explorador de Archivos' },
   auditoria:       { componente: HistorialAuditoria,   titulo: 'Historial de Auditoría' },
+  usuarios:        { componente: GestionUsuarios,      titulo: 'Gestión de Usuarios' },
   parametrizacion: { componente: ParametrizacionAdmin, titulo: 'Parametrización' },
   perfil:          { componente: PerfilCertificado,    titulo: 'Mi Perfil y Certificado' },
 };

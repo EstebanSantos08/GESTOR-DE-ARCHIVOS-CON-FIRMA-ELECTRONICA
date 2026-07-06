@@ -1,11 +1,12 @@
 import React from 'react';
-import { LayoutDashboard, FolderOpen, ClipboardList, Settings, User, Shield, LogOut } from 'lucide-react';
+import { LayoutDashboard, FolderOpen, ClipboardList, Settings, User, Shield, LogOut, Users } from 'lucide-react';
 import { useApp } from '../../context/useApp';
 
 const NAV_ITEMS = [
   { id: 'dashboard',       label: 'Dashboard',     icon: LayoutDashboard, roles: ['RECTOR', 'DECANO', 'DOCENTE'] },
   { id: 'explorador',      label: 'Explorador',    icon: FolderOpen,       roles: ['RECTOR', 'DECANO', 'DOCENTE'] },
   { id: 'auditoria',       label: 'Auditoría',     icon: ClipboardList,    roles: ['RECTOR', 'DECANO'] },
+  { id: 'usuarios',        label: 'Usuarios',      icon: Users,            roles: ['RECTOR', 'DECANO'] },
   { id: 'parametrizacion', label: 'Configuración', icon: Settings,         roles: ['RECTOR'] },
   { id: 'perfil',          label: 'Mi Perfil',     icon: User,             roles: ['RECTOR', 'DECANO', 'DOCENTE'] },
 ];

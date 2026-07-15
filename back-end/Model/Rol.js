@@ -7,7 +7,6 @@ const Rol = sequelize.define('Rol', {
   nombre: {
     type: DataTypes.ENUM('DOCENTE', 'DECANO', 'RECTOR'),
     allowNull: false,
-    unique: true,
   },
   nivel: {
     type: DataTypes.INTEGER,
@@ -18,6 +17,7 @@ const Rol = sequelize.define('Rol', {
 }, {
   tableName: 'roles',
   timestamps: false,
+  indexes: [{ unique: true, fields: ['nombre'] }],
 });
 
 module.exports = Rol;

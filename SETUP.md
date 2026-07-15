@@ -14,7 +14,6 @@ Instalar en la PC antes de comenzar:
 
 ```bash
 git clone https://github.com/EstebanSantos08/GESTOR-DE-ARCHIVOS-CON-FIRMA-ELECTRONICA.git
-cd GESTOR-DE-ARCHIVOS-CON-FIRMA-ELECTRONICA
 ```
 
 ---
@@ -166,3 +165,28 @@ CERT_P12_PASSWORD=tu_password_real
         ├── context/
         └── views/
 ```
+
+---
+
+## Jerarquía de carpetas
+
+El explorador de archivos organiza los documentos en cuatro niveles:
+
+```
+Universidad
+  └── Facultad
+        └── Criterio
+              └── Actividad  ← aquí se suben los documentos
+```
+
+Cada **Actividad** puede tener un **período académico** (ej. `2026-I`, `2026-II`) que se configura desde el panel de parametrización (solo Decano / Rector).
+
+---
+
+## Roles y permisos
+
+| Rol | Puede hacer |
+|-----|-------------|
+| `DOCENTE` | Subir documentos PDF |
+| `DECANO` | Firmar o rechazar documentos en estado `PENDIENTE`; gestionar parametrización |
+| `RECTOR` | Firmar o rechazar documentos en estado `FIRMADO_DECANO`; gestionar parametrización |

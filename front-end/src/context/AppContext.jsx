@@ -34,7 +34,6 @@ export function AppProvider({ children }) {
   const [documentoSeleccionado, setDocumentoSeleccionado] = useState(null);
   const [modalFirmaAbierto, setModalFirmaAbierto] = useState(false);
 
-  // Restaurar sesión desde localStorage al cargar
   useEffect(() => {
     const savedToken = localStorage.getItem('gestdoc_token');
     const savedUsuario = localStorage.getItem('gestdoc_usuario');
@@ -46,7 +45,6 @@ export function AppProvider({ children }) {
     }
   }, []);
 
-  // Cargar estructura cuando hay sesión activa
   useEffect(() => {
     if (isAutenticado && token) {
       cargarEstructura();
@@ -145,11 +143,14 @@ export function AppProvider({ children }) {
         ...u,
         facultades: u.facultades.map(f => ({
           ...f,
-          criterios: f.criterios.map(c => ({
-            ...c,
-            actividades: c.actividades.map(a =>
-              a.id === actividadId ? { ...a, documentos: docs } : a
-            ),
+          periodos: f.periodos.map(p => ({
+            ...p,
+            criterios: p.criterios.map(c => ({
+              ...c,
+              actividades: c.actividades.map(a =>
+                a.id === actividadId ? { ...a, documentos: docs } : a
+              ),
+            })),
           })),
         })),
       }))
@@ -172,7 +173,6 @@ export function AppProvider({ children }) {
       throw new Error(err.error || 'Error al subir documento');
     }
 
-    // Recargar docs de la actividad
     if (actividadId) {
       const docs = await cargarDocumentosActividad(actividadId);
       _inyectarDocumentosEnActividad(actividadId, docs);
@@ -242,11 +242,14 @@ export function AppProvider({ children }) {
         ...u,
         facultades: u.facultades.map(f => ({
           ...f,
-          criterios: f.criterios.map(c => ({
-            ...c,
-            actividades: c.actividades.map(a => ({
-              ...a,
-              documentos: a.documentos.map(d => d.id === docId ? { ...d, ...cambios } : d),
+          periodos: f.periodos.map(p => ({
+            ...p,
+            criterios: p.criterios.map(c => ({
+              ...c,
+              actividades: c.actividades.map(a => ({
+                ...a,
+                documentos: a.documentos.map(d => d.id === docId ? { ...d, ...cambios } : d),
+              })),
             })),
           })),
         })),
@@ -288,18 +291,18 @@ export function AppProvider({ children }) {
   function agregarFacultad(univId, datos) {
     setUniversidades(prev =>
       prev.map(u => u.id === univId
-        ? { ...u, facultades: [...u.facultades, { ...datos, id: Date.now(), criterios: [] }] }
+        ? { ...u, facultades: [...u.facultades, { ...datos, id: Date.now(), periodos: [] }] }
         : u
       )
     );
   }
 
-  function agregarCriterio(univId, facultadId, datos) {
+  function agregarPeriodo(univId, facultadId, datos) {
     setUniversidades(prev =>
       prev.map(u => u.id === univId
         ? {
           ...u, facultades: u.facultades.map(f => f.id === facultadId
-            ? { ...f, criterios: [...f.criterios, { ...datos, id: Date.now(), actividades: [] }] }
+            ? { ...f, periodos: [...f.periodos, { ...datos, id: Date.now(), criterios: [] }] }
             : f
           )
         }
@@ -308,15 +311,39 @@ export function AppProvider({ children }) {
     );
   }
 
-  function agregarActividad(univId, facultadId, criterioId, datos) {
+  function agregarCriterio(univId, facultadId, periodoId, datos) {
     setUniversidades(prev =>
       prev.map(u => u.id === univId
         ? {
           ...u, facultades: u.facultades.map(f => f.id === facultadId
             ? {
-              ...f, criterios: f.criterios.map(c => c.id === criterioId
-                ? { ...c, actividades: [...c.actividades, { ...datos, id: Date.now(), documentos: [] }] }
-                : c
+              ...f, periodos: f.periodos.map(p => p.id === periodoId
+                ? { ...p, criterios: [...p.criterios, { ...datos, id: Date.now(), actividades: [] }] }
+                : p
+              )
+            }
+            : f
+          )
+        }
+        : u
+      )
+    );
+  }
+
+  function agregarActividad(univId, facultadId, periodoId, criterioId, datos) {
+    setUniversidades(prev =>
+      prev.map(u => u.id === univId
+        ? {
+          ...u, facultades: u.facultades.map(f => f.id === facultadId
+            ? {
+              ...f, periodos: f.periodos.map(p => p.id === periodoId
+                ? {
+                  ...p, criterios: p.criterios.map(c => c.id === criterioId
+                    ? { ...c, actividades: [...c.actividades, { ...datos, id: Date.now(), documentos: [] }] }
+                    : c
+                  )
+                }
+                : p
               )
             }
             : f
@@ -329,8 +356,10 @@ export function AppProvider({ children }) {
 
   const todosLosDocs = universidades.flatMap(u =>
     u.facultades.flatMap(f =>
-      f.criterios.flatMap(c =>
-        c.actividades.flatMap(a => a.documentos)
+      f.periodos.flatMap(p =>
+        p.criterios.flatMap(c =>
+          c.actividades.flatMap(a => a.documentos)
+        )
       )
     )
   );
@@ -354,7 +383,7 @@ export function AppProvider({ children }) {
       modalFirmaAbierto, setModalFirmaAbierto,
       firmarDocumento, rechazarDocumento, subirDocumento,
       listarUsuarios, actualizarRolUsuario, listarRoles,
-      agregarUniversidad, agregarFacultad, agregarCriterio, agregarActividad,
+      agregarUniversidad, agregarFacultad, agregarPeriodo, agregarCriterio, agregarActividad,
       metricas, todosLosDocs,
     }}>
       {children}

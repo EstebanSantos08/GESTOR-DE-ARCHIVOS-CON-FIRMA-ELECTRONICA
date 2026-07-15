@@ -34,6 +34,7 @@ export default function ExploradorDeArchivos() {
   const [nivel, setNivel] = useState('universidades');
   const [selUniId, setSelUniId] = useState(null);
   const [selFacId, setSelFacId] = useState(null);
+  const [selPerId, setSelPerId] = useState(null);
   const [selCritId, setSelCritId] = useState(null);
   const [selActId, setSelActId] = useState(null);
   const [arrastrandoDrop, setArrastrandoDrop] = useState(false);
@@ -44,15 +45,18 @@ export default function ExploradorDeArchivos() {
 
   const uniActual  = universidades.find(u => u.id === selUniId);
   const facActual  = uniActual?.facultades.find(f => f.id === selFacId);
-  const critActual = facActual?.criterios.find(c => c.id === selCritId);
+  const periActual = facActual?.periodos.find(p => p.id === selPerId);
+  const critActual = periActual?.criterios.find(c => c.id === selCritId);
   const actActual  = critActual?.actividades.find(a => a.id === selActId);
 
   function breadcrumbItems() {
     const items = [{ label: 'Inicio', onClick: () => setNivel('universidades') }];
-    if (['facultades','criterios','actividades','documentos'].includes(nivel))
+    if (['facultades','periodos','criterios','actividades','documentos'].includes(nivel))
       items.push({ label: uniActual?.siglas || uniActual?.nombre, onClick: () => setNivel('facultades') });
+    if (['periodos','criterios','actividades','documentos'].includes(nivel))
+      items.push({ label: facActual?.nombre, onClick: () => setNivel('periodos') });
     if (['criterios','actividades','documentos'].includes(nivel))
-      items.push({ label: facActual?.nombre, onClick: () => setNivel('criterios') });
+      items.push({ label: periActual?.nombre, onClick: () => setNivel('criterios') });
     if (['actividades','documentos'].includes(nivel))
       items.push({ label: critActual?.nombre, onClick: () => setNivel('actividades') });
     if (nivel === 'documentos')
@@ -141,8 +145,21 @@ export default function ExploradorDeArchivos() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {uniActual?.facultades.map(f => (
                 <CarpetaCard key={f.id} nombre={f.nombre}
-                  descripcion={`${f.criterios.length} criterios`}
-                  onClick={() => { setSelFacId(f.id); setNivel('criterios'); }} />
+                  descripcion={`${f.periodos.length} períodos`}
+                  onClick={() => { setSelFacId(f.id); setNivel('periodos'); }} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {nivel === 'periodos' && (
+          <div>
+            <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold mb-4">Períodos — {facActual?.nombre}</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {facActual?.periodos.map(p => (
+                <CarpetaCard key={p.id} nombre={p.nombre}
+                  descripcion={`${p.criterios.length} criterios`}
+                  onClick={() => { setSelPerId(p.id); setNivel('criterios'); }} />
               ))}
             </div>
           </div>
@@ -150,9 +167,9 @@ export default function ExploradorDeArchivos() {
 
         {nivel === 'criterios' && (
           <div>
-            <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold mb-4">Criterios — {facActual?.nombre}</p>
+            <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold mb-4">Criterios — {periActual?.nombre}</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {facActual?.criterios.map(c => (
+              {periActual?.criterios.map(c => (
                 <CarpetaCard key={c.id} nombre={c.nombre}
                   descripcion={`${c.actividades.length} actividades · ${c.requiere_firma ? 'Requiere firma' : 'Sin firma'}`}
                   onClick={() => { setSelCritId(c.id); setNivel('actividades'); }} />

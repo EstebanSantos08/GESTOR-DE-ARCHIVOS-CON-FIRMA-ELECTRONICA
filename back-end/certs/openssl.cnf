@@ -1,0 +1,12 @@
+[req]
+distinguished_name = req_distinguished_name
+prompt = no
+
+[req_distinguished_name]
+C = EC
+ST = Pichincha
+L = Quito
+O = Universidad Central del Ecuador
+OU = Secretaria General
+CN = Firma Digital Institucional
+emailAddress = certificados@universidad.edu

@@ -180,6 +180,21 @@ async function descargarDocumento(req, res) {
   }
 }
 
+async function obtenerMetricas(req, res) {
+  try {
+    const total = await Documento.count();
+    const pendientesFirma = await Documento.count({
+      where: { estado: ['PENDIENTE', 'FIRMADO_DECANO'] },
+    });
+    const firmados = await Documento.count({ where: { estado: 'COMPLETADO' } });
+    const rechazados = await Documento.count({ where: { estado: 'RECHAZADO' } });
+
+    res.json({ total, pendientesFirma, firmados, rechazados });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
 module.exports = {
   upload,
   subirDocumento,
@@ -188,4 +203,5 @@ module.exports = {
   firmarDocumento,
   rechazarDocumento,
   descargarDocumento,
+  obtenerMetricas,
 };

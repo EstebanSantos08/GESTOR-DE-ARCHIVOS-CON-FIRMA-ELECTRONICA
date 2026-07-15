@@ -298,13 +298,14 @@ describe('Parametrizacion Routes - Integration', () => {
 
     // ─── Eliminar (soft-delete) ─────────────────────────────────────────
     describe('DELETE - eliminar registros (soft delete)', () => {
-      it('DELETE /universidades/:id - debe hacer soft delete como RECTOR', async () => {
+      it('DELETE /universidades/:id - debe hacer soft delete en cascada como RECTOR', async () => {
         autenticarComo('RECTOR', 3);
         const registro = {
           id: 1, activo: true,
           update: jest.fn().mockResolvedValue(true),
         };
         mockUniversidad.findOne.mockResolvedValue(registro);
+        mockFacultad.findAll.mockResolvedValue([]); // sin hijas
 
         const res = await request(app)
           .delete('/api/parametrizacion/universidades/1')
@@ -312,7 +313,7 @@ describe('Parametrizacion Routes - Integration', () => {
 
         expect(res.status).toBe(200);
         expect(registro.update).toHaveBeenCalledWith({ activo: false });
-        expect(res.body).toHaveProperty('mensaje', 'Registro eliminado correctamente');
+        expect(res.body).toHaveProperty('mensaje', 'Universidad y todos sus registros asociados eliminados correctamente');
       });
 
       it('DELETE /universidades/:id - retornar 404 si no existe', async () => {

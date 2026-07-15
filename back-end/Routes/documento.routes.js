@@ -12,6 +12,7 @@ router.post('/subir',
 );
 
 router.get('/', autenticar, ctrl.listarDocumentos);
+router.get('/metricas', autenticar, ctrl.obtenerMetricas);
 router.get('/:id', autenticar, ctrl.obtenerDocumento);
 router.get('/:id/descargar', autenticar, ctrl.descargarDocumento);
 

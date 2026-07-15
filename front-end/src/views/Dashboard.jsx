@@ -1,5 +1,5 @@
-import React from 'react';
-import { FileText, Clock, CheckCircle, XCircle, AlertTriangle, Activity } from 'lucide-react';
+import React, { useEffect } from 'react';
+import { FileText, Clock, CheckCircle, XCircle, AlertTriangle, Activity, RefreshCw } from 'lucide-react';
 import { useApp } from '../context/useApp';
 import Badge from '../components/common/Badge';
 
@@ -18,7 +18,12 @@ function MetricaCard({ titulo, valor, icon: Icon, colorIcon, colorBg, colorNum }
 }
 
 export default function Dashboard() {
-  const { metricas, universidades, auditoria, alertas } = useApp();
+  const { metricas, universidades, auditoria, alertas, cargarMetricasDashboard } = useApp();
+
+  // Refresca las métricas desde el servidor al montar el dashboard
+  useEffect(() => {
+    cargarMetricasDashboard();
+  }, []);
 
   // Calcular datos para gráfico por criterio
   const criteriosData = universidades.flatMap(u =>
@@ -40,6 +45,17 @@ export default function Dashboard() {
 
   return (
     <div className="p-6 space-y-6">
+      {/* Botón de recarga */}
+      <div className="flex items-center justify-end">
+        <button
+          onClick={cargarMetricasDashboard}
+          className="flex items-center space-x-1.5 px-3 py-2 text-xs font-medium text-navy-700 bg-navy-50 border border-navy-100 rounded-lg hover:bg-navy-100 transition-colors"
+        >
+          <RefreshCw size={13} />
+          <span>Actualizar métricas</span>
+        </button>
+      </div>
+
       {/* Métricas */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricaCard titulo="Total Documentos"       valor={metricas.total}          icon={FileText}    colorBg="bg-blue-50"   colorIcon="text-blue-600"   colorNum="text-blue-700" />

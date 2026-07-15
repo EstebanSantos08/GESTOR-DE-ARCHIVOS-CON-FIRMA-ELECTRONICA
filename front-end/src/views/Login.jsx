@@ -3,7 +3,7 @@ import { Shield, Eye, EyeOff, LogIn, AlertCircle, UserPlus, CheckCircle } from '
 import { useApp } from '../context/useApp';
 
 const CUENTAS_DEMO = [
-  { rol: 'RECTOR',  email: 'rector@universidad.edu',  password: 'Rector2026!',  color: 'bg-purple-100 text-purple-800 border-purple-200' },
+  { rol: 'RECTOR',  email: 'rector@universidad.edu',  password: 'Rector123!',  color: 'bg-purple-100 text-purple-800 border-purple-200' },
   { rol: 'DECANO',  email: 'decano@universidad.edu',   password: 'Decano123!',   color: 'bg-blue-100 text-blue-800 border-blue-200' },
   { rol: 'DOCENTE', email: 'docente@universidad.edu',  password: 'Docente123!',  color: 'bg-green-100 text-green-800 border-green-200' },
 ];

@@ -23,14 +23,16 @@ export default function Dashboard() {
   // Calcular datos para gráfico por criterio
   const criteriosData = universidades.flatMap(u =>
     u.facultades.flatMap(f =>
-      f.criterios.map(c => {
-        const docs = c.actividades.flatMap(a => a.documentos);
-        return {
-          nombre: c.nombre,
-          total: docs.length,
-          completados: docs.filter(d => d.estado === 'COMPLETADO').length,
-        };
-      })
+      (f.periodos ?? []).flatMap(p =>
+        (p.criterios ?? []).map(c => {
+          const docs = (c.actividades ?? []).flatMap(a => a.documentos ?? []);
+          return {
+            nombre: c.nombre,
+            total: docs.length,
+            completados: docs.filter(d => d.estado === 'COMPLETADO').length,
+          };
+        })
+      )
     )
   ).filter(c => c.total > 0);
 

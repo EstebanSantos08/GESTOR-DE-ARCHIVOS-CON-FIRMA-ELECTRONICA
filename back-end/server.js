@@ -44,7 +44,7 @@ async function iniciar() {
     await sequelize.authenticate();
     console.log('Conexión a PostgreSQL establecida');
 
-    await sequelize.sync();
+    await sequelize.sync({ alter: true });
     console.log('Modelos sincronizados con la base de datos');
 
     app.listen(PORT, () => {

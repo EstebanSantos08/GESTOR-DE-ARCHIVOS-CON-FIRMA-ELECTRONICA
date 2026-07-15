@@ -3,12 +3,11 @@ const Rol = require('./Rol');
 const Usuario = require('./Usuario');
 const Universidad = require('./Universidad');
 const Facultad = require('./Facultad');
+const Periodo = require('./Periodo');
 const Criterio = require('./Criterio');
 const Actividad = require('./Actividad');
 const Documento = require('./Documento');
 
-// Asociaciones principales del dominio:
-// Usuario -> Rol, Facultad, Facultad -> Universidad, Actividad -> Criterio y Documento -> sus referencias de trabajo.
 Usuario.belongsTo(Rol, { foreignKey: 'rol_id', as: 'rol' });
 Rol.hasMany(Usuario, { foreignKey: 'rol_id', as: 'usuarios' });
 
@@ -17,8 +16,11 @@ Facultad.hasMany(Usuario, { foreignKey: 'facultad_id', as: 'usuarios' });
 Facultad.belongsTo(Universidad, { foreignKey: 'universidad_id', as: 'universidad' });
 Universidad.hasMany(Facultad, { foreignKey: 'universidad_id', as: 'facultades' });
 
-Criterio.belongsTo(Facultad, { foreignKey: 'facultad_id', as: 'facultad' });
-Facultad.hasMany(Criterio, { foreignKey: 'facultad_id', as: 'criterios' });
+Periodo.belongsTo(Facultad, { foreignKey: 'facultad_id', as: 'facultad' });
+Facultad.hasMany(Periodo, { foreignKey: 'facultad_id', as: 'periodos' });
+
+Criterio.belongsTo(Periodo, { foreignKey: 'periodo_id', as: 'periodo' });
+Periodo.hasMany(Criterio, { foreignKey: 'periodo_id', as: 'criterios' });
 
 Actividad.belongsTo(Criterio, { foreignKey: 'criterio_id', as: 'criterio' });
 Criterio.hasMany(Actividad, { foreignKey: 'criterio_id', as: 'actividades' });
@@ -34,6 +36,7 @@ module.exports = {
   Usuario,
   Universidad,
   Facultad,
+  Periodo,
   Criterio,
   Actividad,
   Documento,

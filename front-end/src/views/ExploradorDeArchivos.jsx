@@ -1,58 +1,157 @@
 import React, { useState, useRef } from 'react';
-import { Folder, Upload, Eye, PenLine, Info, FileText, ChevronRight, XCircle, RefreshCw } from 'lucide-react';
+import { Folder, Upload, Eye, PenLine, Info, FileText, ChevronRight, XCircle, RefreshCw, Pencil, Trash2, X, Save, Download } from 'lucide-react';
 import Breadcrumbs from '../components/common/Breadcrumbs';
 import Badge from '../components/common/Badge';
 import { useApp } from '../context/useApp';
 
-function CarpetaCard({ nombre, descripcion, onClick }) {
+function CarpetaCard({ nombre, descripcion, onClick, onEdit, onDelete }) {
   return (
-    <button
-      onClick={onClick}
-      className="bg-white rounded-xl p-5 border border-gray-100 shadow-sm hover:shadow-md hover:border-navy-200 transition-all duration-200 text-left group"
-    >
-      <div className="flex items-start space-x-4">
+    <div className="bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md hover:border-navy-200 transition-all duration-200 group relative">
+      <button
+        onClick={onClick}
+        className="flex items-start space-x-4 p-5 text-left w-full"
+      >
         <div className="w-12 h-12 bg-navy-50 rounded-xl flex items-center justify-center flex-shrink-0 group-hover:bg-navy-100 transition-colors">
           <Folder size={24} className="text-navy-700" />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="font-semibold text-navy-900 text-sm leading-snug">{nombre}</p>
+          <p className="font-semibold text-navy-900 text-sm leading-snug pr-14">{nombre}</p>
           {descripcion && <p className="text-xs text-gray-400 mt-1 truncate">{descripcion}</p>}
         </div>
         <ChevronRight size={16} className="text-gray-300 group-hover:text-navy-500 mt-1 transition-colors flex-shrink-0" />
+      </button>
+
+      {(onEdit || onDelete) && (
+        <div className="absolute top-3 right-3 flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          {onEdit && (
+            <button
+              onClick={e => { e.stopPropagation(); onEdit(); }}
+              className="p-1.5 text-blue-400 hover:text-blue-600 bg-white hover:bg-blue-50 rounded-lg shadow-sm border border-gray-100 transition-colors"
+              title="Editar"
+            >
+              <Pencil size={12} />
+            </button>
+          )}
+          {onDelete && (
+            <button
+              onClick={e => { e.stopPropagation(); onDelete(); }}
+              className="p-1.5 text-red-400 hover:text-red-600 bg-white hover:bg-red-50 rounded-lg shadow-sm border border-gray-100 transition-colors"
+              title="Eliminar"
+            >
+              <Trash2 size={12} />
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ModalEditar({ titulo, valor, onChange, onGuardar, onCancelar, extraCampos }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-sm mx-4 space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-navy-900">{titulo}</h3>
+          <button onClick={onCancelar} className="text-gray-400 hover:text-gray-600">
+            <X size={18} />
+          </button>
+        </div>
+        <input
+          value={valor}
+          onChange={e => onChange(e.target.value)}
+          className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy-500"
+          placeholder="Nombre"
+          autoFocus
+        />
+        {extraCampos}
+        <div className="flex space-x-2 pt-1">
+          <button
+            onClick={onGuardar}
+            className="flex-1 flex items-center justify-center space-x-1.5 px-4 py-2.5 bg-navy-900 text-white text-sm font-medium rounded-lg hover:bg-navy-800 transition-colors"
+          >
+            <Save size={14} /><span>Guardar</span>
+          </button>
+          <button
+            onClick={onCancelar}
+            className="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200 transition-colors"
+          >
+            Cancelar
+          </button>
+        </div>
       </div>
-    </button>
+    </div>
   );
 }
 
 export default function ExploradorDeArchivos() {
   const {
-    universidades, subirDocumento,
-    setDocumentoSeleccionado, usuario,
-    cargarDocumentosActividad, _inyectarDocumentosEnActividad,
+    universidades,
+    subirDocumento,
+    setDocumentoSeleccionado,
+    usuario,
+    token,
+    cargarDocumentosActividad,
+    _inyectarDocumentosEnActividad,
+    eliminarDocumento,
+    actualizarUniversidad, eliminarUniversidad,
+    actualizarFacultad, eliminarFacultad,
+    actualizarPeriodo, eliminarPeriodo,
+    actualizarCriterio, eliminarCriterio,
+    actualizarActividad, eliminarActividad,
   } = useApp();
 
   const [nivel, setNivel] = useState('universidades');
   const [selUniId, setSelUniId] = useState(null);
   const [selFacId, setSelFacId] = useState(null);
+  const [selPerId, setSelPerId] = useState(null);
   const [selCritId, setSelCritId] = useState(null);
   const [selActId, setSelActId] = useState(null);
   const [arrastrandoDrop, setArrastrandoDrop] = useState(false);
   const [subiendo, setSubiendo] = useState(false);
   const [errorSubida, setErrorSubida] = useState('');
   const [cargandoDocs, setCargandoDocs] = useState(false);
+  const [modalEdit, setModalEdit] = useState(null);
+  const [errorEdit, setErrorEdit] = useState('');
+  const [eliminandoDocId, setEliminandoDocId] = useState(null);
   const fileInputRef = useRef();
+
+  const esAdmin = usuario?.rol === 'DECANO' || usuario?.rol === 'RECTOR';
+
+  async function handleDescargar(doc) {
+    try {
+      const res = await fetch(`http://localhost:3000/api/documentos/${doc.id}/descargar`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Error al descargar');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = doc.nombre;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert(err.message);
+    }
+  }
 
   const uniActual  = universidades.find(u => u.id === selUniId);
   const facActual  = uniActual?.facultades.find(f => f.id === selFacId);
-  const critActual = facActual?.criterios.find(c => c.id === selCritId);
+  const periActual = facActual?.periodos.find(p => p.id === selPerId);
+  const critActual = periActual?.criterios.find(c => c.id === selCritId);
   const actActual  = critActual?.actividades.find(a => a.id === selActId);
 
   function breadcrumbItems() {
     const items = [{ label: 'Inicio', onClick: () => setNivel('universidades') }];
-    if (['facultades','criterios','actividades','documentos'].includes(nivel))
+    if (['facultades','periodos','criterios','actividades','documentos'].includes(nivel))
       items.push({ label: uniActual?.siglas || uniActual?.nombre, onClick: () => setNivel('facultades') });
+    if (['periodos','criterios','actividades','documentos'].includes(nivel))
+      items.push({ label: facActual?.nombre, onClick: () => setNivel('periodos') });
     if (['criterios','actividades','documentos'].includes(nivel))
-      items.push({ label: facActual?.nombre, onClick: () => setNivel('criterios') });
+      items.push({ label: periActual?.nombre, onClick: () => setNivel('criterios') });
     if (['actividades','documentos'].includes(nivel))
       items.push({ label: critActual?.nombre, onClick: () => setNivel('actividades') });
     if (nivel === 'documentos')
@@ -105,6 +204,24 @@ export default function ExploradorDeArchivos() {
     manejarArchivo(e.dataTransfer.files[0]);
   }
 
+  async function handleEliminarDoc(doc) {
+    if (!window.confirm(`¿Eliminar "${doc.nombre}"? Esta acción no se puede deshacer.`)) return;
+    setEliminandoDocId(doc.id);
+    try {
+      await eliminarDocumento(doc.id, selActId);
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setEliminandoDocId(null);
+    }
+  }
+
+  function puedeEliminarDoc(doc) {
+    if (usuario.rol === 'RECTOR') return true;
+    // DOCENTE puede eliminar sus propios docs solo si están PENDIENTE o RECHAZADO
+    return doc.subido_por === usuario.nombre && ['PENDIENTE', 'RECHAZADO'].includes(doc.estado);
+  }
+
   function puedeFirmar(doc) {
     if (doc.estado === 'COMPLETADO' || doc.estado === 'RECHAZADO') return false;
     if (usuario.rol === 'DECANO' && doc.estado === 'PENDIENTE') return true;
@@ -112,11 +229,89 @@ export default function ExploradorDeArchivos() {
     return false;
   }
 
+  // ── Editar ────────────────────────────────────────────────────────────────
+
+  function abrirEditar(tipo, id, nombre, meta = {}) {
+    setErrorEdit('');
+    setModalEdit({ tipo, id, nombreEdit: nombre, meta });
+  }
+
+  async function guardarEditar() {
+    if (!modalEdit || !modalEdit.nombreEdit.trim()) return;
+    const { tipo, id, nombreEdit, meta } = modalEdit;
+    try {
+      if (tipo === 'universidad') {
+        await actualizarUniversidad(id, { nombre: nombreEdit, siglas: meta.siglas });
+      } else if (tipo === 'facultad') {
+        await actualizarFacultad(id, meta.univId, { nombre: nombreEdit });
+      } else if (tipo === 'periodo') {
+        await actualizarPeriodo(id, meta.univId, meta.facId, { nombre: nombreEdit });
+      } else if (tipo === 'criterio') {
+        await actualizarCriterio(id, meta.univId, meta.facId, meta.perId, { nombre: nombreEdit, requiere_firma: meta.requiere_firma });
+      } else if (tipo === 'actividad') {
+        await actualizarActividad(id, meta.univId, meta.facId, meta.perId, meta.critId, { nombre: nombreEdit });
+      }
+      setModalEdit(null);
+    } catch (err) {
+      setErrorEdit(err.message);
+    }
+  }
+
+  // ── Eliminar ──────────────────────────────────────────────────────────────
+
+  async function handleEliminar(tipo, id, nombre, meta = {}) {
+    if (!window.confirm(`¿Eliminar "${nombre}"? Esta acción no se puede deshacer.`)) return;
+    try {
+      if (tipo === 'universidad') {
+        await eliminarUniversidad(id);
+        if (selUniId === id) setNivel('universidades');
+      } else if (tipo === 'facultad') {
+        await eliminarFacultad(id, meta.univId);
+        if (selFacId === id) setNivel('facultades');
+      } else if (tipo === 'periodo') {
+        await eliminarPeriodo(id, meta.univId, meta.facId);
+        if (selPerId === id) setNivel('periodos');
+      } else if (tipo === 'criterio') {
+        await eliminarCriterio(id, meta.univId, meta.facId, meta.perId);
+        if (selCritId === id) setNivel('criterios');
+      } else if (tipo === 'actividad') {
+        await eliminarActividad(id, meta.univId, meta.facId, meta.perId, meta.critId);
+        if (selActId === id) setNivel('actividades');
+      }
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+
   const docsActual = actActual?.documentos || [];
 
   return (
     <div className="flex flex-col h-full">
       <Breadcrumbs items={breadcrumbItems()} />
+
+      {/* Modal editar */}
+      {modalEdit && (
+        <ModalEditar
+          titulo={`Editar nombre`}
+          valor={modalEdit.nombreEdit}
+          onChange={v => setModalEdit(p => ({ ...p, nombreEdit: v }))}
+          onGuardar={guardarEditar}
+          onCancelar={() => { setModalEdit(null); setErrorEdit(''); }}
+          extraCampos={
+            <>
+              {modalEdit.tipo === 'universidad' && (
+                <input
+                  value={modalEdit.meta.siglas || ''}
+                  onChange={e => setModalEdit(p => ({ ...p, meta: { ...p.meta, siglas: e.target.value } }))}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy-500"
+                  placeholder="Siglas (ESPE, UIO...)"
+                />
+              )}
+              {errorEdit && <p className="text-xs text-red-600">{errorEdit}</p>}
+            </>
+          }
+        />
+      )}
 
       <div className="flex-1 p-6 overflow-auto">
 
@@ -127,8 +322,12 @@ export default function ExploradorDeArchivos() {
               ? <p className="text-sm text-gray-400 mt-8 text-center">No hay universidades configuradas</p>
               : <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {universidades.map(u => (
-                    <CarpetaCard key={u.id} nombre={u.nombre} descripcion={u.siglas}
-                      onClick={() => { setSelUniId(u.id); setNivel('facultades'); }} />
+                    <CarpetaCard
+                      key={u.id} nombre={u.nombre} descripcion={u.siglas}
+                      onClick={() => { setSelUniId(u.id); setNivel('facultades'); }}
+                      onEdit={esAdmin ? () => abrirEditar('universidad', u.id, u.nombre, { siglas: u.siglas }) : null}
+                      onDelete={esAdmin ? () => handleEliminar('universidad', u.id, u.nombre) : null}
+                    />
                   ))}
                 </div>
             }
@@ -140,9 +339,30 @@ export default function ExploradorDeArchivos() {
             <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold mb-4">Facultades — {uniActual?.nombre}</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {uniActual?.facultades.map(f => (
-                <CarpetaCard key={f.id} nombre={f.nombre}
-                  descripcion={`${f.criterios.length} criterios`}
-                  onClick={() => { setSelFacId(f.id); setNivel('criterios'); }} />
+                <CarpetaCard
+                  key={f.id} nombre={f.nombre}
+                  descripcion={`${f.periodos.length} períodos`}
+                  onClick={() => { setSelFacId(f.id); setNivel('periodos'); }}
+                  onEdit={esAdmin ? () => abrirEditar('facultad', f.id, f.nombre, { univId: selUniId }) : null}
+                  onDelete={esAdmin ? () => handleEliminar('facultad', f.id, f.nombre, { univId: selUniId }) : null}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {nivel === 'periodos' && (
+          <div>
+            <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold mb-4">Períodos — {facActual?.nombre}</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {facActual?.periodos.map(p => (
+                <CarpetaCard
+                  key={p.id} nombre={p.nombre}
+                  descripcion={`${p.criterios.length} criterios`}
+                  onClick={() => { setSelPerId(p.id); setNivel('criterios'); }}
+                  onEdit={esAdmin ? () => abrirEditar('periodo', p.id, p.nombre, { univId: selUniId, facId: selFacId }) : null}
+                  onDelete={esAdmin ? () => handleEliminar('periodo', p.id, p.nombre, { univId: selUniId, facId: selFacId }) : null}
+                />
               ))}
             </div>
           </div>
@@ -150,12 +370,16 @@ export default function ExploradorDeArchivos() {
 
         {nivel === 'criterios' && (
           <div>
-            <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold mb-4">Criterios — {facActual?.nombre}</p>
+            <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold mb-4">Criterios — {periActual?.nombre}</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {facActual?.criterios.map(c => (
-                <CarpetaCard key={c.id} nombre={c.nombre}
+              {periActual?.criterios.map(c => (
+                <CarpetaCard
+                  key={c.id} nombre={c.nombre}
                   descripcion={`${c.actividades.length} actividades · ${c.requiere_firma ? 'Requiere firma' : 'Sin firma'}`}
-                  onClick={() => { setSelCritId(c.id); setNivel('actividades'); }} />
+                  onClick={() => { setSelCritId(c.id); setNivel('actividades'); }}
+                  onEdit={esAdmin ? () => abrirEditar('criterio', c.id, c.nombre, { univId: selUniId, facId: selFacId, perId: selPerId, requiere_firma: c.requiere_firma }) : null}
+                  onDelete={esAdmin ? () => handleEliminar('criterio', c.id, c.nombre, { univId: selUniId, facId: selFacId, perId: selPerId }) : null}
+                />
               ))}
             </div>
           </div>
@@ -166,9 +390,13 @@ export default function ExploradorDeArchivos() {
             <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold mb-4">Actividades — {critActual?.nombre}</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {critActual?.actividades.map(a => (
-                <CarpetaCard key={a.id} nombre={a.nombre}
+                <CarpetaCard
+                  key={a.id} nombre={a.nombre}
                   descripcion={`${a.documentos.length} documentos`}
-                  onClick={() => entrarActividad(a.id)} />
+                  onClick={() => entrarActividad(a.id)}
+                  onEdit={esAdmin ? () => abrirEditar('actividad', a.id, a.nombre, { univId: selUniId, facId: selFacId, perId: selPerId, critId: selCritId }) : null}
+                  onDelete={esAdmin ? () => handleEliminar('actividad', a.id, a.nombre, { univId: selUniId, facId: selFacId, perId: selPerId, critId: selCritId }) : null}
+                />
               ))}
             </div>
           </div>
@@ -293,6 +521,13 @@ export default function ExploradorDeArchivos() {
                                 <Eye size={12} />
                                 <span>Ver</span>
                               </button>
+                              <button
+                                onClick={() => handleDescargar(doc)}
+                                title="Descargar PDF"
+                                className="p-1.5 text-gray-400 hover:text-navy-700 hover:bg-navy-50 rounded-lg transition-colors"
+                              >
+                                <Download size={12} />
+                              </button>
 
                               {doc.estado === 'RECHAZADO' && (
                                 <span className="flex items-center space-x-1 px-2.5 py-1.5 text-xs font-medium text-red-500 bg-red-50 rounded-lg border border-red-100">
@@ -308,6 +543,20 @@ export default function ExploradorDeArchivos() {
                                 >
                                   <PenLine size={12} />
                                   <span>Firmar</span>
+                                </button>
+                              )}
+
+                              {puedeEliminarDoc(doc) && (
+                                <button
+                                  onClick={() => handleEliminarDoc(doc)}
+                                  disabled={eliminandoDocId === doc.id}
+                                  className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-40"
+                                  title="Eliminar documento"
+                                >
+                                  {eliminandoDocId === doc.id
+                                    ? <RefreshCw size={12} className="animate-spin" />
+                                    : <Trash2 size={12} />
+                                  }
                                 </button>
                               )}
                             </div>

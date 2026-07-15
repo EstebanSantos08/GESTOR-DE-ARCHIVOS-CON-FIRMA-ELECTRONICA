@@ -5,6 +5,7 @@ const { autorizarNivel } = require('../Middleware/rbac.middleware');
 const {
   universidadCtrl,
   facultadCtrl,
+  periodoCtrl,
   criterioCtrl,
   actividadCtrl,
   estructura,
@@ -36,6 +37,17 @@ router.post('/facultades', ...soloAdmins,
 );
 router.put('/facultades/:id', ...soloAdmins, facultadCtrl.actualizar);
 router.delete('/facultades/:id', ...soloAdmins, facultadCtrl.eliminar);
+
+// ─── Periodo ───────────────────────────────────────────────────────────────
+router.get('/periodos', autenticar, periodoCtrl.listar);
+router.get('/periodos/:id', autenticar, periodoCtrl.obtener);
+router.post('/periodos', ...soloAdmins,
+  body('nombre').notEmpty().withMessage('Nombre requerido'),
+  body('facultad_id').isInt().withMessage('Facultad requerida'),
+  periodoCtrl.crear
+);
+router.put('/periodos/:id', ...soloAdmins, periodoCtrl.actualizar);
+router.delete('/periodos/:id', ...soloAdmins, periodoCtrl.eliminar);
 
 // ─── Criterio ──────────────────────────────────────────────────────────────
 router.get('/criterios', autenticar, criterioCtrl.listar);

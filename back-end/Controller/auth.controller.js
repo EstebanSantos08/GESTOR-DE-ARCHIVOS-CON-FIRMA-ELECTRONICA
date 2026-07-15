@@ -75,6 +75,14 @@ async function actualizarRol(req, res) {
     const { rol_id } = req.body;
     if (!rol_id) return res.status(400).json({ error: 'rol_id requerido' });
 
+    const rolDestino = await Rol.findByPk(rol_id);
+    if (!rolDestino) return res.status(400).json({ error: 'Rol no encontrado' });
+
+    // El Decano solo puede asignar el rol DECANO, no RECTOR
+    if (req.usuario.rol === 'DECANO' && rolDestino.nombre === 'RECTOR') {
+      return res.status(403).json({ error: 'El Decano no puede asignar el rol de Rector' });
+    }
+
     const usuario = await Usuario.findByPk(req.params.id);
     if (!usuario) return res.status(404).json({ error: 'Usuario no encontrado' });
 
@@ -89,4 +97,42 @@ async function actualizarRol(req, res) {
   }
 }
 
-module.exports = { login, registrar, registroPublico, perfil, listarUsuarios, actualizarRol };
+async function eliminarUsuario(req, res) {
+  try {
+    const usuario = await Usuario.findByPk(req.params.id);
+    if (!usuario) return res.status(404).json({ error: 'Usuario no encontrado' });
+
+    if (usuario.id === req.usuario.id) {
+      return res.status(400).json({ error: 'No puedes eliminar tu propia cuenta' });
+    }
+
+    await usuario.update({ activo: false });
+    res.json({ mensaje: 'Usuario desactivado correctamente' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+async function actualizarUsuario(req, res) {
+  try {
+    const { nombre, email } = req.body;
+    const usuario = await Usuario.findByPk(req.params.id);
+    if (!usuario) return res.status(404).json({ error: 'Usuario no encontrado' });
+
+    if (email && email !== usuario.email) {
+      const existe = await Usuario.findOne({ where: { email } });
+      if (existe) return res.status(400).json({ error: 'El email ya está en uso' });
+    }
+
+    await usuario.update({ nombre, email });
+    const actualizado = await Usuario.findByPk(req.params.id, {
+      attributes: { exclude: ['password_hash'] },
+      include: [{ model: Rol, as: 'rol' }],
+    });
+    res.json(actualizado);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+}
+
+module.exports = { login, registrar, registroPublico, perfil, listarUsuarios, actualizarRol, eliminarUsuario, actualizarUsuario };

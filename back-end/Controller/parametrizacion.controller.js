@@ -1,8 +1,7 @@
 const { validationResult } = require('express-validator');
-const { Universidad, Facultad, Criterio, Actividad, Documento, Usuario } = require('../Model');
+const { Universidad, Facultad, Periodo, Criterio, Actividad, Documento, Usuario } = require('../Model');
 
 // ─── Fábrica de CRUD genérico ──────────────────────────────────────────────
-// Reutiliza la misma lógica para catálogos con soft delete y relaciones opcionales.
 function crearCRUD(Modelo, includeOpts = []) {
   return {
     async listar(req, res) {
@@ -75,6 +74,10 @@ const facultadCtrl = crearCRUD(Facultad, [
   { model: Universidad, as: 'universidad', attributes: ['id', 'nombre'] },
 ]);
 
+const periodoCtrl = crearCRUD(Periodo, [
+  { model: Facultad, as: 'facultad', attributes: ['id', 'nombre'] },
+]);
+
 const criterioCtrl = crearCRUD(Criterio);
 
 const actividadCtrl = crearCRUD(Actividad, [
@@ -93,6 +96,11 @@ async function estructura(req, res) {
       order: [['id', 'ASC']],
     });
 
+    const periodos = await Periodo.findAll({
+      where: { activo: true },
+      order: [['id', 'ASC']],
+    });
+
     const criterios = await Criterio.findAll({
       where: { activo: true },
       order: [['id', 'ASC']],
@@ -107,26 +115,33 @@ async function estructura(req, res) {
       id: u.id,
       nombre: u.nombre,
       descripcion: u.descripcion,
+      siglas: u.siglas,
       facultades: facultades
         .filter(f => f.universidad_id === u.id)
         .map(f => ({
           id: f.id,
           nombre: f.nombre,
           descripcion: f.descripcion,
-          criterios: criterios
-            .filter(c => c.facultad_id === f.id || c.facultad_id === null)
-            .map(c => ({
-              id: c.id,
-              nombre: c.nombre,
-              descripcion: c.descripcion,
-              requiere_firma: c.requiere_firma,
-              actividades: actividades
-                .filter(a => a.criterio_id === c.id)
-                .map(a => ({
-                  id: a.id,
-                  nombre: a.nombre,
-                  informacion_ayuda: a.descripcion || '',
-                  documentos: [],
+          periodos: periodos
+            .filter(p => p.facultad_id === f.id)
+            .map(p => ({
+              id: p.id,
+              nombre: p.nombre,
+              criterios: criterios
+                .filter(c => c.periodo_id === p.id)
+                .map(c => ({
+                  id: c.id,
+                  nombre: c.nombre,
+                  descripcion: c.descripcion,
+                  requiere_firma: c.requiere_firma,
+                  actividades: actividades
+                    .filter(a => a.criterio_id === c.id)
+                    .map(a => ({
+                      id: a.id,
+                      nombre: a.nombre,
+                      informacion_ayuda: a.descripcion || '',
+                      documentos: [],
+                    })),
                 })),
             })),
         })),
@@ -138,4 +153,4 @@ async function estructura(req, res) {
   }
 }
 
-module.exports = { universidadCtrl, facultadCtrl, criterioCtrl, actividadCtrl, estructura };
+module.exports = { universidadCtrl, facultadCtrl, periodoCtrl, criterioCtrl, actividadCtrl, estructura };

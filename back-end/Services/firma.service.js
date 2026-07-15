@@ -1,16 +1,35 @@
 const forge = require('node-forge');
 const { PDFDocument, rgb, StandardFonts } = require('pdf-lib');
+const QRCode = require('qrcode');
 const fs = require('fs');
 const crypto = require('crypto');
+
+// Ancho del sello QR en puntos PDF (1 punto = 1/72 pulgada)
+const SELLO_W = 130;
+const SELLO_H = 150;
+const MARGEN = 18;
+
+/**
+ * Posición horizontal del sello según el rol del firmante.
+ * Decano → esquina inferior derecha
+ * Rector → esquina inferior izquierda
+ * Cualquier otro → centrado
+ */
+function posicionSello(pageWidth, rol) {
+  if (rol === 'RECTOR') return { x: MARGEN, y: MARGEN };
+  if (rol === 'DECANO') return { x: pageWidth - SELLO_W - MARGEN, y: MARGEN };
+  return { x: (pageWidth - SELLO_W) / 2, y: MARGEN };
+}
 
 class FirmaService {
   /**
    * Lee un certificado .p12 y extrae la clave privada y el certificado público.
-   * Usado para construir la firma PKCS#7 (PAdES-BES).
    */
   cargarCertificado(rutaP12, password) {
     const buffer = fs.readFileSync(rutaP12);
-    const p12Der = forge.util.binary.raw.encode(new Uint8Array(buffer));
+    // buffer.toString('binary') evita el stack overflow de forge.util.binary.raw.encode
+    // con Uint8Array grandes pasados a String.fromCharCode.apply()
+    const p12Der = buffer.toString('binary');
     const p12Asn1 = forge.asn1.fromDer(p12Der);
     const p12 = forge.pkcs12.pkcs12FromAsn1(p12Asn1, false, password);
 
@@ -28,10 +47,41 @@ class FirmaService {
   }
 
   /**
-   * Estampa visualmente la firma en la última página del PDF (requisito PAdES visual layer).
+   * Genera un PNG de QR con los datos de verificación de la firma.
+   * El contenido del QR puede escanearse para verificar la autenticidad.
    */
-  async agregarSelloVisual(pdfBuffer, firmante, fechaFirma) {
-    // La firma visual se dibuja sobre la última página para no alterar el contenido original.
+  async generarQRPng(firmante, fechaFirma, hashDocumento) {
+    const contenido = [
+      `FIRMA DIGITAL PAdES-BES`,
+      `Firmante: ${firmante.nombre}`,
+      `Cargo: ${firmante.rol}`,
+      `Fecha: ${fechaFirma.toLocaleString('es-EC')}`,
+      `Hash SHA-256: ${hashDocumento ? hashDocumento.substring(0, 32) + '...' : 'N/A'}`,
+    ].join('\n');
+
+    const pngBuffer = await QRCode.toBuffer(contenido, {
+      type: 'png',
+      width: 256,
+      margin: 1,
+      color: { dark: '#0f172a', light: '#ffffff' },
+      errorCorrectionLevel: 'M',
+    });
+
+    return pngBuffer;
+  }
+
+  /**
+   * Estampa el sello de firma en la última página del PDF.
+   * Cada rol firma en una esquina diferente para que ambas firmas sean visibles:
+   *   Decano  → esquina inferior derecha
+   *   Rector  → esquina inferior izquierda
+   *
+   * El sello incluye:
+   *   - Imagen QR con datos de verificación
+   *   - Nombre del firmante y rol
+   *   - Fecha y estándar PAdES-BES
+   */
+  async agregarSelloVisual(pdfBuffer, firmante, fechaFirma, hashDocumento) {
     const pdfDoc = await PDFDocument.load(pdfBuffer);
     const paginas = pdfDoc.getPages();
     const ultimaPagina = paginas[paginas.length - 1];
@@ -39,74 +89,90 @@ class FirmaService {
     const fontNormal = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
     const { width } = ultimaPagina.getSize();
-    const x = width - 230;
-    const yBase = 30;
+    const { x, y } = posicionSello(width, firmante.rol);
 
-    // Marco del sello
+    // ── Fondo y borde del sello ───────────────────────────────────────────
     ultimaPagina.drawRectangle({
       x,
-      y: yBase,
-      width: 210,
-      height: 70,
-      borderColor: rgb(0.1, 0.2, 0.6),
-      borderWidth: 1.5,
-      color: rgb(0.95, 0.97, 1),
+      y,
+      width: SELLO_W,
+      height: SELLO_H,
+      borderColor: rgb(0.06, 0.13, 0.37),
+      borderWidth: 1.2,
+      color: rgb(0.96, 0.97, 1.0),
     });
 
+    // ── Título ────────────────────────────────────────────────────────────
     ultimaPagina.drawText('FIRMA DIGITAL', {
-      x: x + 55,
-      y: yBase + 54,
-      size: 9,
+      x: x + 18,
+      y: y + SELLO_H - 13,
+      size: 7.5,
       font,
-      color: rgb(0.1, 0.2, 0.6),
+      color: rgb(0.06, 0.13, 0.37),
     });
 
-    ultimaPagina.drawText(`Firmado por: ${firmante.nombre}`, {
-      x: x + 6,
-      y: yBase + 40,
-      size: 7.5,
-      font: fontNormal,
+    // ── QR ────────────────────────────────────────────────────────────────
+    const qrPng = await this.generarQRPng(firmante, fechaFirma, hashDocumento);
+    const qrImage = await pdfDoc.embedPng(qrPng);
+    const qrSize = 70;
+    ultimaPagina.drawImage(qrImage, {
+      x: x + (SELLO_W - qrSize) / 2,
+      y: y + SELLO_H - 14 - qrSize,
+      width: qrSize,
+      height: qrSize,
+    });
+
+    // ── Texto bajo el QR ─────────────────────────────────────────────────
+    const textoY = y + SELLO_H - 14 - qrSize - 12;
+
+    // Nombre — truncado si es muy largo
+    const nombreTruncado = firmante.nombre.length > 20
+      ? firmante.nombre.substring(0, 18) + '…'
+      : firmante.nombre;
+
+    ultimaPagina.drawText(nombreTruncado, {
+      x: x + 5,
+      y: textoY,
+      size: 6.5,
+      font,
       color: rgb(0.1, 0.1, 0.1),
     });
 
-    ultimaPagina.drawText(`Cargo: ${firmante.rol}`, {
-      x: x + 6,
-      y: yBase + 28,
-      size: 7.5,
-      font: fontNormal,
-      color: rgb(0.1, 0.1, 0.1),
-    });
-
-    ultimaPagina.drawText(`Fecha: ${fechaFirma.toLocaleString('es-EC')}`, {
-      x: x + 6,
-      y: yBase + 16,
-      size: 7.5,
-      font: fontNormal,
-      color: rgb(0.1, 0.1, 0.1),
-    });
-
-    ultimaPagina.drawText('Estándar PAdES-BES', {
-      x: x + 6,
-      y: yBase + 4,
+    ultimaPagina.drawText(firmante.rol, {
+      x: x + 5,
+      y: textoY - 10,
       size: 6,
       font: fontNormal,
-      color: rgb(0.5, 0.5, 0.5),
+      color: rgb(0.3, 0.3, 0.3),
+    });
+
+    ultimaPagina.drawText(fechaFirma.toLocaleDateString('es-EC'), {
+      x: x + 5,
+      y: textoY - 20,
+      size: 6,
+      font: fontNormal,
+      color: rgb(0.3, 0.3, 0.3),
+    });
+
+    ultimaPagina.drawText('PAdES-BES · Verif. QR', {
+      x: x + 5,
+      y: textoY - 30,
+      size: 5.5,
+      font: fontNormal,
+      color: rgb(0.55, 0.55, 0.55),
     });
 
     return Buffer.from(await pdfDoc.save());
   }
 
   /**
-   * Calcula el hash SHA-256 del contenido del PDF y construye una firma
-   * criptográfica PKCS#7 CMS usando la clave privada del certificado .p12.
-   * El resultado es compatible con el estándar PAdES-BES (ISO 32000-1).
+   * Construye la firma criptográfica PKCS#7 CMS (PAdES-BES).
    */
   construirFirmaPKCS7(contenidoPdf, clavePrivada, certificado) {
-    // Construye la firma criptográfica separada del sello visual.
     const p7 = forge.pkcs7.createSignedData();
 
     p7.content = forge.util.createBuffer(
-      forge.util.binary.raw.encode(new Uint8Array(contenidoPdf))
+      Buffer.from(contenidoPdf).toString('binary')
     );
 
     p7.addCertificate(certificado);
@@ -130,9 +196,10 @@ class FirmaService {
 
   /**
    * Pipeline completo de firma:
-   * 1. Agrega sello visual (pdf-lib)
-   * 2. Construye firma criptográfica PKCS#7 (node-forge, PAdES-BES)
-   * 3. Devuelve el PDF firmado y la firma DER serializada
+   * 1. Lee el PDF actual (que puede ya tener el sello del Decano)
+   * 2. Agrega el sello QR del firmante actual en su esquina correspondiente
+   * 3. Construye la firma criptográfica PKCS#7
+   * 4. Devuelve el PDF firmado con ambos sellos visibles
    */
   async firmarDocumento({ rutaPdf, rutaCertP12, passwordCert, firmante }) {
     const { clavePrivada, certificado } = this.cargarCertificado(rutaCertP12, passwordCert);
@@ -140,13 +207,16 @@ class FirmaService {
     const pdfOriginal = fs.readFileSync(rutaPdf);
     const fechaFirma = new Date();
 
-    // Capa visual
-    const pdfConSello = await this.agregarSelloVisual(pdfOriginal, firmante, fechaFirma);
+    // Calcula hash del PDF entrante para incluirlo en el QR
+    const hashEntrada = crypto.createHash('sha256').update(pdfOriginal).digest('hex');
 
-    // Capa criptográfica
+    // Agrega el sello QR del firmante actual (sin borrar los anteriores)
+    const pdfConSello = await this.agregarSelloVisual(pdfOriginal, firmante, fechaFirma, hashEntrada);
+
+    // Capa criptográfica sobre el PDF ya sellado
     const firmaDer = this.construirFirmaPKCS7(pdfConSello, clavePrivada, certificado);
 
-    // Hash de integridad del PDF final
+    // Hash final para auditoría
     const hashSha256 = crypto.createHash('sha256').update(pdfConSello).digest('hex');
 
     return {

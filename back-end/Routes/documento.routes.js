@@ -11,9 +11,11 @@ router.post('/subir',
   ctrl.subirDocumento
 );
 
+router.get('/resumen', autenticar, ctrl.resumenDocumentos);
 router.get('/', autenticar, ctrl.listarDocumentos);
 router.get('/:id', autenticar, ctrl.obtenerDocumento);
 router.get('/:id/descargar', autenticar, ctrl.descargarDocumento);
+router.delete('/:id', autenticar, ctrl.eliminarDocumento);
 
 // Solo DECANO y RECTOR pueden firmar
 router.post('/:id/firmar',

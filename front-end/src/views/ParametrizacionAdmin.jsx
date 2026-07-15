@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Check, Building2, BookOpen, CalendarDays, Microscope, ClipboardList } from 'lucide-react';
+import { Plus, Check, Building2, BookOpen, CalendarDays, Microscope, ClipboardList, Pencil, Trash2, X, Save } from 'lucide-react';
 import { useApp } from '../context/useApp';
 
 function Toggle({ value, onChange, label }) {
@@ -28,11 +28,23 @@ function FormField({ label, children }) {
 
 const inputCls = "w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy-500 focus:border-transparent";
 const selectCls = inputCls;
+const inputSmCls = "border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-navy-500 w-full";
 
 export default function ParametrizacionAdmin() {
-  const { universidades, agregarUniversidad, agregarFacultad, agregarPeriodo, agregarCriterio, agregarActividad } = useApp();
+  const {
+    universidades,
+    agregarUniversidad, actualizarUniversidad, eliminarUniversidad,
+    agregarFacultad, actualizarFacultad, eliminarFacultad,
+    agregarPeriodo, actualizarPeriodo, eliminarPeriodo,
+    agregarCriterio, actualizarCriterio, eliminarCriterio,
+    agregarActividad, actualizarActividad, eliminarActividad,
+  } = useApp();
+
   const [tab, setTab] = useState('universidad');
   const [exito, setExito] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
+  const [editando, setEditando] = useState(null); // { tipo, id, valor, meta }
+  const [eliminandoId, setEliminandoId] = useState(null);
 
   const [fUniv, setFUniv] = useState({ nombre: '', siglas: '' });
   const [fFac, setFfac] = useState({ nombre: '', univId: '' });
@@ -41,52 +53,111 @@ export default function ParametrizacionAdmin() {
   const [fAct, setFAct] = useState({ nombre: '', univId: '', facId: '', perId: '', critId: '', informacion_ayuda: '', requiere_firma: true });
 
   function mostrarExito(msg) {
+    setErrorMsg('');
     setExito(msg);
     setTimeout(() => setExito(''), 3000);
   }
 
-  function submitUniv(e) {
+  function mostrarError(msg) {
+    setExito('');
+    setErrorMsg(msg);
+    setTimeout(() => setErrorMsg(''), 5000);
+  }
+
+  async function submitUniv(e) {
     e.preventDefault();
     if (!fUniv.nombre) return;
-    agregarUniversidad(fUniv);
-    setFUniv({ nombre: '', siglas: '' });
-    mostrarExito('Universidad creada exitosamente');
+    try {
+      await agregarUniversidad(fUniv);
+      setFUniv({ nombre: '', siglas: '' });
+      mostrarExito('Universidad creada exitosamente');
+    } catch (err) { mostrarError(err.message); }
   }
 
-  function submitFac(e) {
+  async function submitFac(e) {
     e.preventDefault();
     if (!fFac.nombre || !fFac.univId) return;
-    agregarFacultad(Number(fFac.univId), { nombre: fFac.nombre });
-    setFfac({ nombre: '', univId: '' });
-    mostrarExito('Facultad creada exitosamente');
+    try {
+      await agregarFacultad(Number(fFac.univId), { nombre: fFac.nombre });
+      setFfac({ nombre: '', univId: '' });
+      mostrarExito('Facultad creada exitosamente');
+    } catch (err) { mostrarError(err.message); }
   }
 
-  function submitPer(e) {
+  async function submitPer(e) {
     e.preventDefault();
     if (!fPer.nombre || !fPer.univId || !fPer.facId) return;
-    agregarPeriodo(Number(fPer.univId), Number(fPer.facId), { nombre: fPer.nombre });
-    setFPer({ nombre: '', univId: '', facId: '' });
-    mostrarExito('Período creado exitosamente');
+    try {
+      await agregarPeriodo(Number(fPer.univId), Number(fPer.facId), { nombre: fPer.nombre });
+      setFPer({ nombre: '', univId: '', facId: '' });
+      mostrarExito('Período creado exitosamente');
+    } catch (err) { mostrarError(err.message); }
   }
 
-  function submitCrit(e) {
+  async function submitCrit(e) {
     e.preventDefault();
     if (!fCrit.nombre || !fCrit.univId || !fCrit.facId || !fCrit.perId) return;
-    agregarCriterio(Number(fCrit.univId), Number(fCrit.facId), Number(fCrit.perId), { nombre: fCrit.nombre, requiere_firma: fCrit.requiere_firma });
-    setFCrit({ nombre: '', univId: '', facId: '', perId: '', requiere_firma: true });
-    mostrarExito('Criterio creado exitosamente');
+    try {
+      await agregarCriterio(Number(fCrit.univId), Number(fCrit.facId), Number(fCrit.perId), { nombre: fCrit.nombre, requiere_firma: fCrit.requiere_firma });
+      setFCrit({ nombre: '', univId: '', facId: '', perId: '', requiere_firma: true });
+      mostrarExito('Criterio creado exitosamente');
+    } catch (err) { mostrarError(err.message); }
   }
 
-  function submitAct(e) {
+  async function submitAct(e) {
     e.preventDefault();
     if (!fAct.nombre || !fAct.univId || !fAct.facId || !fAct.perId || !fAct.critId) return;
-    agregarActividad(Number(fAct.univId), Number(fAct.facId), Number(fAct.perId), Number(fAct.critId), {
-      nombre: fAct.nombre,
-      informacion_ayuda: fAct.informacion_ayuda,
-      requiere_firma: fAct.requiere_firma,
-    });
-    setFAct({ nombre: '', univId: '', facId: '', perId: '', critId: '', informacion_ayuda: '', requiere_firma: true });
-    mostrarExito('Actividad creada exitosamente');
+    try {
+      await agregarActividad(Number(fAct.univId), Number(fAct.facId), Number(fAct.perId), Number(fAct.critId), {
+        nombre: fAct.nombre,
+        informacion_ayuda: fAct.informacion_ayuda,
+        requiere_firma: fAct.requiere_firma,
+      });
+      setFAct({ nombre: '', univId: '', facId: '', perId: '', critId: '', informacion_ayuda: '', requiere_firma: true });
+      mostrarExito('Actividad creada exitosamente');
+    } catch (err) { mostrarError(err.message); }
+  }
+
+  function iniciarEdicion(tipo, id, valor, meta = {}) {
+    setEditando({ tipo, id, valor: { ...valor }, meta });
+  }
+
+  function cancelarEdicion() {
+    setEditando(null);
+  }
+
+  async function guardarEdicion() {
+    if (!editando) return;
+    try {
+      const { tipo, id, valor, meta } = editando;
+      if (tipo === 'universidad') {
+        await actualizarUniversidad(id, valor);
+      } else if (tipo === 'facultad') {
+        await actualizarFacultad(id, meta.univId, valor);
+      } else if (tipo === 'periodo') {
+        await actualizarPeriodo(id, meta.univId, meta.facId, valor);
+      } else if (tipo === 'criterio') {
+        await actualizarCriterio(id, meta.univId, meta.facId, meta.perId, valor);
+      } else if (tipo === 'actividad') {
+        await actualizarActividad(id, meta.univId, meta.facId, meta.perId, meta.critId, valor);
+      }
+      mostrarExito('Actualizado exitosamente');
+      setEditando(null);
+    } catch (err) { mostrarError(err.message); }
+  }
+
+  async function handleEliminar(tipo, id, meta = {}) {
+    if (!window.confirm('¿Eliminar este registro? Esta acción no se puede deshacer.')) return;
+    setEliminandoId(id);
+    try {
+      if (tipo === 'universidad') await eliminarUniversidad(id);
+      else if (tipo === 'facultad') await eliminarFacultad(id, meta.univId);
+      else if (tipo === 'periodo') await eliminarPeriodo(id, meta.univId, meta.facId);
+      else if (tipo === 'criterio') await eliminarCriterio(id, meta.univId, meta.facId, meta.perId);
+      else if (tipo === 'actividad') await eliminarActividad(id, meta.univId, meta.facId, meta.perId, meta.critId);
+      mostrarExito('Eliminado correctamente');
+    } catch (err) { mostrarError(err.message); }
+    finally { setEliminandoId(null); }
   }
 
   const TABS = [
@@ -108,12 +179,60 @@ export default function ParametrizacionAdmin() {
   const perSelAct   = facSelAct?.periodos.find(p => p.id === Number(fAct.perId));
   const critSelAct  = perSelAct?.criterios.find(c => c.id === Number(fAct.critId));
 
+  function ItemRow({ tipo, id, meta, children, editFields }) {
+    const esEditando = editando?.tipo === tipo && editando?.id === id;
+    const esEliminando = eliminandoId === id;
+    return (
+      <div className={`bg-gray-50 rounded-lg px-4 py-3 text-sm ${esEliminando ? 'opacity-50' : ''}`}>
+        {esEditando ? (
+          <div className="space-y-2">
+            {editFields}
+            <div className="flex items-center space-x-2 pt-1">
+              <button onClick={guardarEdicion} className="flex items-center space-x-1 px-3 py-1.5 bg-navy-900 text-white text-xs rounded-lg hover:bg-navy-800 transition-colors">
+                <Save size={12} /><span>Guardar</span>
+              </button>
+              <button onClick={cancelarEdicion} className="flex items-center space-x-1 px-3 py-1.5 bg-gray-200 text-gray-700 text-xs rounded-lg hover:bg-gray-300 transition-colors">
+                <X size={12} /><span>Cancelar</span>
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between">
+            <div className="flex-1 min-w-0">{children}</div>
+            <div className="flex items-center space-x-1 ml-2 flex-shrink-0">
+              <button
+                onClick={() => iniciarEdicion(tipo, id, meta.valorEdicion || {}, meta)}
+                className="p-1.5 text-blue-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                title="Editar"
+              >
+                <Pencil size={13} />
+              </button>
+              <button
+                onClick={() => handleEliminar(tipo, id, meta)}
+                disabled={esEliminando}
+                className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-40"
+                title="Eliminar"
+              >
+                <Trash2 size={13} />
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="p-6 space-y-5">
       {exito && (
         <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-center space-x-3">
           <Check size={16} className="text-green-600" />
           <span className="text-sm font-medium text-green-800">{exito}</span>
+        </div>
+      )}
+      {errorMsg && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-center space-x-3">
+          <span className="text-sm font-medium text-red-800">{errorMsg}</span>
         </div>
       )}
 
@@ -153,10 +272,19 @@ export default function ParametrizacionAdmin() {
                 <h3 className="text-sm font-semibold text-navy-900 mb-4">Universidades existentes</h3>
                 <div className="space-y-2">
                   {universidades.map(u => (
-                    <div key={u.id} className="bg-gray-50 rounded-lg px-4 py-3 text-sm">
+                    <ItemRow
+                      key={u.id} tipo="universidad" id={u.id}
+                      meta={{ valorEdicion: { nombre: u.nombre, siglas: u.siglas } }}
+                      editFields={
+                        <>
+                          <input value={editando?.valor?.nombre || ''} onChange={e => setEditando(p => ({ ...p, valor: { ...p.valor, nombre: e.target.value } }))} placeholder="Nombre" className={inputSmCls} />
+                          <input value={editando?.valor?.siglas || ''} onChange={e => setEditando(p => ({ ...p, valor: { ...p.valor, siglas: e.target.value } }))} placeholder="Siglas" className={`${inputSmCls} mt-1`} />
+                        </>
+                      }
+                    >
                       <span className="font-medium text-gray-800">{u.nombre}</span>
                       <span className="ml-2 text-gray-400 text-xs">{u.siglas}</span>
-                    </div>
+                    </ItemRow>
                   ))}
                 </div>
               </div>
@@ -185,10 +313,16 @@ export default function ParametrizacionAdmin() {
                 <h3 className="text-sm font-semibold text-navy-900 mb-4">Facultades existentes</h3>
                 <div className="space-y-2">
                   {universidades.flatMap(u => u.facultades.map(f => (
-                    <div key={f.id} className="bg-gray-50 rounded-lg px-4 py-3 text-sm">
+                    <ItemRow
+                      key={f.id} tipo="facultad" id={f.id}
+                      meta={{ univId: u.id, valorEdicion: { nombre: f.nombre } }}
+                      editFields={
+                        <input value={editando?.valor?.nombre || ''} onChange={e => setEditando(p => ({ ...p, valor: { ...p.valor, nombre: e.target.value } }))} placeholder="Nombre" className={inputSmCls} />
+                      }
+                    >
                       <span className="font-medium text-gray-800">{f.nombre}</span>
-                      <span className="ml-2 text-gray-400 text-xs">· {u.siglas}</span>
-                    </div>
+                      <span className="ml-2 text-gray-400 text-xs">· {u.siglas || u.nombre}</span>
+                    </ItemRow>
                   )))}
                 </div>
               </div>
@@ -223,10 +357,16 @@ export default function ParametrizacionAdmin() {
                 <h3 className="text-sm font-semibold text-navy-900 mb-4">Períodos existentes</h3>
                 <div className="space-y-2">
                   {universidades.flatMap(u => u.facultades.flatMap(f => f.periodos.map(p => (
-                    <div key={p.id} className="bg-gray-50 rounded-lg px-4 py-3 text-sm flex items-center justify-between">
+                    <ItemRow
+                      key={p.id} tipo="periodo" id={p.id}
+                      meta={{ univId: u.id, facId: f.id, valorEdicion: { nombre: p.nombre } }}
+                      editFields={
+                        <input value={editando?.valor?.nombre || ''} onChange={e => setEditando(prev => ({ ...prev, valor: { ...prev.valor, nombre: e.target.value } }))} placeholder="Nombre" className={inputSmCls} />
+                      }
+                    >
                       <span className="font-medium text-gray-800">{p.nombre}</span>
-                      <span className="text-gray-400 text-xs">· {f.nombre}</span>
-                    </div>
+                      <span className="text-gray-400 text-xs ml-2">· {f.nombre}</span>
+                    </ItemRow>
                   ))))}
                 </div>
               </div>
@@ -268,15 +408,32 @@ export default function ParametrizacionAdmin() {
                 <h3 className="text-sm font-semibold text-navy-900 mb-4">Criterios existentes</h3>
                 <div className="space-y-2">
                   {universidades.flatMap(u => u.facultades.flatMap(f => f.periodos.flatMap(p => p.criterios.map(c => (
-                    <div key={c.id} className="bg-gray-50 rounded-lg px-4 py-3 text-sm flex items-center justify-between">
-                      <div>
-                        <span className="font-medium text-gray-800">{c.nombre}</span>
-                        <span className="ml-2 text-gray-400 text-xs">· {p.nombre}</span>
+                    <ItemRow
+                      key={c.id} tipo="criterio" id={c.id}
+                      meta={{ univId: u.id, facId: f.id, perId: p.id, valorEdicion: { nombre: c.nombre, requiere_firma: c.requiere_firma } }}
+                      editFields={
+                        <>
+                          <input value={editando?.valor?.nombre || ''} onChange={e => setEditando(prev => ({ ...prev, valor: { ...prev.valor, nombre: e.target.value } }))} placeholder="Nombre" className={inputSmCls} />
+                          <div className="mt-2">
+                            <Toggle
+                              value={editando?.valor?.requiere_firma ?? true}
+                              onChange={v => setEditando(prev => ({ ...prev, valor: { ...prev.valor, requiere_firma: v } }))}
+                              label="Requiere firma"
+                            />
+                          </div>
+                        </>
+                      }
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="font-medium text-gray-800">{c.nombre}</span>
+                          <span className="ml-2 text-gray-400 text-xs">· {p.nombre}</span>
+                        </div>
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${c.requiere_firma ? 'bg-blue-100 text-blue-700' : 'bg-gray-200 text-gray-500'}`}>
+                          {c.requiere_firma ? 'Con firma' : 'Sin firma'}
+                        </span>
                       </div>
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${c.requiere_firma ? 'bg-blue-100 text-blue-700' : 'bg-gray-200 text-gray-500'}`}>
-                        {c.requiere_firma ? 'Con firma' : 'Sin firma'}
-                      </span>
-                    </div>
+                    </ItemRow>
                   )))))}
                 </div>
               </div>
@@ -327,10 +484,26 @@ export default function ParametrizacionAdmin() {
                 <h3 className="text-sm font-semibold text-navy-900 mb-4">Actividades existentes</h3>
                 <div className="space-y-2">
                   {universidades.flatMap(u => u.facultades.flatMap(f => f.periodos.flatMap(p => p.criterios.flatMap(c => c.actividades.map(a => (
-                    <div key={a.id} className="bg-gray-50 rounded-lg px-4 py-3 text-sm">
+                    <ItemRow
+                      key={a.id} tipo="actividad" id={a.id}
+                      meta={{ univId: u.id, facId: f.id, perId: p.id, critId: c.id, valorEdicion: { nombre: a.nombre, informacion_ayuda: a.informacion_ayuda || '', requiere_firma: a.requiere_firma } }}
+                      editFields={
+                        <>
+                          <input value={editando?.valor?.nombre || ''} onChange={e => setEditando(prev => ({ ...prev, valor: { ...prev.valor, nombre: e.target.value } }))} placeholder="Nombre" className={inputSmCls} />
+                          <textarea value={editando?.valor?.informacion_ayuda || ''} onChange={e => setEditando(prev => ({ ...prev, valor: { ...prev.valor, informacion_ayuda: e.target.value } }))} placeholder="Instrucciones" rows={2} className={`${inputSmCls} mt-1 resize-none`} />
+                          <div className="mt-2">
+                            <Toggle
+                              value={editando?.valor?.requiere_firma ?? true}
+                              onChange={v => setEditando(prev => ({ ...prev, valor: { ...prev.valor, requiere_firma: v } }))}
+                              label="Requiere firma"
+                            />
+                          </div>
+                        </>
+                      }
+                    >
                       <span className="font-medium text-gray-800">{a.nombre}</span>
                       <span className="ml-2 text-gray-400 text-xs">· {c.nombre} · {p.nombre}</span>
-                    </div>
+                    </ItemRow>
                   ))))))}
                 </div>
               </div>

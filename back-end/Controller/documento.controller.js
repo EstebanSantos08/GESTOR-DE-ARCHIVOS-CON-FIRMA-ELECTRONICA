@@ -116,38 +116,59 @@ async function firmarDocumento(req, res) {
     const documento = await Documento.findByPk(req.params.id);
     if (!documento) return res.status(404).json({ error: 'Documento no encontrado' });
 
-    const CERT_PATH = process.env.CERT_P12_PATH;
-    const CERT_PASS = process.env.CERT_P12_PASSWORD;
-
-    if (!fs.existsSync(CERT_PATH)) {
-      return res.status(500).json({ error: 'Certificado institucional no configurado' });
-    }
-
     const usuarioFirmante = await Usuario.findByPk(req.usuario.id, {
       include: [{ model: Rol, as: 'rol' }],
     });
 
-    // Aplica firma criptográfica + sello visual
-    const resultado = await firmaService.firmarDocumento({
-      rutaPdf: documento.ruta_archivo,
-      rutaCertP12: CERT_PATH,
-      passwordCert: CERT_PASS,
-      firmante: { nombre: usuarioFirmante.nombre, rol: usuarioFirmante.rol.nombre },
-    });
+    // Determina el certificado: primero el enviado por el cliente, luego el del servidor
+    let rutaCertTemporal = null;
+    let certP12Path;
+    let certPassword;
 
-    // Sobrescribe el PDF con la versión firmada
-    const rutaFirmada = documento.ruta_archivo.replace('.pdf', `_firmado_${Date.now()}.pdf`);
-    fs.writeFileSync(rutaFirmada, resultado.pdfFirmado);
+    if (req.body.certBase64 && req.body.certPassword) {
+      // El firmante envió su propio certificado .p12 como base64
+      const certBuffer = Buffer.from(req.body.certBase64, 'base64');
+      rutaCertTemporal = path.join(UPLOADS_DIR, `cert_temp_${req.usuario.id}_${Date.now()}.p12`);
+      fs.writeFileSync(rutaCertTemporal, certBuffer);
+      certP12Path = rutaCertTemporal;
+      certPassword = req.body.certPassword;
+    } else {
+      // Fallback al certificado institucional del servidor
+      certP12Path = process.env.CERT_P12_PATH;
+      certPassword = process.env.CERT_P12_PASSWORD;
+      if (!certP12Path || !fs.existsSync(certP12Path)) {
+        return res.status(400).json({ error: 'No se encontró un certificado para firmar. Carga tu certificado .p12 en Perfil antes de firmar.' });
+      }
+    }
 
-    // Actualiza la ruta en BD y avanza el estado en el workflow
-    await documento.update({ ruta_archivo: rutaFirmada, hash_sha256: resultado.hashSha256 });
-    const documentoActualizado = await workflowService.procesarFirma(
-      documento.id,
-      req.usuario,
-      req.body.observaciones || null
-    );
+    try {
+      // Aplica firma criptográfica + sello visual
+      const resultado = await firmaService.firmarDocumento({
+        rutaPdf: documento.ruta_archivo,
+        rutaCertP12: certP12Path,
+        passwordCert: certPassword,
+        firmante: { nombre: usuarioFirmante.nombre, rol: usuarioFirmante.rol.nombre },
+      });
 
-    res.json({ mensaje: 'Documento firmado correctamente', documento: documentoActualizado });
+      // Guarda el PDF firmado con nuevo nombre
+      const rutaFirmada = documento.ruta_archivo.replace(/\.pdf$/i, '') + `_firmado_${Date.now()}.pdf`;
+      fs.writeFileSync(rutaFirmada, resultado.pdfFirmado);
+
+      // Actualiza la ruta en BD y avanza el estado en el workflow
+      await documento.update({ ruta_archivo: rutaFirmada, hash_sha256: resultado.hashSha256 });
+      const documentoActualizado = await workflowService.procesarFirma(
+        documento.id,
+        req.usuario,
+        req.body.observaciones || null
+      );
+
+      res.json({ mensaje: 'Documento firmado correctamente', documento: documentoActualizado });
+    } finally {
+      // Elimina el certificado temporal si se usó uno del cliente
+      if (rutaCertTemporal && fs.existsSync(rutaCertTemporal)) {
+        fs.unlinkSync(rutaCertTemporal);
+      }
+    }
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
@@ -180,6 +201,57 @@ async function descargarDocumento(req, res) {
   }
 }
 
+async function eliminarDocumento(req, res) {
+  try {
+    const documento = await Documento.findByPk(req.params.id);
+    if (!documento) return res.status(404).json({ error: 'Documento no encontrado' });
+
+    // El docente solo puede eliminar sus propios docs en estado PENDIENTE o RECHAZADO
+    // RECTOR puede eliminar cualquier documento
+    const esRector = req.usuario.rol === 'RECTOR';
+    const esPropietario = documento.subido_por_id === req.usuario.id;
+    const estadoPermitido = ['PENDIENTE', 'RECHAZADO'].includes(documento.estado);
+
+    if (!esRector && !(esPropietario && estadoPermitido)) {
+      return res.status(403).json({ error: 'No tienes permiso para eliminar este documento' });
+    }
+
+    // Elimina el archivo físico del disco
+    if (fs.existsSync(documento.ruta_archivo)) {
+      fs.unlinkSync(documento.ruta_archivo);
+    }
+
+    await documento.destroy();
+    res.json({ mensaje: 'Documento eliminado correctamente' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+async function resumenDocumentos(req, res) {
+  try {
+    const { Op } = require('sequelize');
+    const where = {};
+
+    // DOCENTE solo ve sus propios documentos
+    if (req.usuario.rol === 'DOCENTE') {
+      where.subido_por_id = req.usuario.id;
+    }
+    // DECANO y RECTOR ven todos los documentos del sistema
+
+    const todos = await Documento.findAll({ where, attributes: ['estado'] });
+
+    res.json({
+      total: todos.length,
+      pendientesFirma: todos.filter(d => ['PENDIENTE', 'FIRMADO_DECANO'].includes(d.estado)).length,
+      firmados: todos.filter(d => d.estado === 'COMPLETADO').length,
+      rechazados: todos.filter(d => d.estado === 'RECHAZADO').length,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
 module.exports = {
   upload,
   subirDocumento,
@@ -188,4 +260,6 @@ module.exports = {
   firmarDocumento,
   rechazarDocumento,
   descargarDocumento,
+  eliminarDocumento,
+  resumenDocumentos,
 };

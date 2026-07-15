@@ -33,6 +33,9 @@ export function AppProvider({ children }) {
   const [alertas] = useState(mockAlertas);
   const [documentoSeleccionado, setDocumentoSeleccionado] = useState(null);
   const [modalFirmaAbierto, setModalFirmaAbierto] = useState(false);
+  const [certBase64, setCertBase64] = useState(null);
+  const [certPassword, setCertPassword] = useState('');
+  const [metricasApi, setMetricasApi] = useState(null);
 
   useEffect(() => {
     const savedToken = localStorage.getItem('gestdoc_token');
@@ -48,6 +51,7 @@ export function AppProvider({ children }) {
   useEffect(() => {
     if (isAutenticado && token) {
       cargarEstructura();
+      cargarMetricasApi();
     }
   }, [isAutenticado, token]);
 
@@ -122,6 +126,39 @@ export function AppProvider({ children }) {
     return data;
   }
 
+  async function cargarCertificado(file, password) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = e => {
+        const base64 = btoa(String.fromCharCode(...new Uint8Array(e.target.result)));
+        setCertBase64(base64);
+        setCertPassword(password);
+        resolve();
+      };
+      reader.onerror = () => reject(new Error('Error al leer el certificado'));
+      reader.readAsArrayBuffer(file);
+    });
+  }
+
+  function limpiarCertificado() {
+    setCertBase64(null);
+    setCertPassword('');
+  }
+
+  async function cargarMetricasApi() {
+    try {
+      const res = await fetch(`${API_URL}/documentos/resumen`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setMetricasApi(data);
+      }
+    } catch {
+      // silencioso — las métricas locales sirven como fallback
+    }
+  }
+
   function logout() {
     setToken(null);
     setUsuario(null);
@@ -129,6 +166,9 @@ export function AppProvider({ children }) {
     setVistaActual('dashboard');
     setDocumentoSeleccionado(null);
     setUniversidades([]);
+    setCertBase64(null);
+    setCertPassword('');
+    setMetricasApi(null);
     localStorage.removeItem('gestdoc_token');
     localStorage.removeItem('gestdoc_usuario');
   }
@@ -177,13 +217,20 @@ export function AppProvider({ children }) {
       const docs = await cargarDocumentosActividad(actividadId);
       _inyectarDocumentosEnActividad(actividadId, docs);
     }
+    cargarMetricasApi();
   }
 
   async function firmarDocumento(docId, nombreDoc) {
+    const body = { observaciones: '' };
+    if (certBase64 && certPassword) {
+      body.certBase64 = certBase64;
+      body.certPassword = certPassword;
+    }
+
     const res = await fetch(`${API_URL}/documentos/${docId}/firmar`, {
       method: 'POST',
       headers: authHeaders(),
-      body: JSON.stringify({ observaciones: '' }),
+      body: JSON.stringify(body),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Error al firmar');
@@ -207,6 +254,7 @@ export function AppProvider({ children }) {
     if (documentoSeleccionado?.id === docId) {
       setDocumentoSeleccionado(prev => ({ ...prev, estado: nuevoEstado }));
     }
+    cargarMetricasApi();
   }
 
   async function rechazarDocumento(docId, nombreDoc, motivo) {
@@ -234,6 +282,31 @@ export function AppProvider({ children }) {
     if (documentoSeleccionado?.id === docId) {
       setDocumentoSeleccionado(prev => ({ ...prev, estado: 'RECHAZADO', observaciones: motivo }));
     }
+    cargarMetricasApi();
+  }
+
+  async function eliminarDocumento(docId, actividadId) {
+    const res = await fetch(`${API_URL}/documentos/${docId}`, {
+      method: 'DELETE',
+      headers: authHeaders(),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Error al eliminar documento');
+
+    // Elimina el doc del estado local
+    if (actividadId) {
+      _inyectarDocumentosEnActividad(
+        actividadId,
+        (universidades
+          .flatMap(u => u.facultades.flatMap(f => f.periodos.flatMap(p => p.criterios.flatMap(c => c.actividades))))
+          .find(a => a.id === actividadId)?.documentos || []
+        ).filter(d => d.id !== docId)
+      );
+    }
+
+    if (documentoSeleccionado?.id === docId) setDocumentoSeleccionado(null);
+    cargarMetricasApi();
+    return data;
   }
 
   function _actualizarDocumentoEnEstado(docId, cambios) {
@@ -276,6 +349,27 @@ export function AppProvider({ children }) {
     return data;
   }
 
+  async function actualizarUsuario(usuarioId, datos) {
+    const res = await fetch(`${API_URL}/auth/usuarios/${usuarioId}`, {
+      method: 'PUT',
+      headers: authHeaders(),
+      body: JSON.stringify(datos),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Error al actualizar usuario');
+    return data;
+  }
+
+  async function eliminarUsuario(usuarioId) {
+    const res = await fetch(`${API_URL}/auth/usuarios/${usuarioId}`, {
+      method: 'DELETE',
+      headers: authHeaders(),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Error al eliminar usuario');
+    return data;
+  }
+
   async function listarRoles() {
     const res = await fetch(`${API_URL}/auth/roles`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -284,41 +378,200 @@ export function AppProvider({ children }) {
     return res.json();
   }
 
-  function agregarUniversidad(datos) {
-    setUniversidades(prev => [...prev, { ...datos, id: Date.now(), facultades: [] }]);
+  async function actualizarUniversidad(id, datos) {
+    const res = await fetch(`${API_URL}/parametrizacion/universidades/${id}`, {
+      method: 'PUT',
+      headers: authHeaders(),
+      body: JSON.stringify(datos),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Error al actualizar universidad');
+    setUniversidades(prev => prev.map(u => u.id === id ? { ...u, ...data } : u));
+    return data;
   }
 
-  function agregarFacultad(univId, datos) {
+  async function eliminarUniversidad(id) {
+    const res = await fetch(`${API_URL}/parametrizacion/universidades/${id}`, {
+      method: 'DELETE',
+      headers: authHeaders(),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Error al eliminar universidad');
+    setUniversidades(prev => prev.filter(u => u.id !== id));
+    return data;
+  }
+
+  async function agregarUniversidad(datos) {
+    const res = await fetch(`${API_URL}/parametrizacion/universidades`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify(datos),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || data.errores?.[0]?.msg || 'Error al crear universidad');
+    setUniversidades(prev => [...prev, { ...data, facultades: [] }]);
+    return data;
+  }
+
+  async function actualizarFacultad(id, univId, datos) {
+    const res = await fetch(`${API_URL}/parametrizacion/facultades/${id}`, {
+      method: 'PUT',
+      headers: authHeaders(),
+      body: JSON.stringify(datos),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Error al actualizar facultad');
+    setUniversidades(prev => prev.map(u => u.id === univId
+      ? { ...u, facultades: u.facultades.map(f => f.id === id ? { ...f, ...data } : f) }
+      : u
+    ));
+    return data;
+  }
+
+  async function eliminarFacultad(id, univId) {
+    const res = await fetch(`${API_URL}/parametrizacion/facultades/${id}`, {
+      method: 'DELETE',
+      headers: authHeaders(),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Error al eliminar facultad');
+    setUniversidades(prev => prev.map(u => u.id === univId
+      ? { ...u, facultades: u.facultades.filter(f => f.id !== id) }
+      : u
+    ));
+    return data;
+  }
+
+  async function agregarFacultad(univId, datos) {
+    const res = await fetch(`${API_URL}/parametrizacion/facultades`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ ...datos, universidad_id: univId }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || data.errores?.[0]?.msg || 'Error al crear facultad');
     setUniversidades(prev =>
       prev.map(u => u.id === univId
-        ? { ...u, facultades: [...u.facultades, { ...datos, id: Date.now(), periodos: [] }] }
+        ? { ...u, facultades: [...u.facultades, { ...data, periodos: [] }] }
         : u
       )
     );
+    return data;
   }
 
-  function agregarPeriodo(univId, facultadId, datos) {
+  async function actualizarPeriodo(id, univId, facultadId, datos) {
+    const res = await fetch(`${API_URL}/parametrizacion/periodos/${id}`, {
+      method: 'PUT',
+      headers: authHeaders(),
+      body: JSON.stringify(datos),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Error al actualizar período');
+    setUniversidades(prev => prev.map(u => u.id === univId
+      ? { ...u, facultades: u.facultades.map(f => f.id === facultadId
+          ? { ...f, periodos: f.periodos.map(p => p.id === id ? { ...p, ...data } : p) }
+          : f
+        ) }
+      : u
+    ));
+    return data;
+  }
+
+  async function eliminarPeriodo(id, univId, facultadId) {
+    const res = await fetch(`${API_URL}/parametrizacion/periodos/${id}`, {
+      method: 'DELETE',
+      headers: authHeaders(),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Error al eliminar período');
+    setUniversidades(prev => prev.map(u => u.id === univId
+      ? { ...u, facultades: u.facultades.map(f => f.id === facultadId
+          ? { ...f, periodos: f.periodos.filter(p => p.id !== id) }
+          : f
+        ) }
+      : u
+    ));
+    return data;
+  }
+
+  async function agregarPeriodo(univId, facultadId, datos) {
+    const res = await fetch(`${API_URL}/parametrizacion/periodos`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ ...datos, facultad_id: facultadId }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || data.errores?.[0]?.msg || 'Error al crear periodo');
     setUniversidades(prev =>
       prev.map(u => u.id === univId
         ? {
           ...u, facultades: u.facultades.map(f => f.id === facultadId
-            ? { ...f, periodos: [...f.periodos, { ...datos, id: Date.now(), criterios: [] }] }
+            ? { ...f, periodos: [...f.periodos, { ...data, criterios: [] }] }
             : f
           )
         }
         : u
       )
     );
+    return data;
   }
 
-  function agregarCriterio(univId, facultadId, periodoId, datos) {
+  async function actualizarCriterio(id, univId, facultadId, periodoId, datos) {
+    const res = await fetch(`${API_URL}/parametrizacion/criterios/${id}`, {
+      method: 'PUT',
+      headers: authHeaders(),
+      body: JSON.stringify(datos),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Error al actualizar criterio');
+    setUniversidades(prev => prev.map(u => u.id === univId
+      ? { ...u, facultades: u.facultades.map(f => f.id === facultadId
+          ? { ...f, periodos: f.periodos.map(p => p.id === periodoId
+              ? { ...p, criterios: p.criterios.map(c => c.id === id ? { ...c, ...data } : c) }
+              : p
+            ) }
+          : f
+        ) }
+      : u
+    ));
+    return data;
+  }
+
+  async function eliminarCriterio(id, univId, facultadId, periodoId) {
+    const res = await fetch(`${API_URL}/parametrizacion/criterios/${id}`, {
+      method: 'DELETE',
+      headers: authHeaders(),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Error al eliminar criterio');
+    setUniversidades(prev => prev.map(u => u.id === univId
+      ? { ...u, facultades: u.facultades.map(f => f.id === facultadId
+          ? { ...f, periodos: f.periodos.map(p => p.id === periodoId
+              ? { ...p, criterios: p.criterios.filter(c => c.id !== id) }
+              : p
+            ) }
+          : f
+        ) }
+      : u
+    ));
+    return data;
+  }
+
+  async function agregarCriterio(univId, facultadId, periodoId, datos) {
+    const res = await fetch(`${API_URL}/parametrizacion/criterios`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ ...datos, periodo_id: periodoId }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || data.errores?.[0]?.msg || 'Error al crear criterio');
     setUniversidades(prev =>
       prev.map(u => u.id === univId
         ? {
           ...u, facultades: u.facultades.map(f => f.id === facultadId
             ? {
               ...f, periodos: f.periodos.map(p => p.id === periodoId
-                ? { ...p, criterios: [...p.criterios, { ...datos, id: Date.now(), actividades: [] }] }
+                ? { ...p, criterios: [...p.criterios, { ...data, actividades: [] }] }
                 : p
               )
             }
@@ -328,9 +581,64 @@ export function AppProvider({ children }) {
         : u
       )
     );
+    return data;
   }
 
-  function agregarActividad(univId, facultadId, periodoId, criterioId, datos) {
+  async function actualizarActividad(id, univId, facultadId, periodoId, criterioId, datos) {
+    const res = await fetch(`${API_URL}/parametrizacion/actividades/${id}`, {
+      method: 'PUT',
+      headers: authHeaders(),
+      body: JSON.stringify(datos),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Error al actualizar actividad');
+    setUniversidades(prev => prev.map(u => u.id === univId
+      ? { ...u, facultades: u.facultades.map(f => f.id === facultadId
+          ? { ...f, periodos: f.periodos.map(p => p.id === periodoId
+              ? { ...p, criterios: p.criterios.map(c => c.id === criterioId
+                  ? { ...c, actividades: c.actividades.map(a => a.id === id ? { ...a, ...data } : a) }
+                  : c
+                ) }
+              : p
+            ) }
+          : f
+        ) }
+      : u
+    ));
+    return data;
+  }
+
+  async function eliminarActividad(id, univId, facultadId, periodoId, criterioId) {
+    const res = await fetch(`${API_URL}/parametrizacion/actividades/${id}`, {
+      method: 'DELETE',
+      headers: authHeaders(),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Error al eliminar actividad');
+    setUniversidades(prev => prev.map(u => u.id === univId
+      ? { ...u, facultades: u.facultades.map(f => f.id === facultadId
+          ? { ...f, periodos: f.periodos.map(p => p.id === periodoId
+              ? { ...p, criterios: p.criterios.map(c => c.id === criterioId
+                  ? { ...c, actividades: c.actividades.filter(a => a.id !== id) }
+                  : c
+                ) }
+              : p
+            ) }
+          : f
+        ) }
+      : u
+    ));
+    return data;
+  }
+
+  async function agregarActividad(univId, facultadId, periodoId, criterioId, datos) {
+    const res = await fetch(`${API_URL}/parametrizacion/actividades`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ ...datos, criterio_id: criterioId }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || data.errores?.[0]?.msg || 'Error al crear actividad');
     setUniversidades(prev =>
       prev.map(u => u.id === univId
         ? {
@@ -339,7 +647,7 @@ export function AppProvider({ children }) {
               ...f, periodos: f.periodos.map(p => p.id === periodoId
                 ? {
                   ...p, criterios: p.criterios.map(c => c.id === criterioId
-                    ? { ...c, actividades: [...c.actividades, { ...datos, id: Date.now(), documentos: [] }] }
+                    ? { ...c, actividades: [...c.actividades, { ...data, documentos: [] }] }
                     : c
                   )
                 }
@@ -352,6 +660,7 @@ export function AppProvider({ children }) {
         : u
       )
     );
+    return data;
   }
 
   const todosLosDocs = universidades.flatMap(u =>
@@ -364,12 +673,14 @@ export function AppProvider({ children }) {
     )
   );
 
-  const metricas = {
+  const metricasLocales = {
     total: todosLosDocs.length,
     pendientesFirma: todosLosDocs.filter(d => d.estado === 'PENDIENTE' || d.estado === 'FIRMADO_DECANO').length,
     firmados: todosLosDocs.filter(d => d.estado === 'COMPLETADO').length,
     rechazados: todosLosDocs.filter(d => d.estado === 'RECHAZADO').length,
   };
+  // Las métricas de la API son más precisas (incluyen todos los docs del servidor)
+  const metricas = metricasApi || metricasLocales;
 
   return (
     <AppContext.Provider value={{
@@ -381,9 +692,14 @@ export function AppProvider({ children }) {
       auditoria, alertas,
       documentoSeleccionado, setDocumentoSeleccionado,
       modalFirmaAbierto, setModalFirmaAbierto,
-      firmarDocumento, rechazarDocumento, subirDocumento,
-      listarUsuarios, actualizarRolUsuario, listarRoles,
-      agregarUniversidad, agregarFacultad, agregarPeriodo, agregarCriterio, agregarActividad,
+      firmarDocumento, rechazarDocumento, subirDocumento, eliminarDocumento,
+      certBase64, certPassword, cargarCertificado, limpiarCertificado, cargarMetricasApi,
+      listarUsuarios, actualizarRolUsuario, actualizarUsuario, eliminarUsuario, listarRoles,
+      agregarUniversidad, actualizarUniversidad, eliminarUniversidad,
+      agregarFacultad, actualizarFacultad, eliminarFacultad,
+      agregarPeriodo, actualizarPeriodo, eliminarPeriodo,
+      agregarCriterio, actualizarCriterio, eliminarCriterio,
+      agregarActividad, actualizarActividad, eliminarActividad,
       metricas, todosLosDocs,
     }}>
       {children}

@@ -41,5 +41,7 @@ router.get('/roles', autenticar, async (req, res) => {
 // Gestión de usuarios — Decano y Rector
 router.get('/usuarios', autenticar, autorizar('DECANO', 'RECTOR'), ctrl.listarUsuarios);
 router.put('/usuarios/:id/rol', autenticar, autorizar('DECANO', 'RECTOR'), ctrl.actualizarRol);
+router.put('/usuarios/:id', autenticar, autorizar('DECANO', 'RECTOR'), ctrl.actualizarUsuario);
+router.delete('/usuarios/:id', autenticar, autorizar('DECANO', 'RECTOR'), ctrl.eliminarUsuario);
 
 module.exports = router;

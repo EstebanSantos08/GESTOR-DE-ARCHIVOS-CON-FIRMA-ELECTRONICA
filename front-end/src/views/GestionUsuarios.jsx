@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Shield, RefreshCw, AlertCircle, Check } from 'lucide-react';
+import { Users, Shield, RefreshCw, AlertCircle, Check, Trash2 } from 'lucide-react';
 import { useApp } from '../context/useApp';
 
 const ROL_COLOR = {
@@ -8,20 +8,17 @@ const ROL_COLOR = {
   DOCENTE: 'bg-green-100 text-green-800 border-green-200',
 };
 
-const ROLES_DISPONIBLES = [
-  { id: null, nombre: 'DOCENTE', label: 'Docente' },
-  { id: null, nombre: 'DECANO',  label: 'Decano' },
-  { id: null, nombre: 'RECTOR',  label: 'Rector' },
-];
-
 export default function GestionUsuarios() {
-  const { listarUsuarios, actualizarRolUsuario, token, usuario: usuarioActual } = useApp();
+  const { listarUsuarios, actualizarRolUsuario, eliminarUsuario, token, usuario: usuarioActual } = useApp();
   const [usuarios, setUsuarios] = useState([]);
   const [roles, setRoles] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState('');
   const [actualizando, setActualizando] = useState(null);
+  const [eliminando, setEliminando] = useState(null);
   const [exito, setExito] = useState(null);
+
+  const esDecano = usuarioActual?.rol === 'DECANO';
 
   useEffect(() => {
     cargar();
@@ -38,8 +35,9 @@ export default function GestionUsuarios() {
         }).then(r => r.ok ? r.json() : []),
       ]);
       setUsuarios(usrs);
-      setRoles(rls.length ? rls : []);
-    } catch (err) {
+      // Si el usuario actual es Decano, filtra RECTOR de la lista de roles asignables
+      setRoles(esDecano ? rls.filter(r => r.nombre !== 'RECTOR') : rls);
+    } catch {
       setError('No se pudo cargar la lista de usuarios');
     } finally {
       setCargando(false);
@@ -61,7 +59,20 @@ export default function GestionUsuarios() {
     }
   }
 
-  const rolId = (nombre) => roles.find(r => r.nombre === nombre)?.id;
+  async function handleEliminar(u) {
+    if (!window.confirm(`¿Desactivar al usuario "${u.nombre}"? No podrá iniciar sesión.`)) return;
+    setEliminando(u.id);
+    try {
+      await eliminarUsuario(u.id);
+      setUsuarios(prev => prev.map(x => x.id === u.id ? { ...x, activo: false } : x));
+      setExito(u.id);
+      setTimeout(() => setExito(null), 2000);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setEliminando(null);
+    }
+  }
 
   if (cargando) {
     return (
@@ -80,7 +91,9 @@ export default function GestionUsuarios() {
           </div>
           <div>
             <h2 className="text-lg font-semibold text-navy-900">Gestión de Usuarios</h2>
-            <p className="text-xs text-gray-500">Asigna roles a los usuarios registrados</p>
+            <p className="text-xs text-gray-500">
+              {esDecano ? 'Puedes asignar rol Docente o Decano' : 'Asigna roles a los usuarios registrados'}
+            </p>
           </div>
         </div>
         <button
@@ -116,14 +129,16 @@ export default function GestionUsuarios() {
                   <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase">Rol actual</th>
                   <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase">Cambiar rol</th>
                   <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase">Estado</th>
+                  <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {usuarios.map(u => {
                   const rolNombre = u.rol?.nombre || '';
                   const esMismoUsuario = u.id === usuarioActual?.id;
+                  const bloqueado = esMismoUsuario || !u.activo;
                   return (
-                    <tr key={u.id} className={`hover:bg-gray-50/50 transition-colors ${esMismoUsuario ? 'bg-blue-50/30' : ''}`}>
+                    <tr key={u.id} className={`hover:bg-gray-50/50 transition-colors ${esMismoUsuario ? 'bg-blue-50/30' : ''} ${!u.activo ? 'opacity-50' : ''}`}>
                       <td className="px-5 py-3">
                         <div className="flex items-center space-x-3">
                           <div className="w-8 h-8 bg-navy-100 rounded-full flex items-center justify-center flex-shrink-0">
@@ -132,7 +147,10 @@ export default function GestionUsuarios() {
                             </span>
                           </div>
                           <div>
-                            <p className="font-medium text-gray-800 text-xs">{u.nombre} {esMismoUsuario && <span className="text-blue-500">(tú)</span>}</p>
+                            <p className="font-medium text-gray-800 text-xs">
+                              {u.nombre} {esMismoUsuario && <span className="text-blue-500">(tú)</span>}
+                              {!u.activo && <span className="text-gray-400 ml-1">(inactivo)</span>}
+                            </p>
                             <p className="text-gray-400 text-xs">{u.email}</p>
                           </div>
                         </div>
@@ -143,8 +161,10 @@ export default function GestionUsuarios() {
                         </span>
                       </td>
                       <td className="px-5 py-3">
-                        {esMismoUsuario ? (
-                          <span className="text-xs text-gray-400 italic">No puedes cambiar tu propio rol</span>
+                        {bloqueado ? (
+                          <span className="text-xs text-gray-400 italic">
+                            {esMismoUsuario ? 'No puedes cambiar tu propio rol' : 'Usuario inactivo'}
+                          </span>
                         ) : roles.length > 0 ? (
                           <select
                             value={u.rol_id}
@@ -156,27 +176,7 @@ export default function GestionUsuarios() {
                               <option key={r.id} value={r.id}>{r.nombre}</option>
                             ))}
                           </select>
-                        ) : (
-                          <div className="flex space-x-1">
-                            {['DOCENTE', 'DECANO', 'RECTOR'].map(rn => (
-                              <button
-                                key={rn}
-                                disabled={actualizando === u.id || rolNombre === rn}
-                                onClick={() => {
-                                  const rid = rolId(rn);
-                                  if (rid) cambiarRol(u.id, rid);
-                                }}
-                                className={`px-2 py-1 rounded text-xs font-medium transition-colors disabled:opacity-40 ${
-                                  rolNombre === rn
-                                    ? 'bg-navy-900 text-white cursor-default'
-                                    : 'bg-gray-100 text-gray-700 hover:bg-navy-100'
-                                }`}
-                              >
-                                {rn}
-                              </button>
-                            ))}
-                          </div>
-                        )}
+                        ) : null}
                       </td>
                       <td className="px-5 py-3">
                         {actualizando === u.id && (
@@ -188,8 +188,23 @@ export default function GestionUsuarios() {
                             <span>Guardado</span>
                           </span>
                         )}
-                        {!actualizando && exito !== u.id && (
+                        {actualizando !== u.id && exito !== u.id && (
                           <span className={`inline-block w-2 h-2 rounded-full ${u.activo ? 'bg-green-400' : 'bg-gray-300'}`} title={u.activo ? 'Activo' : 'Inactivo'} />
+                        )}
+                      </td>
+                      <td className="px-5 py-3">
+                        {!esMismoUsuario && u.activo && (
+                          <button
+                            onClick={() => handleEliminar(u)}
+                            disabled={eliminando === u.id}
+                            title="Desactivar usuario"
+                            className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-40"
+                          >
+                            {eliminando === u.id
+                              ? <RefreshCw size={14} className="animate-spin" />
+                              : <Trash2 size={14} />
+                            }
+                          </button>
                         )}
                       </td>
                     </tr>

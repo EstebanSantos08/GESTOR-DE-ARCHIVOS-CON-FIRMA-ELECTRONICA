@@ -222,9 +222,11 @@ describe('Documento Routes - Integration', () => {
     });
 
     it('debe permitir firma de DECANO', async () => {
-      // Mock fs.existsSync solo para esta prueba
-      jest.spyOn(fs, 'existsSync').mockReturnValueOnce(true);
-      jest.spyOn(fs, 'writeFileSync').mockImplementationOnce(() => {});
+      // El firmante envía su certificado como base64
+      const fakeCertBase64 = Buffer.from('fake-p12-cert').toString('base64');
+      jest.spyOn(fs, 'existsSync').mockReturnValue(false); // no hay cert temporal real
+      jest.spyOn(fs, 'writeFileSync').mockImplementation(() => {}); // write cert + pdf
+      jest.spyOn(fs, 'unlinkSync').mockImplementation(() => {}); // cleanup cert temporal
 
       mockDocumento.findByPk.mockResolvedValue({
         id: 1, estado: 'PENDIENTE', ruta_archivo: '/tmp/test.pdf',
@@ -248,7 +250,7 @@ describe('Documento Routes - Integration', () => {
       const res = await request(app)
         .post('/api/documentos/1/firmar')
         .set('Authorization', `Bearer ${tokenDecano}`)
-        .send({ observaciones: 'Firmado' });
+        .send({ observaciones: 'Firmado', certBase64: fakeCertBase64, certPassword: 'test123' });
 
       expect(res.status).toBe(200);
       expect(res.body).toHaveProperty('mensaje', 'Documento firmado correctamente');

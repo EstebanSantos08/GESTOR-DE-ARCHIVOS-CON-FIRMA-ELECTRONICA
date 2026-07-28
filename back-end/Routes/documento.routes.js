@@ -3,10 +3,10 @@ const { autenticar } = require('../Middleware/auth.middleware');
 const { autorizar } = require('../Middleware/rbac.middleware');
 const ctrl = require('../Controller/documento.controller');
 
-// Endpoints del ciclo completo de documentos: carga, consulta, firma, rechazo y descarga.
-// Cualquier rol autenticado puede subir y listar
+// Subir documentos — solo roles que generan evidencia
 router.post('/subir',
   autenticar,
+  autorizar('DOCENTE', 'RESPONSABLE_AREA', 'DIRECTOR_CARRERA'),
   ctrl.upload.single('archivo'),
   ctrl.subirDocumento
 );
@@ -17,18 +17,19 @@ router.get('/:id', autenticar, ctrl.obtenerDocumento);
 router.get('/:id/descargar', autenticar, ctrl.descargarDocumento);
 router.delete('/:id', autenticar, ctrl.eliminarDocumento);
 
-// Solo DECANO y RECTOR pueden firmar
+// Firmar — cadena de 4 firmantes: DIRECTOR_CARRERA → SUBDECANO → DECANO → RECTOR
 router.post('/:id/firmar',
   autenticar,
-  autorizar('DECANO', 'RECTOR'),
+  autorizar('DIRECTOR_CARRERA', 'SUBDECANO', 'DECANO', 'RECTOR'),
   ctrl.firmarDocumento
 );
 
-// Solo DECANO y RECTOR pueden rechazar
+// Rechazar — mismos roles que pueden firmar
 router.post('/:id/rechazar',
   autenticar,
-  autorizar('DECANO', 'RECTOR'),
+  autorizar('DIRECTOR_CARRERA', 'SUBDECANO', 'DECANO', 'RECTOR'),
   ctrl.rechazarDocumento
 );
 
 module.exports = router;
+

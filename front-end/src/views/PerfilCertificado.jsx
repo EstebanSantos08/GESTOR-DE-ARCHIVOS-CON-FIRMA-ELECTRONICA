@@ -1,15 +1,22 @@
 import React, { useState } from 'react';
-import { User, Shield, Eye, EyeOff, Upload, Trash2, AlertTriangle, Check, AlertCircle } from 'lucide-react';
+import { User, Shield, Eye, EyeOff, Upload, Trash2, AlertTriangle, Check, AlertCircle, Key } from 'lucide-react';
 import Badge from '../components/common/Badge';
 import { useApp } from '../context/useApp';
 
 export default function PerfilCertificado() {
-  const { usuario, certBase64, cargarCertificado, limpiarCertificado, actualizarUsuario } = useApp();
+  const { usuario, certBase64, cargarCertificado, limpiarCertificado, actualizarUsuario, cambiarPassword } = useApp();
 
   const [nombre, setNombre] = useState(usuario.nombre);
   const [guardandoPerfil, setGuardandoPerfil] = useState(false);
   const [perfilGuardado, setPerfilGuardado] = useState(false);
   const [perfilError, setPerfilError] = useState('');
+
+  const [passActual, setPassActual] = useState('');
+  const [passNueva, setPassNueva] = useState('');
+  const [passConfirmar, setPassConfirmar] = useState('');
+  const [cambiandoPass, setCambiandoPass] = useState(false);
+  const [passGuardado, setPassGuardado] = useState(false);
+  const [passError, setPassError] = useState('');
 
   const [certFile, setCertFile] = useState(null);
   const [certNombre, setCertNombre] = useState('');
@@ -31,6 +38,28 @@ export default function PerfilCertificado() {
       setPerfilError(err.message);
     } finally {
       setGuardandoPerfil(false);
+    }
+  }
+
+  async function handleCambiarPass(e) {
+    e.preventDefault();
+    if (passNueva !== passConfirmar) {
+      setPassError('Las contraseñas nuevas no coinciden');
+      return;
+    }
+    setCambiandoPass(true);
+    setPassError('');
+    try {
+      await cambiarPassword(passActual, passNueva);
+      setPassGuardado(true);
+      setPassActual('');
+      setPassNueva('');
+      setPassConfirmar('');
+      setTimeout(() => setPassGuardado(false), 3000);
+    } catch (err) {
+      setPassError(err.message);
+    } finally {
+      setCambiandoPass(false);
     }
   }
 
@@ -142,6 +171,69 @@ export default function PerfilCertificado() {
             className="px-6 py-2.5 bg-navy-900 text-white rounded-lg text-sm font-medium hover:bg-navy-800 transition-colors disabled:opacity-50"
           >
             {guardandoPerfil ? 'Guardando...' : 'Guardar cambios'}
+          </button>
+        </form>
+      </div>
+
+      {/* Cambiar Contraseña */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="bg-navy-900 px-6 py-4 flex items-center space-x-3">
+          <Key size={18} className="text-blue-300" />
+          <h2 className="text-white font-semibold text-sm">Cambiar Contraseña</h2>
+        </div>
+        <form onSubmit={handleCambiarPass} className="p-6 space-y-5">
+          {passGuardado && (
+            <div className="bg-green-50 border border-green-200 rounded-lg p-3 flex items-center space-x-2">
+              <Check size={14} className="text-green-600" />
+              <span className="text-sm text-green-800">Contraseña actualizada correctamente</span>
+            </div>
+          )}
+          {passError && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-center space-x-2">
+              <AlertCircle size={14} className="text-red-500" />
+              <span className="text-sm text-red-700">{passError}</span>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Contraseña actual</label>
+              <input
+                type="password"
+                value={passActual}
+                onChange={e => setPassActual(e.target.value)}
+                required
+                className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Nueva contraseña</label>
+              <input
+                type="password"
+                value={passNueva}
+                onChange={e => setPassNueva(e.target.value)}
+                required
+                className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Confirmar nueva contraseña</label>
+              <input
+                type="password"
+                value={passConfirmar}
+                onChange={e => setPassConfirmar(e.target.value)}
+                required
+                className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy-500"
+              />
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            disabled={cambiandoPass || !passActual || !passNueva || !passConfirmar}
+            className="px-6 py-2.5 bg-navy-900 text-white rounded-lg text-sm font-medium hover:bg-navy-800 transition-colors disabled:opacity-50"
+          >
+            {cambiandoPass ? 'Actualizando...' : 'Actualizar contraseña'}
           </button>
         </form>
       </div>

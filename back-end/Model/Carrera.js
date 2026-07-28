@@ -1,19 +1,18 @@
 const { DataTypes } = require('sequelize');
 const sequelize = require('../config/database');
 
-// Actividad parametrizable que ahora cuelga de un Indicador (antes de Criterio).
-const Actividad = sequelize.define('Actividad', {
+// Carrera pertenece a una Facultad. Los Directores de Carrera y Docentes se vinculan a ella.
+const Carrera = sequelize.define('Carrera', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   nombre: { type: DataTypes.STRING(200), allowNull: false },
   descripcion: { type: DataTypes.TEXT },
-  indicador_id: { type: DataTypes.INTEGER, allowNull: false },
+  facultad_id: { type: DataTypes.INTEGER, allowNull: false },
   activo: { type: DataTypes.BOOLEAN, defaultValue: true },
 }, {
-  tableName: 'actividades',
+  tableName: 'carreras',
   timestamps: true,
   createdAt: 'creado_en',
   updatedAt: 'actualizado_en',
 });
 
-module.exports = Actividad;
-
+module.exports = Carrera;

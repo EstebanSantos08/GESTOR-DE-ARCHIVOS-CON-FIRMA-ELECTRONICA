@@ -1,8 +1,17 @@
 const { DataTypes } = require('sequelize');
 const sequelize = require('../config/database');
 
-// Estados del workflow de firma: subida, firma del decano, firma final y rechazo.
-const ESTADOS = ['PENDIENTE', 'FIRMADO_DECANO', 'COMPLETADO', 'RECHAZADO'];
+// Estados del workflow de firma de 4 pasos:
+// PENDIENTE → FIRMADO_DIRECTOR → FIRMADO_SUBDECANO → FIRMADO_DECANO → COMPLETADO
+// En cualquier punto puede pasar a RECHAZADO.
+const ESTADOS = [
+  'PENDIENTE',
+  'FIRMADO_DIRECTOR',
+  'FIRMADO_SUBDECANO',
+  'FIRMADO_DECANO',
+  'COMPLETADO',
+  'RECHAZADO',
+];
 
 const Documento = sequelize.define('Documento', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
@@ -26,6 +35,9 @@ const Documento = sequelize.define('Documento', {
     allowNull: true,
     comment: 'Hash del archivo en el momento de subida',
   },
+  // Timestamps de auditoría — cada paso de firma se marca
+  firmado_director_en: { type: DataTypes.DATE, allowNull: true },
+  firmado_subdecano_en: { type: DataTypes.DATE, allowNull: true },
   firmado_decano_en: { type: DataTypes.DATE, allowNull: true },
   firmado_rector_en: { type: DataTypes.DATE, allowNull: true },
 }, {
@@ -38,3 +50,4 @@ const Documento = sequelize.define('Documento', {
 Documento.ESTADOS = ESTADOS;
 
 module.exports = Documento;
+

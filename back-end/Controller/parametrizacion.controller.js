@@ -1,5 +1,8 @@
 const { validationResult } = require('express-validator');
-const { Universidad, Facultad, Periodo, Criterio, Actividad, Documento, Usuario } = require('../Model');
+const {
+  Universidad, Facultad, Carrera, Periodo,
+  Criterio, Indicador, Actividad, Documento, Usuario,
+} = require('../Model');
 
 // ─── Fábrica de CRUD genérico ──────────────────────────────────────────────
 function crearCRUD(Modelo, includeOpts = []) {
@@ -74,42 +77,40 @@ const facultadCtrl = crearCRUD(Facultad, [
   { model: Universidad, as: 'universidad', attributes: ['id', 'nombre'] },
 ]);
 
-const periodoCtrl = crearCRUD(Periodo, [
+const carreraCtrl = crearCRUD(Carrera, [
   { model: Facultad, as: 'facultad', attributes: ['id', 'nombre'] },
+]);
+
+const periodoCtrl = crearCRUD(Periodo, [
+  { model: Carrera, as: 'carrera', attributes: ['id', 'nombre'] },
 ]);
 
 const criterioCtrl = crearCRUD(Criterio);
 
-const actividadCtrl = crearCRUD(Actividad, [
+const indicadorCtrl = crearCRUD(Indicador, [
   { model: Criterio, as: 'criterio', attributes: ['id', 'nombre'] },
+  { model: Usuario, as: 'responsable', attributes: ['id', 'nombre', 'email'] },
 ]);
 
+const actividadCtrl = crearCRUD(Actividad, [
+  { model: Indicador, as: 'indicador', attributes: ['id', 'numero', 'nombre'] },
+]);
+
+// ─── Estructura jerárquica completa ────────────────────────────────────────
+// Universidad → Facultad → Carrera → Período → Criterio → Indicador → Actividad
 async function estructura(req, res) {
   try {
-    const universidades = await Universidad.findAll({
+    const universidades = await Universidad.findAll({ where: { activo: true }, order: [['id', 'ASC']] });
+    const facultades    = await Facultad.findAll({ where: { activo: true }, order: [['id', 'ASC']] });
+    const carreras      = await Carrera.findAll({ where: { activo: true }, order: [['id', 'ASC']] });
+    const periodos      = await Periodo.findAll({ where: { activo: true }, order: [['id', 'ASC']] });
+    const criterios     = await Criterio.findAll({ where: { activo: true }, order: [['id', 'ASC']] });
+    const indicadores   = await Indicador.findAll({
       where: { activo: true },
-      order: [['id', 'ASC']],
+      include: [{ model: Usuario, as: 'responsable', attributes: ['id', 'nombre'] }],
+      order: [['numero', 'ASC']],
     });
-
-    const facultades = await Facultad.findAll({
-      where: { activo: true },
-      order: [['id', 'ASC']],
-    });
-
-    const periodos = await Periodo.findAll({
-      where: { activo: true },
-      order: [['id', 'ASC']],
-    });
-
-    const criterios = await Criterio.findAll({
-      where: { activo: true },
-      order: [['id', 'ASC']],
-    });
-
-    const actividades = await Actividad.findAll({
-      where: { activo: true },
-      order: [['id', 'ASC']],
-    });
+    const actividades   = await Actividad.findAll({ where: { activo: true }, order: [['id', 'ASC']] });
 
     const resultado = universidades.map(u => ({
       id: u.id,
@@ -122,25 +123,40 @@ async function estructura(req, res) {
           id: f.id,
           nombre: f.nombre,
           descripcion: f.descripcion,
-          periodos: periodos
-            .filter(p => p.facultad_id === f.id)
-            .map(p => ({
-              id: p.id,
-              nombre: p.nombre,
-              criterios: criterios
-                .filter(c => c.periodo_id === p.id)
-                .map(c => ({
-                  id: c.id,
-                  nombre: c.nombre,
-                  descripcion: c.descripcion,
-                  requiere_firma: c.requiere_firma,
-                  actividades: actividades
-                    .filter(a => a.criterio_id === c.id)
-                    .map(a => ({
-                      id: a.id,
-                      nombre: a.nombre,
-                      informacion_ayuda: a.descripcion || '',
-                      documentos: [],
+          carreras: carreras
+            .filter(ca => ca.facultad_id === f.id)
+            .map(ca => ({
+              id: ca.id,
+              nombre: ca.nombre,
+              descripcion: ca.descripcion,
+              periodos: periodos
+                .filter(p => p.carrera_id === ca.id)
+                .map(p => ({
+                  id: p.id,
+                  nombre: p.nombre,
+                  criterios: criterios
+                    .filter(c => c.periodo_id === p.id)
+                    .map(c => ({
+                      id: c.id,
+                      nombre: c.nombre,
+                      descripcion: c.descripcion,
+                      requiere_firma: c.requiere_firma,
+                      indicadores: indicadores
+                        .filter(ind => ind.criterio_id === c.id)
+                        .map(ind => ({
+                          id: ind.id,
+                          numero: ind.numero,
+                          nombre: ind.nombre,
+                          responsable: ind.responsable || null,
+                          actividades: actividades
+                            .filter(a => a.indicador_id === ind.id)
+                            .map(a => ({
+                              id: a.id,
+                              nombre: a.nombre,
+                              informacion_ayuda: a.descripcion || '',
+                              documentos: [],
+                            })),
+                        })),
                     })),
                 })),
             })),
@@ -153,4 +169,9 @@ async function estructura(req, res) {
   }
 }
 
-module.exports = { universidadCtrl, facultadCtrl, periodoCtrl, criterioCtrl, actividadCtrl, estructura };
+module.exports = {
+  universidadCtrl, facultadCtrl, carreraCtrl,
+  periodoCtrl, criterioCtrl, indicadorCtrl,
+  actividadCtrl, estructura,
+};
+

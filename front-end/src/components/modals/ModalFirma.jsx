@@ -8,7 +8,14 @@ export default function ModalFirma({ documento, onClose }) {
   const [motivoRechazo, setMotivoRechazo] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
-  const puedeRechazar = usuario.rol === 'DECANO' || usuario.rol === 'RECTOR';
+  const esSuTurno = (
+    (usuario.rol === 'DIRECTOR_CARRERA' && documento?.estado === 'PENDIENTE') ||
+    (usuario.rol === 'SUBDECANO' && documento?.estado === 'FIRMADO_DIRECTOR') ||
+    (usuario.rol === 'DECANO' && documento?.estado === 'FIRMADO_SUBDECANO') ||
+    (usuario.rol === 'RECTOR' && documento?.estado === 'FIRMADO_DECANO')
+  );
+
+  const puedeRechazar = esSuTurno;
   const estaRechazado = documento?.estado === 'RECHAZADO';
   const estaCompletado = documento?.estado === 'COMPLETADO';
 
@@ -41,7 +48,9 @@ export default function ModalFirma({ documento, onClose }) {
   }
 
   const estadoLabel = {
-    PENDIENTE: 'Pendiente de firma Decano',
+    PENDIENTE: 'Pendiente de firma Director de Carrera',
+    FIRMADO_DIRECTOR: 'Pendiente de firma Subdecano',
+    FIRMADO_SUBDECANO: 'Pendiente de firma Decano',
     FIRMADO_DECANO: 'Pendiente de firma Rector',
     COMPLETADO: 'Completado',
     RECHAZADO: 'Rechazado',

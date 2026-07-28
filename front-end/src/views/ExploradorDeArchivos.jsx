@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Folder, Upload, Eye, PenLine, Info, FileText, ChevronRight, XCircle, RefreshCw, Pencil, Trash2, X, Save, Download } from 'lucide-react';
+import { Folder, Upload, Eye, PenLine, Info, FileText, ChevronRight, XCircle, RefreshCw, Pencil, Trash2, X, Save, Download, Search, Filter } from 'lucide-react';
 import Breadcrumbs from '../components/common/Breadcrumbs';
 import Badge from '../components/common/Badge';
 import { useApp } from '../context/useApp';
@@ -96,16 +96,20 @@ export default function ExploradorDeArchivos() {
     eliminarDocumento,
     actualizarUniversidad, eliminarUniversidad,
     actualizarFacultad, eliminarFacultad,
+    actualizarCarrera, eliminarCarrera,
     actualizarPeriodo, eliminarPeriodo,
     actualizarCriterio, eliminarCriterio,
+    actualizarIndicador, eliminarIndicador,
     actualizarActividad, eliminarActividad,
   } = useApp();
 
   const [nivel, setNivel] = useState('universidades');
   const [selUniId, setSelUniId] = useState(null);
   const [selFacId, setSelFacId] = useState(null);
+  const [selCarrId, setSelCarrId] = useState(null);
   const [selPerId, setSelPerId] = useState(null);
   const [selCritId, setSelCritId] = useState(null);
+  const [selIndId, setSelIndId] = useState(null);
   const [selActId, setSelActId] = useState(null);
   const [arrastrandoDrop, setArrastrandoDrop] = useState(false);
   const [subiendo, setSubiendo] = useState(false);
@@ -114,9 +118,17 @@ export default function ExploradorDeArchivos() {
   const [modalEdit, setModalEdit] = useState(null);
   const [errorEdit, setErrorEdit] = useState('');
   const [eliminandoDocId, setEliminandoDocId] = useState(null);
+  const [busqueda, setBusqueda] = useState('');
+  const [filtroEstado, setFiltroEstado] = useState('');
   const fileInputRef = useRef();
 
-  const esAdmin = usuario?.rol === 'DECANO' || usuario?.rol === 'RECTOR';
+  // Limpiar búsqueda y filtros al cambiar de nivel
+  React.useEffect(() => {
+    setBusqueda('');
+    setFiltroEstado('');
+  }, [nivel]);
+
+  const esAdmin = usuario?.rol === 'ADMINISTRADOR' || usuario?.rol === 'RECTOR' || usuario?.rol === 'DECANO';
 
   async function handleDescargar(doc) {
     try {
@@ -140,20 +152,26 @@ export default function ExploradorDeArchivos() {
 
   const uniActual  = universidades.find(u => u.id === selUniId);
   const facActual  = uniActual?.facultades.find(f => f.id === selFacId);
-  const periActual = facActual?.periodos.find(p => p.id === selPerId);
-  const critActual = periActual?.criterios.find(c => c.id === selCritId);
-  const actActual  = critActual?.actividades.find(a => a.id === selActId);
+  const carrActual = facActual?.carreras?.find(c => c.id === selCarrId);
+  const periActual = carrActual?.periodos?.find(p => p.id === selPerId);
+  const critActual = periActual?.criterios?.find(c => c.id === selCritId);
+  const indActual  = critActual?.indicadores?.find(i => i.id === selIndId);
+  const actActual  = indActual?.actividades?.find(a => a.id === selActId);
 
   function breadcrumbItems() {
     const items = [{ label: 'Inicio', onClick: () => setNivel('universidades') }];
-    if (['facultades','periodos','criterios','actividades','documentos'].includes(nivel))
+    if (['facultades','carreras','periodos','criterios','indicadores','actividades','documentos'].includes(nivel))
       items.push({ label: uniActual?.siglas || uniActual?.nombre, onClick: () => setNivel('facultades') });
-    if (['periodos','criterios','actividades','documentos'].includes(nivel))
-      items.push({ label: facActual?.nombre, onClick: () => setNivel('periodos') });
-    if (['criterios','actividades','documentos'].includes(nivel))
+    if (['carreras','periodos','criterios','indicadores','actividades','documentos'].includes(nivel))
+      items.push({ label: facActual?.nombre, onClick: () => setNivel('carreras') });
+    if (['periodos','criterios','indicadores','actividades','documentos'].includes(nivel))
+      items.push({ label: carrActual?.nombre, onClick: () => setNivel('periodos') });
+    if (['criterios','indicadores','actividades','documentos'].includes(nivel))
       items.push({ label: periActual?.nombre, onClick: () => setNivel('criterios') });
+    if (['indicadores','actividades','documentos'].includes(nivel))
+      items.push({ label: critActual?.nombre, onClick: () => setNivel('indicadores') });
     if (['actividades','documentos'].includes(nivel))
-      items.push({ label: critActual?.nombre, onClick: () => setNivel('actividades') });
+      items.push({ label: indActual?.nombre, onClick: () => setNivel('actividades') });
     if (nivel === 'documentos')
       items.push({ label: actActual?.nombre, onClick: null });
     return items;
@@ -217,15 +235,19 @@ export default function ExploradorDeArchivos() {
   }
 
   function puedeEliminarDoc(doc) {
-    if (usuario.rol === 'RECTOR') return true;
-    // DOCENTE puede eliminar sus propios docs solo si están PENDIENTE o RECHAZADO
+    if (usuario.rol === 'ADMINISTRADOR' || usuario.rol === 'RECTOR') return true;
     return doc.subido_por === usuario.nombre && ['PENDIENTE', 'RECHAZADO'].includes(doc.estado);
   }
 
   function puedeFirmar(doc) {
     if (doc.estado === 'COMPLETADO' || doc.estado === 'RECHAZADO') return false;
-    if (usuario.rol === 'DECANO' && doc.estado === 'PENDIENTE') return true;
+    
+    // Jerarquía de 4 pasos
+    if (usuario.rol === 'DIRECTOR_CARRERA' && doc.estado === 'PENDIENTE') return true;
+    if (usuario.rol === 'SUBDECANO' && doc.estado === 'FIRMADO_DIRECTOR') return true;
+    if (usuario.rol === 'DECANO' && doc.estado === 'FIRMADO_SUBDECANO') return true;
     if (usuario.rol === 'RECTOR' && doc.estado === 'FIRMADO_DECANO') return true;
+    
     return false;
   }
 
@@ -244,12 +266,16 @@ export default function ExploradorDeArchivos() {
         await actualizarUniversidad(id, { nombre: nombreEdit, siglas: meta.siglas });
       } else if (tipo === 'facultad') {
         await actualizarFacultad(id, meta.univId, { nombre: nombreEdit });
+      } else if (tipo === 'carrera') {
+        await actualizarCarrera(id, meta.univId, meta.facId, { nombre: nombreEdit });
       } else if (tipo === 'periodo') {
-        await actualizarPeriodo(id, meta.univId, meta.facId, { nombre: nombreEdit });
+        await actualizarPeriodo(id, meta.univId, meta.facId, meta.carrId, { nombre: nombreEdit });
       } else if (tipo === 'criterio') {
-        await actualizarCriterio(id, meta.univId, meta.facId, meta.perId, { nombre: nombreEdit, requiere_firma: meta.requiere_firma });
+        await actualizarCriterio(id, meta.univId, meta.facId, meta.carrId, meta.perId, { nombre: nombreEdit, requiere_firma: meta.requiere_firma });
+      } else if (tipo === 'indicador') {
+        await actualizarIndicador(id, meta.univId, meta.facId, meta.carrId, meta.perId, meta.critId, { nombre: nombreEdit });
       } else if (tipo === 'actividad') {
-        await actualizarActividad(id, meta.univId, meta.facId, meta.perId, meta.critId, { nombre: nombreEdit });
+        await actualizarActividad(id, meta.univId, meta.facId, meta.carrId, meta.perId, meta.critId, meta.indId, { nombre: nombreEdit });
       }
       setModalEdit(null);
     } catch (err) {
@@ -268,14 +294,20 @@ export default function ExploradorDeArchivos() {
       } else if (tipo === 'facultad') {
         await eliminarFacultad(id, meta.univId);
         if (selFacId === id) setNivel('facultades');
+      } else if (tipo === 'carrera') {
+        await eliminarCarrera(id, meta.univId, meta.facId);
+        if (selCarrId === id) setNivel('carreras');
       } else if (tipo === 'periodo') {
-        await eliminarPeriodo(id, meta.univId, meta.facId);
+        await eliminarPeriodo(id, meta.univId, meta.facId, meta.carrId);
         if (selPerId === id) setNivel('periodos');
       } else if (tipo === 'criterio') {
-        await eliminarCriterio(id, meta.univId, meta.facId, meta.perId);
+        await eliminarCriterio(id, meta.univId, meta.facId, meta.carrId, meta.perId);
         if (selCritId === id) setNivel('criterios');
+      } else if (tipo === 'indicador') {
+        await eliminarIndicador(id, meta.univId, meta.facId, meta.carrId, meta.perId, meta.critId);
+        if (selIndId === id) setNivel('indicadores');
       } else if (tipo === 'actividad') {
-        await eliminarActividad(id, meta.univId, meta.facId, meta.perId, meta.critId);
+        await eliminarActividad(id, meta.univId, meta.facId, meta.carrId, meta.perId, meta.critId, meta.indId);
         if (selActId === id) setNivel('actividades');
       }
     } catch (err) {
@@ -285,9 +317,69 @@ export default function ExploradorDeArchivos() {
 
   const docsActual = actActual?.documentos || [];
 
+  const getFiltrados = (lista) => {
+    if (!lista) return [];
+    
+    return lista.filter(item => {
+      let matchBusqueda = true;
+      let matchFiltro = true;
+
+      // Buscador de texto
+      if (busqueda) {
+        const term = busqueda.toLowerCase();
+        matchBusqueda = (
+          item.nombre?.toLowerCase().includes(term) || 
+          item.siglas?.toLowerCase().includes(term) ||
+          item.estado?.toLowerCase().includes(term)
+        );
+      }
+
+      // Filtro por estado (solo aplica si el item tiene estado, es decir, es un documento)
+      if (filtroEstado && item.estado) {
+        matchFiltro = item.estado === filtroEstado;
+      }
+
+      return matchBusqueda && matchFiltro;
+    });
+  };
+
   return (
     <div className="flex flex-col h-full">
       <Breadcrumbs items={breadcrumbItems()} />
+
+      <div className="px-6 pt-4 pb-2">
+        <div className="flex flex-col sm:flex-row gap-4 items-center">
+          <div className="relative flex-1 w-full">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Buscar por nombre..."
+              value={busqueda}
+              onChange={e => setBusqueda(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-navy-500 shadow-sm"
+            />
+          </div>
+          
+          {nivel === 'documentos' && (
+            <div className="flex items-center space-x-2 w-full sm:w-auto">
+              <Filter size={16} className="text-gray-400" />
+              <select
+                value={filtroEstado}
+                onChange={e => setFiltroEstado(e.target.value)}
+                className="w-full sm:w-48 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-navy-500 bg-white shadow-sm"
+              >
+                <option value="">Todos los estados</option>
+                <option value="PENDIENTE">Pendiente</option>
+                <option value="FIRMADO_DIRECTOR">Firmado (Director)</option>
+                <option value="FIRMADO_SUBDECANO">Firmado (Subdecano)</option>
+                <option value="FIRMADO_DECANO">Firmado (Decano)</option>
+                <option value="COMPLETADO">Completado</option>
+                <option value="RECHAZADO">Rechazado</option>
+              </select>
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Modal editar */}
       {modalEdit && (
@@ -321,7 +413,7 @@ export default function ExploradorDeArchivos() {
             {universidades.length === 0
               ? <p className="text-sm text-gray-400 mt-8 text-center">No hay universidades configuradas</p>
               : <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {universidades.map(u => (
+                  {getFiltrados(universidades).map(u => (
                     <CarpetaCard
                       key={u.id} nombre={u.nombre} descripcion={u.siglas}
                       onClick={() => { setSelUniId(u.id); setNivel('facultades'); }}
@@ -338,11 +430,11 @@ export default function ExploradorDeArchivos() {
           <div>
             <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold mb-4">Facultades — {uniActual?.nombre}</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {uniActual?.facultades.map(f => (
+              {getFiltrados(uniActual?.facultades).map(f => (
                 <CarpetaCard
                   key={f.id} nombre={f.nombre}
-                  descripcion={`${f.periodos.length} períodos`}
-                  onClick={() => { setSelFacId(f.id); setNivel('periodos'); }}
+                  descripcion={`${f.carreras?.length || 0} carreras`}
+                  onClick={() => { setSelFacId(f.id); setNivel('carreras'); }}
                   onEdit={esAdmin ? () => abrirEditar('facultad', f.id, f.nombre, { univId: selUniId }) : null}
                   onDelete={esAdmin ? () => handleEliminar('facultad', f.id, f.nombre, { univId: selUniId }) : null}
                 />
@@ -351,17 +443,34 @@ export default function ExploradorDeArchivos() {
           </div>
         )}
 
+        {nivel === 'carreras' && (
+          <div>
+            <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold mb-4">Carreras — {facActual?.nombre}</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {getFiltrados(facActual?.carreras).map(c => (
+                <CarpetaCard
+                  key={c.id} nombre={c.nombre}
+                  descripcion={`${c.periodos?.length || 0} períodos`}
+                  onClick={() => { setSelCarrId(c.id); setNivel('periodos'); }}
+                  onEdit={esAdmin ? () => abrirEditar('carrera', c.id, c.nombre, { univId: selUniId, facId: selFacId }) : null}
+                  onDelete={esAdmin ? () => handleEliminar('carrera', c.id, c.nombre, { univId: selUniId, facId: selFacId }) : null}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
         {nivel === 'periodos' && (
           <div>
-            <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold mb-4">Períodos — {facActual?.nombre}</p>
+            <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold mb-4">Períodos — {carrActual?.nombre}</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {facActual?.periodos.map(p => (
+              {getFiltrados(carrActual?.periodos).map(p => (
                 <CarpetaCard
                   key={p.id} nombre={p.nombre}
-                  descripcion={`${p.criterios.length} criterios`}
+                  descripcion={`${p.criterios?.length || 0} criterios`}
                   onClick={() => { setSelPerId(p.id); setNivel('criterios'); }}
-                  onEdit={esAdmin ? () => abrirEditar('periodo', p.id, p.nombre, { univId: selUniId, facId: selFacId }) : null}
-                  onDelete={esAdmin ? () => handleEliminar('periodo', p.id, p.nombre, { univId: selUniId, facId: selFacId }) : null}
+                  onEdit={esAdmin ? () => abrirEditar('periodo', p.id, p.nombre, { univId: selUniId, facId: selFacId, carrId: selCarrId }) : null}
+                  onDelete={esAdmin ? () => handleEliminar('periodo', p.id, p.nombre, { univId: selUniId, facId: selFacId, carrId: selCarrId }) : null}
                 />
               ))}
             </div>
@@ -372,13 +481,30 @@ export default function ExploradorDeArchivos() {
           <div>
             <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold mb-4">Criterios — {periActual?.nombre}</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {periActual?.criterios.map(c => (
+              {getFiltrados(periActual?.criterios).map(c => (
                 <CarpetaCard
                   key={c.id} nombre={c.nombre}
-                  descripcion={`${c.actividades.length} actividades · ${c.requiere_firma ? 'Requiere firma' : 'Sin firma'}`}
-                  onClick={() => { setSelCritId(c.id); setNivel('actividades'); }}
-                  onEdit={esAdmin ? () => abrirEditar('criterio', c.id, c.nombre, { univId: selUniId, facId: selFacId, perId: selPerId, requiere_firma: c.requiere_firma }) : null}
-                  onDelete={esAdmin ? () => handleEliminar('criterio', c.id, c.nombre, { univId: selUniId, facId: selFacId, perId: selPerId }) : null}
+                  descripcion={`${c.indicadores?.length || 0} indicadores · ${c.requiere_firma ? 'Requiere firma' : 'Sin firma'}`}
+                  onClick={() => { setSelCritId(c.id); setNivel('indicadores'); }}
+                  onEdit={esAdmin ? () => abrirEditar('criterio', c.id, c.nombre, { univId: selUniId, facId: selFacId, carrId: selCarrId, perId: selPerId, requiere_firma: c.requiere_firma }) : null}
+                  onDelete={esAdmin ? () => handleEliminar('criterio', c.id, c.nombre, { univId: selUniId, facId: selFacId, carrId: selCarrId, perId: selPerId }) : null}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {nivel === 'indicadores' && (
+          <div>
+            <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold mb-4">Indicadores — {critActual?.nombre}</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {getFiltrados(critActual?.indicadores).map(i => (
+                <CarpetaCard
+                  key={i.id} nombre={i.nombre}
+                  descripcion={`${i.actividades?.length || 0} actividades${i.responsable_nombre ? ` · Responsable: ${i.responsable_nombre}` : ''}`}
+                  onClick={() => { setSelIndId(i.id); setNivel('actividades'); }}
+                  onEdit={esAdmin ? () => abrirEditar('indicador', i.id, i.nombre, { univId: selUniId, facId: selFacId, carrId: selCarrId, perId: selPerId, critId: selCritId }) : null}
+                  onDelete={esAdmin ? () => handleEliminar('indicador', i.id, i.nombre, { univId: selUniId, facId: selFacId, carrId: selCarrId, perId: selPerId, critId: selCritId }) : null}
                 />
               ))}
             </div>
@@ -387,15 +513,15 @@ export default function ExploradorDeArchivos() {
 
         {nivel === 'actividades' && (
           <div>
-            <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold mb-4">Actividades — {critActual?.nombre}</p>
+            <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold mb-4">Actividades — {indActual?.nombre}</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {critActual?.actividades.map(a => (
+              {getFiltrados(indActual?.actividades).map(a => (
                 <CarpetaCard
                   key={a.id} nombre={a.nombre}
-                  descripcion={`${a.documentos.length} documentos`}
+                  descripcion={`${a.documentos?.length || 0} documentos`}
                   onClick={() => entrarActividad(a.id)}
-                  onEdit={esAdmin ? () => abrirEditar('actividad', a.id, a.nombre, { univId: selUniId, facId: selFacId, perId: selPerId, critId: selCritId }) : null}
-                  onDelete={esAdmin ? () => handleEliminar('actividad', a.id, a.nombre, { univId: selUniId, facId: selFacId, perId: selPerId, critId: selCritId }) : null}
+                  onEdit={esAdmin ? () => abrirEditar('actividad', a.id, a.nombre, { univId: selUniId, facId: selFacId, carrId: selCarrId, perId: selPerId, critId: selCritId, indId: selIndId }) : null}
+                  onDelete={esAdmin ? () => handleEliminar('actividad', a.id, a.nombre, { univId: selUniId, facId: selFacId, carrId: selCarrId, perId: selPerId, critId: selCritId, indId: selIndId }) : null}
                 />
               ))}
             </div>
@@ -411,8 +537,8 @@ export default function ExploradorDeArchivos() {
               </div>
             )}
 
-            {/* Subida — solo DOCENTE */}
-            {usuario.rol === 'DOCENTE' && (
+            {/* Subida — solo DOCENTE o RESPONSABLE_AREA pueden subir */}
+            {(usuario.rol === 'DOCENTE' || usuario.rol === 'RESPONSABLE_AREA' || usuario.rol === 'DIRECTOR_CARRERA') && (
               <div>
                 {errorSubida && (
                   <div className="mb-3 bg-red-50 border border-red-200 rounded-lg p-3 flex items-center space-x-2">
@@ -496,7 +622,7 @@ export default function ExploradorDeArchivos() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
-                      {docsActual.map(doc => (
+                      {getFiltrados(docsActual).map(doc => (
                         <tr
                           key={doc.id}
                           className={`hover:bg-gray-50/50 transition-colors ${doc.estado === 'RECHAZADO' ? 'bg-red-50/30' : ''}`}

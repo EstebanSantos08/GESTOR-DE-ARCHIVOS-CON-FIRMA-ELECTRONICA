@@ -1,7 +1,7 @@
 const router = require('express').Router();
 const { body } = require('express-validator');
 const { autenticar } = require('../Middleware/auth.middleware');
-const { autorizar } = require('../Middleware/rbac.middleware');
+const { autorizar, autorizarAdmin } = require('../Middleware/rbac.middleware');
 const ctrl = require('../Controller/auth.controller');
 
 router.post('/login',
@@ -18,10 +18,10 @@ router.post('/registro',
   ctrl.registroPublico
 );
 
-// Solo RECTOR puede crear usuarios con rol específico
+// Solo ADMINISTRADOR puede crear usuarios con rol específico
 router.post('/registrar',
   autenticar,
-  autorizar('RECTOR'),
+  autorizarAdmin(),
   body('nombre').notEmpty().withMessage('Nombre requerido'),
   body('email').isEmail().withMessage('Email inválido'),
   body('password').isLength({ min: 8 }).withMessage('Contraseña mínimo 8 caracteres'),
@@ -37,11 +37,16 @@ router.get('/roles', autenticar, async (req, res) => {
   const roles = await Rol.findAll({ order: [['nivel', 'ASC']] });
   res.json(roles);
 });
+// Gestión de Contraseñas
+router.post('/cambiar-password', autenticar, ctrl.cambiarPassword);
+router.post('/recuperar-password', ctrl.solicitarRecuperacion);
+router.post('/reset-password', ctrl.resetPassword);
 
-// Gestión de usuarios — Decano y Rector
-router.get('/usuarios', autenticar, autorizar('DECANO', 'RECTOR'), ctrl.listarUsuarios);
-router.put('/usuarios/:id/rol', autenticar, autorizar('DECANO', 'RECTOR'), ctrl.actualizarRol);
-router.put('/usuarios/:id', autenticar, autorizar('DECANO', 'RECTOR'), ctrl.actualizarUsuario);
-router.delete('/usuarios/:id', autenticar, autorizar('DECANO', 'RECTOR'), ctrl.eliminarUsuario);
+// Gestión de usuarios — Solo ADMINISTRADOR
+router.get('/usuarios', autenticar, autorizarAdmin(), ctrl.listarUsuarios);
+router.put('/usuarios/:id/rol', autenticar, autorizarAdmin(), ctrl.actualizarRol);
+router.put('/usuarios/:id', autenticar, ctrl.actualizarUsuario);
+router.put('/usuarios/:id/password', autenticar, autorizarAdmin(), ctrl.adminResetPassword);
+router.delete('/usuarios/:id', autenticar, autorizarAdmin(), ctrl.eliminarUsuario);
 
 module.exports = router;

@@ -11,9 +11,16 @@ const Usuario = sequelize.define('Usuario', {
   facultad_id: {
     type: DataTypes.INTEGER,
     allowNull: true,
-    comment: 'Facultad a la que pertenece el usuario (null para RECTOR/university-wide)',
+    comment: 'Facultad a la que pertenece el usuario (null para RECTOR/ADMIN)',
+  },
+  carrera_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    comment: 'Carrera asignada (para DIRECTOR_CARRERA y DOCENTE)',
   },
   activo: { type: DataTypes.BOOLEAN, defaultValue: true },
+  reset_token: { type: DataTypes.STRING(255), allowNull: true },
+  reset_token_exp: { type: DataTypes.DATE, allowNull: true },
 }, {
   tableName: 'usuarios',
   timestamps: true,

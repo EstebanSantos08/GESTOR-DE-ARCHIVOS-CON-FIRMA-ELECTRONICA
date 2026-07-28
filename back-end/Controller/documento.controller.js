@@ -68,11 +68,16 @@ async function listarDocumentos(req, res) {
     if (req.query.actividad_id) {
       // Con actividad_id: todos los roles ven todos los docs de esa actividad
       where.actividad_id = parseInt(req.query.actividad_id);
-    } else if (req.usuario.rol === 'DOCENTE') {
+    } else if (['DOCENTE', 'RESPONSABLE_AREA'].includes(req.usuario.rol)) {
+      // Roles de subida solo ven sus propios documentos
       where.subido_por_id = req.usuario.id;
-    } else {
-      where.firmante_actual_id = req.usuario.id;
+    } else if (['DIRECTOR_CARRERA', 'SUBDECANO', 'DECANO', 'RECTOR'].includes(req.usuario.rol)) {
+      // Roles firmantes ven docs donde son firmante actual O todos si es query general
+      if (!req.query.todos) {
+        where.firmante_actual_id = req.usuario.id;
+      }
     }
+    // ADMINISTRADOR ve todos los documentos sin filtro
 
     if (req.query.estado) where.estado = req.query.estado;
 
@@ -206,13 +211,14 @@ async function eliminarDocumento(req, res) {
     const documento = await Documento.findByPk(req.params.id);
     if (!documento) return res.status(404).json({ error: 'Documento no encontrado' });
 
-    // El docente solo puede eliminar sus propios docs en estado PENDIENTE o RECHAZADO
-    // RECTOR puede eliminar cualquier documento
-    const esRector = req.usuario.rol === 'RECTOR';
+    // Lógica de eliminación por roles:
+    // ADMINISTRADOR puede eliminar cualquier documento
+    // El propietario puede eliminar solo si está en PENDIENTE o RECHAZADO
+    const esAdmin = req.usuario.rol === 'ADMINISTRADOR';
     const esPropietario = documento.subido_por_id === req.usuario.id;
     const estadoPermitido = ['PENDIENTE', 'RECHAZADO'].includes(documento.estado);
 
-    if (!esRector && !(esPropietario && estadoPermitido)) {
+    if (!esAdmin && !(esPropietario && estadoPermitido)) {
       return res.status(403).json({ error: 'No tienes permiso para eliminar este documento' });
     }
 
@@ -233,17 +239,19 @@ async function resumenDocumentos(req, res) {
     const { Op } = require('sequelize');
     const where = {};
 
-    // DOCENTE solo ve sus propios documentos
-    if (req.usuario.rol === 'DOCENTE') {
+    // DOCENTE y RESPONSABLE_AREA solo ven sus propios documentos
+    if (['DOCENTE', 'RESPONSABLE_AREA'].includes(req.usuario.rol)) {
       where.subido_por_id = req.usuario.id;
     }
-    // DECANO y RECTOR ven todos los documentos del sistema
+    // DIRECTOR_CARRERA, SUBDECANO, DECANO, RECTOR y ADMINISTRADOR ven todos
 
     const todos = await Documento.findAll({ where, attributes: ['estado'] });
 
     res.json({
       total: todos.length,
-      pendientesFirma: todos.filter(d => ['PENDIENTE', 'FIRMADO_DECANO'].includes(d.estado)).length,
+      pendientesFirma: todos.filter(d => [
+        'PENDIENTE', 'FIRMADO_DIRECTOR', 'FIRMADO_SUBDECANO', 'FIRMADO_DECANO',
+      ].includes(d.estado)).length,
       firmados: todos.filter(d => d.estado === 'COMPLETADO').length,
       rechazados: todos.filter(d => d.estado === 'RECHAZADO').length,
     });

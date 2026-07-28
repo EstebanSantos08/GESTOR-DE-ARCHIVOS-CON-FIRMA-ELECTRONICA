@@ -2,19 +2,39 @@ import React from 'react';
 import { LayoutDashboard, FolderOpen, ClipboardList, Settings, User, Shield, LogOut, Users } from 'lucide-react';
 import { useApp } from '../../context/useApp';
 
+// Todos los roles ven Dashboard, Explorador y Perfil.
+// ADMINISTRADOR gestiona Usuarios y Configuración (parametrización).
+// Los firmantes (DIRECTOR_CARRERA hacia arriba) ven Auditoría.
+const TODOS = ['ADMINISTRADOR', 'RECTOR', 'DECANO', 'SUBDECANO', 'DIRECTOR_CARRERA', 'RESPONSABLE_AREA', 'DOCENTE'];
+const FIRMANTES = ['RECTOR', 'DECANO', 'SUBDECANO', 'DIRECTOR_CARRERA'];
+
 const NAV_ITEMS = [
-  { id: 'dashboard',       label: 'Dashboard',     icon: LayoutDashboard, roles: ['RECTOR', 'DECANO', 'DOCENTE'] },
-  { id: 'explorador',      label: 'Explorador',    icon: FolderOpen,       roles: ['RECTOR', 'DECANO', 'DOCENTE'] },
-  { id: 'auditoria',       label: 'Auditoría',     icon: ClipboardList,    roles: ['RECTOR', 'DECANO'] },
-  { id: 'usuarios',        label: 'Usuarios',      icon: Users,            roles: ['RECTOR', 'DECANO'] },
-  { id: 'parametrizacion', label: 'Configuración', icon: Settings,         roles: ['RECTOR'] },
-  { id: 'perfil',          label: 'Mi Perfil',     icon: User,             roles: ['RECTOR', 'DECANO', 'DOCENTE'] },
+  { id: 'dashboard',       label: 'Dashboard',     icon: LayoutDashboard, roles: TODOS },
+  { id: 'explorador',      label: 'Explorador',    icon: FolderOpen,       roles: TODOS },
+  { id: 'auditoria',       label: 'Auditoría',     icon: ClipboardList,    roles: ['ADMINISTRADOR', ...FIRMANTES] },
+  { id: 'usuarios',        label: 'Usuarios',      icon: Users,            roles: ['ADMINISTRADOR'] },
+  { id: 'parametrizacion', label: 'Configuración', icon: Settings,         roles: ['ADMINISTRADOR'] },
+  { id: 'perfil',          label: 'Mi Perfil',     icon: User,             roles: TODOS },
 ];
 
 const ROL_COLOR = {
-  RECTOR:  'bg-purple-500',
-  DECANO:  'bg-blue-500',
-  DOCENTE: 'bg-green-500',
+  ADMINISTRADOR:    'bg-red-500',
+  RECTOR:           'bg-purple-500',
+  DECANO:           'bg-blue-500',
+  SUBDECANO:        'bg-indigo-500',
+  DIRECTOR_CARRERA: 'bg-cyan-500',
+  RESPONSABLE_AREA: 'bg-amber-500',
+  DOCENTE:          'bg-green-500',
+};
+
+const ROL_LABEL = {
+  ADMINISTRADOR:    'Administrador',
+  RECTOR:           'Rector',
+  DECANO:           'Decano',
+  SUBDECANO:        'Subdecano',
+  DIRECTOR_CARRERA: 'Director Carrera',
+  RESPONSABLE_AREA: 'Resp. Área',
+  DOCENTE:          'Docente',
 };
 
 export default function Sidebar() {
@@ -66,7 +86,7 @@ export default function Sidebar() {
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-white text-xs font-semibold truncate">{usuario?.nombre}</p>
-            <p className="text-blue-300 text-xs">{rol}</p>
+            <p className="text-blue-300 text-xs">{ROL_LABEL[rol] || rol}</p>
           </div>
         </div>
         <button
@@ -80,4 +100,5 @@ export default function Sidebar() {
     </aside>
   );
 }
+
 

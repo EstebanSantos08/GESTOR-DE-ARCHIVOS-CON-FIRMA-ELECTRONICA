@@ -30,25 +30,26 @@ describe('WorkflowService', () => {
 
   // ─── enrutar ────────────────────────────────────────────────────────────
   describe('enrutar', () => {
-    it('debe enrutar PENDIENTE a DECANO con estado FIRMADO_DECANO', async () => {
-      const decano = { id: 2, nombre: 'Decano Test', rol_id: 2 };
-      mockRol.findOne.mockResolvedValue({ id: 2, nombre: 'DECANO', nivel: 2 });
-      mockUsuario.findOne.mockResolvedValue(decano);
+    it('debe enrutar PENDIENTE a DIRECTOR_CARRERA con estado FIRMADO_DIRECTOR', async () => {
+      const director = { id: 2, nombre: 'Director Test', rol_id: 2 };
+      mockRol.findOne.mockResolvedValue({ id: 2, nombre: 'DIRECTOR_CARRERA', nivel: 4 });
+      mockUsuario.findOne.mockResolvedValue(director);
 
       const doc = { id: 1, estado: 'PENDIENTE', facultad_id: 1 };
       const resultado = await workflowService.enrutar(doc);
 
-      expect(mockRol.findOne).toHaveBeenCalledWith({ where: { nombre: 'DECANO' } });
+      expect(mockRol.findOne).toHaveBeenCalledWith({ where: { nombre: 'DIRECTOR_CARRERA' } });
       expect(mockUsuario.findOne).toHaveBeenCalled();
       expect(resultado).toEqual({
-        firmante: decano,
-        estadoSiguiente: 'FIRMADO_DECANO',
+        firmante: director,
+        estadoSiguiente: 'FIRMADO_DIRECTOR',
+        timestampField: 'firmado_director_en',
       });
     });
 
     it('debe enrutar FIRMADO_DECANO a RECTOR con estado COMPLETADO', async () => {
       const rector = { id: 3, nombre: 'Rector Test', rol_id: 3 };
-      mockRol.findOne.mockResolvedValue({ id: 3, nombre: 'RECTOR', nivel: 3 });
+      mockRol.findOne.mockResolvedValue({ id: 3, nombre: 'RECTOR', nivel: 2 });
       mockUsuario.findOne.mockResolvedValue(rector);
 
       const doc = { id: 1, estado: 'FIRMADO_DECANO', facultad_id: 1 };
@@ -58,6 +59,7 @@ describe('WorkflowService', () => {
       expect(resultado).toEqual({
         firmante: rector,
         estadoSiguiente: 'COMPLETADO',
+        timestampField: 'firmado_rector_en',
       });
     });
 
@@ -78,7 +80,7 @@ describe('WorkflowService', () => {
       const doc = { id: 1, estado: 'PENDIENTE' };
 
       await expect(workflowService.enrutar(doc)).rejects.toThrow(
-        'Rol DECANO no existe en BD'
+        'Rol DIRECTOR_CARRERA no existe en BD'
       );
     });
   });
@@ -92,7 +94,7 @@ describe('WorkflowService', () => {
       mockUsuario.findOne.mockResolvedValue(rector);
     });
 
-    it('debe procesar firma de DECANO exitosamente (PENDIENTE -> FIRMADO_DECANO)', async () => {
+    it('debe procesar firma de DIRECTOR_CARRERA exitosamente (PENDIENTE -> FIRMADO_DIRECTOR)', async () => {
       const documento = {
         id: 1,
         estado: 'PENDIENTE',
@@ -102,13 +104,16 @@ describe('WorkflowService', () => {
         toJSON: function () { return { ...this }; },
         reload: jest.fn().mockResolvedValue({
           id: 1,
-          estado: 'FIRMADO_DECANO',
+          estado: 'FIRMADO_DIRECTOR',
           toJSON: function () { return { ...this }; },
         }),
         update: jest.fn().mockResolvedValue(true),
       };
 
       mockDocumento.findByPk.mockResolvedValue(documento);
+      // Cuando busca al siguiente firmante (SUBDECANO)
+      mockRol.findOne.mockResolvedValue({ id: 3, nombre: 'SUBDECANO' });
+      mockUsuario.findOne.mockResolvedValue({ id: 3, nombre: 'Subdecano Test' });
 
       await workflowService.procesarFirma(1, { id: 2 }, null);
 
@@ -229,33 +234,33 @@ describe('WorkflowService', () => {
 
   // ─── asignarFirmanteInicial ─────────────────────────────────────────────
   describe('asignarFirmanteInicial', () => {
-    it('debe asignar un DECANO como primer firmante', async () => {
-      const decano = { id: 2, nombre: 'Decano Test' };
-      mockRol.findOne.mockResolvedValue({ id: 2, nombre: 'DECANO', nivel: 2 });
-      mockUsuario.findOne.mockResolvedValue(decano);
+    it('debe asignar un DIRECTOR_CARRERA como primer firmante', async () => {
+      const director = { id: 2, nombre: 'Director Test' };
+      mockRol.findOne.mockResolvedValue({ id: 2, nombre: 'DIRECTOR_CARRERA', nivel: 4 });
+      mockUsuario.findOne.mockResolvedValue(director);
 
       const doc = { id: 1, facultad_id: 1, update: jest.fn().mockResolvedValue(true) };
 
       const resultado = await workflowService.asignarFirmanteInicial(doc);
 
-      expect(mockRol.findOne).toHaveBeenCalledWith({ where: { nombre: 'DECANO' } });
-      expect(doc.update).toHaveBeenCalledWith({ firmante_actual_id: decano.id });
-      expect(resultado).toEqual(decano);
+      expect(mockRol.findOne).toHaveBeenCalledWith({ where: { nombre: 'DIRECTOR_CARRERA' } });
+      expect(doc.update).toHaveBeenCalledWith({ firmante_actual_id: director.id });
+      expect(resultado).toEqual(director);
     });
 
-    it('debe lanzar error si no existe rol DECANO', async () => {
+    it('debe lanzar error si no existe rol DIRECTOR_CARRERA', async () => {
       mockRol.findOne.mockResolvedValue(null);
       await expect(workflowService.asignarFirmanteInicial({ id: 1 })).rejects.toThrow(
-        'Rol DECANO no configurado'
+        'Rol DIRECTOR_CARRERA no configurado'
       );
     });
 
-    it('debe lanzar error si no hay DECANO registrado', async () => {
-      mockRol.findOne.mockResolvedValue({ id: 2, nombre: 'DECANO', nivel: 2 });
+    it('debe lanzar error si no hay DIRECTOR_CARRERA registrado', async () => {
+      mockRol.findOne.mockResolvedValue({ id: 2, nombre: 'DIRECTOR_CARRERA', nivel: 4 });
       mockUsuario.findOne.mockResolvedValue(null);
 
       await expect(workflowService.asignarFirmanteInicial({ id: 1, facultad_id: 1 })).rejects.toThrow(
-        'No hay ningún Decano registrado en el sistema'
+        'No hay ningún Director de Carrera registrado en el sistema'
       );
     });
   });

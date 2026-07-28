@@ -20,7 +20,7 @@ function PasoTimeline({ numero, titulo, completado, activo }) {
               : <Circle size={14} className="text-gray-300" />
           }
         </div>
-        {numero < 3 && <div className={`w-0.5 h-8 mt-1 ${completado ? 'bg-green-200' : 'bg-gray-100'}`} />}
+        {numero < 5 && <div className={`w-0.5 h-8 mt-1 ${completado ? 'bg-green-200' : 'bg-gray-100'}`} />}
       </div>
       <div className="pb-6">
         <p className={`text-sm font-medium ${completado ? 'text-green-700' : activo ? 'text-blue-700' : 'text-gray-400'}`}>
@@ -98,7 +98,9 @@ export default function PanelLateralAuditoria() {
   }
 
   const puedeFiremar =
-    (usuario.rol === 'DECANO' && doc.estado === 'PENDIENTE') ||
+    (usuario.rol === 'DIRECTOR_CARRERA' && doc.estado === 'PENDIENTE') ||
+    (usuario.rol === 'SUBDECANO' && doc.estado === 'FIRMADO_DIRECTOR') ||
+    (usuario.rol === 'DECANO' && doc.estado === 'FIRMADO_SUBDECANO') ||
     (usuario.rol === 'RECTOR' && doc.estado === 'FIRMADO_DECANO');
 
   const puedeVerModal =
@@ -106,10 +108,15 @@ export default function PanelLateralAuditoria() {
     doc.estado === 'RECHAZADO' ||
     doc.estado === 'COMPLETADO';
 
-  const paso2Completado = doc.estado === 'FIRMADO_DECANO' || doc.estado === 'COMPLETADO';
-  const paso3Completado = doc.estado === 'COMPLETADO';
+  const paso2Completado = ['FIRMADO_DIRECTOR', 'FIRMADO_SUBDECANO', 'FIRMADO_DECANO', 'COMPLETADO'].includes(doc.estado);
+  const paso3Completado = ['FIRMADO_SUBDECANO', 'FIRMADO_DECANO', 'COMPLETADO'].includes(doc.estado);
+  const paso4Completado = ['FIRMADO_DECANO', 'COMPLETADO'].includes(doc.estado);
+  const paso5Completado = doc.estado === 'COMPLETADO';
+  
   const paso2Activo = doc.estado === 'PENDIENTE';
-  const paso3Activo = doc.estado === 'FIRMADO_DECANO';
+  const paso3Activo = doc.estado === 'FIRMADO_DIRECTOR';
+  const paso4Activo = doc.estado === 'FIRMADO_SUBDECANO';
+  const paso5Activo = doc.estado === 'FIRMADO_DECANO';
 
   return (
     <>
@@ -200,8 +207,10 @@ export default function PanelLateralAuditoria() {
             <div>
               <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-4">Flujo de Firma</h3>
               <PasoTimeline numero={1} titulo="Carga del documento" completado={true} activo={false} />
-              <PasoTimeline numero={2} titulo="Firma Decano" completado={paso2Completado} activo={paso2Activo} />
-              <PasoTimeline numero={3} titulo="Firma Rector" completado={paso3Completado} activo={paso3Activo} />
+              <PasoTimeline numero={2} titulo="Director de Carrera" completado={paso2Completado} activo={paso2Activo} />
+              <PasoTimeline numero={3} titulo="Subdecano" completado={paso3Completado} activo={paso3Activo} />
+              <PasoTimeline numero={4} titulo="Decano" completado={paso4Completado} activo={paso4Activo} />
+              <PasoTimeline numero={5} titulo="Rector" completado={paso5Completado} activo={paso5Activo} />
             </div>
 
             {doc.firmantes && doc.firmantes.length > 0 && (

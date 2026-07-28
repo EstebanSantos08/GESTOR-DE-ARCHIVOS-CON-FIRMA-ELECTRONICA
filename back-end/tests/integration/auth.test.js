@@ -105,11 +105,11 @@ describe('Auth Routes - Integration', () => {
 
     beforeEach(() => {
       authService.verificarToken.mockReturnValue({
-        id: 1, email: 'rector@test.com', rol: 'RECTOR', nivel: 3,
+        id: 1, email: 'admin@test.com', rol: 'ADMINISTRADOR', nivel: 99,
       });
     });
 
-    it('debe registrar un usuario exitosamente (como RECTOR)', async () => {
+    it('debe registrar un usuario exitosamente (como ADMINISTRADOR)', async () => {
       authService.registrar.mockResolvedValue({
         id: 2, nombre: usuarioData.nombre, email: usuarioData.email,
       });
@@ -124,7 +124,7 @@ describe('Auth Routes - Integration', () => {
       expect(authService.registrar).toHaveBeenCalledWith(usuarioData);
     });
 
-    it('debe retornar 403 si no es RECTOR', async () => {
+    it('debe retornar 403 si no es ADMINISTRADOR', async () => {
       authService.verificarToken.mockReturnValue({
         id: 2, email: 'decano@test.com', rol: 'DECANO', nivel: 2,
       });

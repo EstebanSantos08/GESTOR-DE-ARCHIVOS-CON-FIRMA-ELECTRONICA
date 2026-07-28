@@ -3,6 +3,8 @@
 Este documento describe cómo funciona el sistema de gestión documental con firma digital, desde el inicio de sesión hasta la firma final de un documento.
 
 ---
+## Nuevos Cambios a implementar y corregir 
+
 
 ## Roles del sistema
 
@@ -12,7 +14,9 @@ El sistema tiene tres roles con permisos distintos:
 |-----|-------------|-------------|
 | `DOCENTE` | Docente universitario | Subir documentos PDF, ver sus documentos |
 | `DECANO` | Decano de facultad | Firmar/rechazar documentos en estado `PENDIENTE`; gestionar parametrización |
-| `RECTOR` | Rector de la universidad | Firmar/rechazar documentos en estado `FIRMADO_DECANO`; gestionar parametrización; crear usuarios |
+| `RECTOR` | Rector de la universidad | Firmar/rechazar documentos en estado 
+`ADMINISTRADOR` | Administrador de todo el sistema es superadmin y tiene acceso a todas las funciones del sistema
+`FIRMADO_DECANO`; gestionar parametrización; crear usuarios |
 
 ---
 

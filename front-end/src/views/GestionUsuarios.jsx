@@ -1,24 +1,45 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Shield, RefreshCw, AlertCircle, Check, Trash2 } from 'lucide-react';
+import { Users, Shield, RefreshCw, AlertCircle, Check, Trash2, Save, Key, Edit2, Search, Filter } from 'lucide-react';
 import { useApp } from '../context/useApp';
 
 const ROL_COLOR = {
-  RECTOR:  'bg-purple-100 text-purple-800 border-purple-200',
-  DECANO:  'bg-blue-100 text-blue-800 border-blue-200',
-  DOCENTE: 'bg-green-100 text-green-800 border-green-200',
+  ADMINISTRADOR:    'bg-red-100 text-red-800 border-red-200',
+  RECTOR:           'bg-purple-100 text-purple-800 border-purple-200',
+  DECANO:           'bg-blue-100 text-blue-800 border-blue-200',
+  SUBDECANO:        'bg-indigo-100 text-indigo-800 border-indigo-200',
+  DIRECTOR_CARRERA: 'bg-cyan-100 text-cyan-800 border-cyan-200',
+  RESPONSABLE_AREA: 'bg-amber-100 text-amber-800 border-amber-200',
+  DOCENTE:          'bg-green-100 text-green-800 border-green-200',
 };
 
 export default function GestionUsuarios() {
-  const { listarUsuarios, actualizarRolUsuario, eliminarUsuario, token, usuario: usuarioActual } = useApp();
+  const { listarUsuarios, actualizarUsuario, eliminarUsuario, adminResetPassword, token, usuario: usuarioActual, universidades } = useApp();
   const [usuarios, setUsuarios] = useState([]);
   const [roles, setRoles] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState('');
-  const [actualizando, setActualizando] = useState(null);
+  
   const [eliminando, setEliminando] = useState(null);
-  const [exito, setExito] = useState(null);
 
-  const esDecano = usuarioActual?.rol === 'DECANO';
+  const [usuarioReset, setUsuarioReset] = useState(null);
+  const [passwordReset, setPasswordReset] = useState('');
+  const [resetError, setResetError] = useState('');
+  const [resetExito, setResetExito] = useState(false);
+  const [reseteando, setReseteando] = useState(false);
+
+  // Busqueda y filtros
+  const [busqueda, setBusqueda] = useState('');
+  const [filtroRol, setFiltroRol] = useState('');
+
+  // Edición de usuario
+  const [usuarioEditar, setUsuarioEditar] = useState(null);
+  const [editForm, setEditForm] = useState({ nombre: '', email: '', rol_id: '', facultad_id: '', carrera_id: '' });
+  const [guardando, setGuardando] = useState(false);
+  const [editError, setEditError] = useState('');
+  const [editExito, setEditExito] = useState(false);
+
+  const facultades = universidades.flatMap(u => u.facultades) || [];
+  const carreras = facultades.flatMap(f => f.carreras) || [];
 
   useEffect(() => {
     cargar();
@@ -35,8 +56,7 @@ export default function GestionUsuarios() {
         }).then(r => r.ok ? r.json() : []),
       ]);
       setUsuarios(usrs);
-      // Si el usuario actual es Decano, filtra RECTOR de la lista de roles asignables
-      setRoles(esDecano ? rls.filter(r => r.nombre !== 'RECTOR') : rls);
+      setRoles(rls);
     } catch {
       setError('No se pudo cargar la lista de usuarios');
     } finally {
@@ -44,18 +64,52 @@ export default function GestionUsuarios() {
     }
   }
 
-  async function cambiarRol(usuarioId, rol_id) {
-    setActualizando(usuarioId);
-    setExito(null);
+  function abrirModalEditar(u) {
+    setUsuarioEditar(u);
+    setEditForm({
+      nombre: u.nombre,
+      email: u.email,
+      rol_id: u.rol_id || '',
+      facultad_id: u.facultad_id || '',
+      carrera_id: u.carrera_id || '',
+    });
+    setEditError('');
+    setEditExito(false);
+  }
+
+  function handleEditChange(campo, valor) {
+    setEditForm(prev => {
+      const nuevo = { ...prev, [campo]: valor === '' ? null : (campo === 'nombre' || campo === 'email' ? valor : parseInt(valor)) };
+      
+      if (campo === 'rol_id') {
+        const rolSeleccionado = roles.find(r => r.id === nuevo.rol_id)?.nombre;
+        if (rolSeleccionado === 'RECTOR' || rolSeleccionado === 'ADMINISTRADOR') {
+          nuevo.facultad_id = null;
+          nuevo.carrera_id = null;
+        } else if (rolSeleccionado === 'DECANO' || rolSeleccionado === 'SUBDECANO' || rolSeleccionado === 'RESPONSABLE_AREA') {
+          nuevo.carrera_id = null;
+        }
+      }
+      return nuevo;
+    });
+  }
+
+  async function handleGuardarEditar(e) {
+    e.preventDefault();
+    setGuardando(true);
+    setEditError('');
+    setEditExito(false);
     try {
-      const actualizado = await actualizarRolUsuario(usuarioId, rol_id);
-      setUsuarios(prev => prev.map(u => u.id === usuarioId ? { ...u, ...actualizado } : u));
-      setExito(usuarioId);
-      setTimeout(() => setExito(null), 2000);
+      const actualizado = await actualizarUsuario(usuarioEditar.id, editForm);
+      setUsuarios(prev => prev.map(u => u.id === usuarioEditar.id ? { ...u, ...actualizado } : u));
+      setEditExito(true);
+      setTimeout(() => {
+        setUsuarioEditar(null);
+      }, 1500);
     } catch (err) {
-      setError(err.message);
+      setEditError(err.message);
     } finally {
-      setActualizando(null);
+      setGuardando(false);
     }
   }
 
@@ -65,14 +119,42 @@ export default function GestionUsuarios() {
     try {
       await eliminarUsuario(u.id);
       setUsuarios(prev => prev.map(x => x.id === u.id ? { ...x, activo: false } : x));
-      setExito(u.id);
-      setTimeout(() => setExito(null), 2000);
     } catch (err) {
       setError(err.message);
     } finally {
       setEliminando(null);
     }
   }
+
+  async function handleAdminReset(e) {
+    e.preventDefault();
+    if (!passwordReset) {
+      setResetError('La contraseña no puede estar vacía');
+      return;
+    }
+    setReseteando(true);
+    setResetError('');
+    setResetExito(false);
+    try {
+      await adminResetPassword(usuarioReset.id, passwordReset);
+      setResetExito(true);
+      setTimeout(() => {
+        setUsuarioReset(null);
+        setPasswordReset('');
+        setResetExito(false);
+      }, 2000);
+    } catch (err) {
+      setResetError(err.message);
+    } finally {
+      setReseteando(false);
+    }
+  }
+
+  const usuariosFiltrados = usuarios.filter(u => {
+    const matchBusqueda = u.nombre.toLowerCase().includes(busqueda.toLowerCase()) || u.email.toLowerCase().includes(busqueda.toLowerCase());
+    const matchRol = filtroRol ? u.rol_id === parseInt(filtroRol) : true;
+    return matchBusqueda && matchRol;
+  });
 
   if (cargando) {
     return (
@@ -92,7 +174,7 @@ export default function GestionUsuarios() {
           <div>
             <h2 className="text-lg font-semibold text-navy-900">Gestión de Usuarios</h2>
             <p className="text-xs text-gray-500">
-              {esDecano ? 'Puedes asignar rol Docente o Decano' : 'Asigna roles a los usuarios registrados'}
+              Administra perfiles, roles, accesos y seguridad
             </p>
           </div>
         </div>
@@ -105,6 +187,33 @@ export default function GestionUsuarios() {
         </button>
       </div>
 
+      {/* Barra de Filtros */}
+      <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col sm:flex-row gap-4 items-center">
+        <div className="relative flex-1 w-full">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Buscar por nombre o correo..."
+            value={busqueda}
+            onChange={e => setBusqueda(e.target.value)}
+            className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-navy-500"
+          />
+        </div>
+        <div className="flex items-center space-x-2 w-full sm:w-auto">
+          <Filter size={16} className="text-gray-400" />
+          <select
+            value={filtroRol}
+            onChange={e => setFiltroRol(e.target.value)}
+            className="w-full sm:w-48 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-navy-500 bg-white"
+          >
+            <option value="">Todos los roles</option>
+            {roles.map(r => (
+              <option key={r.id} value={r.id}>{r.nombre}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-center space-x-2">
           <AlertCircle size={15} className="text-red-500 flex-shrink-0" />
@@ -115,28 +224,27 @@ export default function GestionUsuarios() {
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-100 flex items-center space-x-2">
           <Shield size={15} className="text-navy-700" />
-          <span className="text-sm font-semibold text-navy-900">Usuarios del sistema ({usuarios.length})</span>
+          <span className="text-sm font-semibold text-navy-900">Usuarios encontrados ({usuariosFiltrados.length})</span>
         </div>
 
-        {usuarios.length === 0 ? (
-          <div className="py-12 text-center text-sm text-gray-400">No hay usuarios registrados</div>
+        {usuariosFiltrados.length === 0 ? (
+          <div className="py-12 text-center text-sm text-gray-400">No hay resultados para la búsqueda</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-gray-50">
                 <tr>
                   <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase">Usuario</th>
-                  <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase">Rol actual</th>
-                  <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase">Cambiar rol</th>
-                  <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase">Estado</th>
-                  <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase">Acciones</th>
+                  <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase">Rol</th>
+                  <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase">Asignación</th>
+                  <th className="text-center px-5 py-3 text-xs font-semibold text-gray-500 uppercase">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {usuarios.map(u => {
+                {usuariosFiltrados.map(u => {
                   const rolNombre = u.rol?.nombre || '';
                   const esMismoUsuario = u.id === usuarioActual?.id;
-                  const bloqueado = esMismoUsuario || !u.activo;
+                  
                   return (
                     <tr key={u.id} className={`hover:bg-gray-50/50 transition-colors ${esMismoUsuario ? 'bg-blue-50/30' : ''} ${!u.activo ? 'opacity-50' : ''}`}>
                       <td className="px-5 py-3">
@@ -160,52 +268,36 @@ export default function GestionUsuarios() {
                           {rolNombre}
                         </span>
                       </td>
+                      <td className="px-5 py-3 text-xs text-gray-600">
+                        {u.carrera?.nombre || u.facultad?.nombre || 'General'}
+                      </td>
                       <td className="px-5 py-3">
-                        {bloqueado ? (
-                          <span className="text-xs text-gray-400 italic">
-                            {esMismoUsuario ? 'No puedes cambiar tu propio rol' : 'Usuario inactivo'}
-                          </span>
-                        ) : roles.length > 0 ? (
-                          <select
-                            value={u.rol_id}
-                            disabled={actualizando === u.id}
-                            onChange={e => cambiarRol(u.id, parseInt(e.target.value))}
-                            className="border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-navy-500 disabled:opacity-50 bg-white"
+                        <div className="flex items-center justify-center space-x-1">
+                          <button
+                            onClick={() => abrirModalEditar(u)}
+                            disabled={esMismoUsuario}
+                            title="Editar Perfil"
+                            className="p-1.5 text-gray-500 hover:text-navy-600 hover:bg-navy-50 rounded-lg transition-colors disabled:opacity-40"
                           >
-                            {roles.map(r => (
-                              <option key={r.id} value={r.id}>{r.nombre}</option>
-                            ))}
-                          </select>
-                        ) : null}
-                      </td>
-                      <td className="px-5 py-3">
-                        {actualizando === u.id && (
-                          <RefreshCw size={14} className="text-navy-500 animate-spin" />
-                        )}
-                        {exito === u.id && (
-                          <span className="flex items-center space-x-1 text-green-600 text-xs">
-                            <Check size={14} />
-                            <span>Guardado</span>
-                          </span>
-                        )}
-                        {actualizando !== u.id && exito !== u.id && (
-                          <span className={`inline-block w-2 h-2 rounded-full ${u.activo ? 'bg-green-400' : 'bg-gray-300'}`} title={u.activo ? 'Activo' : 'Inactivo'} />
-                        )}
-                      </td>
-                      <td className="px-5 py-3">
-                        {!esMismoUsuario && u.activo && (
+                            <Edit2 size={14} />
+                          </button>
+                          <button
+                            onClick={() => setUsuarioReset(u)}
+                            disabled={!u.activo || esMismoUsuario}
+                            title="Restablecer contraseña"
+                            className="p-1.5 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-40"
+                          >
+                            <Key size={14} />
+                          </button>
                           <button
                             onClick={() => handleEliminar(u)}
-                            disabled={eliminando === u.id}
+                            disabled={eliminando === u.id || !u.activo || esMismoUsuario}
                             title="Desactivar usuario"
                             className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-40"
                           >
-                            {eliminando === u.id
-                              ? <RefreshCw size={14} className="animate-spin" />
-                              : <Trash2 size={14} />
-                            }
+                            {eliminando === u.id ? <RefreshCw size={14} className="animate-spin" /> : <Trash2 size={14} />}
                           </button>
-                        )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -215,6 +307,159 @@ export default function GestionUsuarios() {
           </div>
         )}
       </div>
+
+      {/* Modal Editar Perfil */}
+      {usuarioEditar && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => !guardando && setUsuarioEditar(null)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6">
+            <h3 className="text-lg font-bold text-navy-900 mb-4">Editar Usuario</h3>
+            <form onSubmit={handleGuardarEditar} className="space-y-4">
+              {editExito && (
+                <div className="bg-green-50 text-green-700 p-3 rounded-lg text-sm flex items-center space-x-2">
+                  <Check size={16} />
+                  <span>Usuario actualizado</span>
+                </div>
+              )}
+              {editError && (
+                <div className="bg-red-50 text-red-700 p-3 rounded-lg text-sm flex items-center space-x-2">
+                  <AlertCircle size={16} />
+                  <span>{editError}</span>
+                </div>
+              )}
+
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Nombre</label>
+                  <input
+                    type="text"
+                    required
+                    value={editForm.nombre}
+                    onChange={e => handleEditChange('nombre', e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-navy-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Correo Electrónico</label>
+                  <input
+                    type="email"
+                    required
+                    value={editForm.email}
+                    onChange={e => handleEditChange('email', e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-navy-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Rol</label>
+                  <select
+                    value={editForm.rol_id || ''}
+                    onChange={e => handleEditChange('rol_id', e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-navy-500 bg-white"
+                  >
+                    <option value="">Seleccione rol...</option>
+                    {roles.map(r => (
+                      <option key={r.id} value={r.id}>{r.nombre}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {['DECANO', 'SUBDECANO', 'RESPONSABLE_AREA'].includes(roles.find(r => r.id === editForm.rol_id)?.nombre) && (
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Facultad</label>
+                    <select
+                      value={editForm.facultad_id || ''}
+                      onChange={e => handleEditChange('facultad_id', e.target.value)}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-navy-500 bg-white"
+                    >
+                      <option value="">Seleccione facultad...</option>
+                      {facultades.map(f => <option key={f.id} value={f.id}>{f.nombre}</option>)}
+                    </select>
+                  </div>
+                )}
+
+                {['DIRECTOR_CARRERA', 'DOCENTE'].includes(roles.find(r => r.id === editForm.rol_id)?.nombre) && (
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Carrera</label>
+                    <select
+                      value={editForm.carrera_id || ''}
+                      onChange={e => handleEditChange('carrera_id', e.target.value)}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-navy-500 bg-white"
+                    >
+                      <option value="">Seleccione carrera...</option>
+                      {carreras.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                    </select>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex space-x-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setUsuarioEditar(null)}
+                  className="flex-1 px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 hover:bg-gray-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={guardando}
+                  className="flex-1 px-4 py-2 bg-navy-900 text-white rounded-lg text-sm hover:bg-navy-800 disabled:opacity-50"
+                >
+                  {guardando ? 'Guardando...' : 'Guardar'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Restablecer Contraseña */}
+      {usuarioReset && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => !reseteando && setUsuarioReset(null)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6 space-y-4">
+            <h3 className="text-lg font-bold text-navy-900">Restablecer Contraseña</h3>
+            <p className="text-sm text-gray-500">
+              Vas a cambiar la contraseña del usuario <strong className="text-navy-700">{usuarioReset.nombre}</strong>.
+            </p>
+            <form onSubmit={handleAdminReset}>
+              {resetExito ? (
+                <div className="bg-green-50 text-green-700 p-3 rounded-lg text-sm flex items-center space-x-2">
+                  <Check size={16} />
+                  <span>Contraseña actualizada</span>
+                </div>
+              ) : (
+                <>
+                  {resetError && <p className="text-red-500 text-xs mb-2">{resetError}</p>}
+                  <input
+                    type="text"
+                    placeholder="Nueva contraseña"
+                    value={passwordReset}
+                    onChange={e => setPasswordReset(e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-navy-500 mb-4"
+                  />
+                  <div className="flex space-x-3">
+                    <button
+                      type="button"
+                      onClick={() => { setUsuarioReset(null); setResetError(''); }}
+                      className="flex-1 px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 hover:bg-gray-50"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={reseteando || !passwordReset}
+                      className="flex-1 px-4 py-2 bg-navy-900 text-white rounded-lg text-sm hover:bg-navy-800 disabled:opacity-50"
+                    >
+                      {reseteando ? 'Guardando...' : 'Confirmar'}
+                    </button>
+                  </div>
+                </>
+              )}
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -21,7 +21,7 @@ const Documento = sequelize.define('Documento', {
     type: DataTypes.ENUM(...ESTADOS),
     defaultValue: 'PENDIENTE',
   },
-  subido_por_id: { type: DataTypes.INTEGER, allowNull: false },
+  subido_por_id: { type: DataTypes.INTEGER, allowNull: true },
   firmante_actual_id: {
     type: DataTypes.INTEGER,
     allowNull: true,

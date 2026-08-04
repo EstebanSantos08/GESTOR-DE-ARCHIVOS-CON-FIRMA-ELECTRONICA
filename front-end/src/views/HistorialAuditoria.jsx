@@ -86,10 +86,10 @@ export default function HistorialAuditoria() {
                     <td className="px-5 py-3 text-gray-400 text-xs whitespace-nowrap">{r.fecha}</td>
                     <td className="px-5 py-3">
                       <span
-                        title={r.hash}
+                        title={r.hash || 'Sin hash'}
                         className="font-mono text-xs text-gray-500 bg-gray-50 rounded px-2 py-0.5 border border-gray-100 cursor-help"
                       >
-                        {r.hash.substring(0, 16)}…
+                        {r.hash ? `${r.hash.substring(0, 16)}…` : 'Sin hash'}
                       </span>
                     </td>
                   </tr>

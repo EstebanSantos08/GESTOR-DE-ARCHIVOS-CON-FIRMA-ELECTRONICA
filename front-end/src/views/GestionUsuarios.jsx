@@ -279,7 +279,7 @@ export default function GestionUsuarios() {
                         <div className="flex items-center space-x-3">
                           <div className="w-8 h-8 bg-navy-100 rounded-full flex items-center justify-center flex-shrink-0">
                             <span className="text-navy-700 text-xs font-bold">
-                              {u.nombre.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
+                              {((u.nombre || u.email || 'US').split(' ').filter(Boolean).map(n => n[0]).join('') || 'US').substring(0, 2).toUpperCase()}
                             </span>
                           </div>
                           <div>

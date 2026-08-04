@@ -21,17 +21,21 @@ export default function Dashboard() {
   const { metricas, universidades, auditoria, alertas } = useApp();
 
   // Calcular datos para gráfico por criterio
-  const criteriosData = universidades.flatMap(u =>
-    u.facultades.flatMap(f =>
-      (f.periodos ?? []).flatMap(p =>
-        (p.criterios ?? []).map(c => {
-          const docs = (c.actividades ?? []).flatMap(a => a.documentos ?? []);
-          return {
-            nombre: c.nombre,
-            total: docs.length,
-            completados: docs.filter(d => d.estado === 'COMPLETADO').length,
-          };
-        })
+  const criteriosData = (universidades ?? []).flatMap(u =>
+    (u?.facultades ?? []).flatMap(f =>
+      (f?.carreras ?? []).flatMap(ca =>
+        (ca?.periodos ?? []).flatMap(p =>
+          (p?.criterios ?? []).map(c => {
+            const docs = (c?.indicadores ?? []).flatMap(i =>
+              (i?.actividades ?? []).flatMap(a => a?.documentos ?? [])
+            );
+            return {
+              nombre: c.nombre,
+              total: docs.length,
+              completados: docs.filter(d => d.estado === 'COMPLETADO').length,
+            };
+          })
+        )
       )
     )
   ).filter(c => c.total > 0);

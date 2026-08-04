@@ -62,10 +62,12 @@ export function AppProvider({ children }) {
       });
       if (res.ok) {
         const docs = await res.json();
-        setDocumentosGlobales(docs);
+        setDocumentosGlobales(Array.isArray(docs) ? docs : []);
+      } else {
+        setDocumentosGlobales([]);
       }
     } catch {
-      // silencioso
+      setDocumentosGlobales([]);
     }
   }
 
@@ -992,13 +994,13 @@ export function AppProvider({ children }) {
     return data;
   }
 
-  const todosLosDocs = universidades.flatMap(u =>
-    u.facultades.flatMap(f =>
-      f.carreras.flatMap(ca =>
-        ca.periodos.flatMap(p =>
-          p.criterios.flatMap(c =>
-            c.indicadores.flatMap(i =>
-              i.actividades.flatMap(a => a.documentos)
+  const todosLosDocs = (universidades ?? []).flatMap(u =>
+    (u?.facultades ?? []).flatMap(f =>
+      (f?.carreras ?? []).flatMap(ca =>
+        (ca?.periodos ?? []).flatMap(p =>
+          (p?.criterios ?? []).flatMap(c =>
+            (c?.indicadores ?? []).flatMap(i =>
+              (i?.actividades ?? []).flatMap(a => a?.documentos ?? [])
             )
           )
         )

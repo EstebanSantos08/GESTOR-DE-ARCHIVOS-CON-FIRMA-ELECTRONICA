@@ -38,6 +38,7 @@ export function AppProvider({ children }) {
   const [token, setToken] = useState(null);
   const [isAutenticado, setIsAutenticado] = useState(false);
   const [universidades, setUniversidades] = useState([]);
+  const [cargandoEstructura, setCargandoEstructura] = useState(false);
   const [documentosGlobales, setDocumentosGlobales] = useState([]);
   const [documentoSeleccionado, setDocumentoSeleccionado] = useState(null);
   const [modalFirmaAbierto, setModalFirmaAbierto] = useState(false);

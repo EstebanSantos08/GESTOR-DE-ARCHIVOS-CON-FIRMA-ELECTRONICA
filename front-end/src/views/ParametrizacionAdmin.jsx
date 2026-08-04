@@ -1,6 +1,74 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Plus, Check, Building2, BookOpen, GraduationCap, CalendarDays, Microscope, Target, ClipboardList, Pencil, Trash2, X, Save } from 'lucide-react';
 import { useApp } from '../context/useApp';
+
+export const RESPONSABLES_PREDEFINIDOS = [
+  'Directores de Carrera',
+  'Ing. Andrés Galarza',
+  'Ing. Antonio Cajamarca',
+  'Bienestar Estudiantil',
+  'Ing. José Carrillo',
+  'PhD. Orlando Álvarez',
+  'Eco. Jorge Cárdenas / Ing. Jeyson Gaona',
+  'Ing. Jenny Vizñay / Ing. Juan Pablo Pazmiño',
+  'Ing. Xavier González',
+  'Dr. Orlando Álvarez',
+  'Ing. Pablo Buestán',
+  'Ing. Sandro Ortiz',
+  'Ing. David Calderón',
+  'Biblioteca UCACUE / Directores de Carrera',
+];
+
+export const CRITERIOS_PREDEFINIDOS = [
+  '1. CURRÍCULO',
+  '2. DOCENCIA',
+  '3. INVESTIGACIÓN E INNOVACIÓN',
+  '4. VINCULACIÓN CON LA SOCIEDAD',
+  '5. FUNCIONES ESTRATÉGICAS Y DE SOPORTE',
+];
+
+export const INDICADORES_PREDEFINIDOS = [
+  // 1. CURRÍCULO
+  { numero: 1,  criterio: '1. CURRÍCULO', nombre: 'Perfil de egreso', responsable_nombre: 'Directores de Carrera' },
+  { numero: 2,  criterio: '1. CURRÍCULO', nombre: 'Proyecto curricular', responsable_nombre: 'Directores de Carrera' },
+  { numero: 3,  criterio: '1. CURRÍCULO', nombre: 'Malla curricular', responsable_nombre: 'Directores de Carrera' },
+  { numero: 4,  criterio: '1. CURRÍCULO', nombre: 'Syllabus', responsable_nombre: 'Directores de Carrera' },
+  { numero: 5,  criterio: '1. CURRÍCULO', nombre: 'Metodología y recursos de aprendizaje', responsable_nombre: 'Directores de Carrera' },
+  { numero: 6,  criterio: '1. CURRÍCULO', nombre: 'Escenarios de prácticas formativas', responsable_nombre: 'Directores de Carrera' },
+  { numero: 7,  criterio: '1. CURRÍCULO', nombre: 'Tecnologías para el Aprendizaje y Conocimiento (TAC)', responsable_nombre: 'Directores de Carrera' },
+
+  // 2. DOCENCIA
+  { numero: 8,  criterio: '2. DOCENCIA', nombre: 'Afinidad del personal académico', responsable_nombre: 'Directores de Carrera' },
+  { numero: 9,  criterio: '2. DOCENCIA', nombre: 'Personal académico titular permanente', responsable_nombre: 'Directores de Carrera' },
+  { numero: 10, criterio: '2. DOCENCIA', nombre: 'Evaluación integral del desempeño del personal académico', responsable_nombre: 'Directores de Carrera' },
+  { numero: 11, criterio: '2. DOCENCIA', nombre: 'Sistema de tutorías académicas', responsable_nombre: 'Ing. Andrés Galarza' },
+  { numero: 12, criterio: '2. DOCENCIA', nombre: 'Habilidades blandas', responsable_nombre: 'Directores de Carrera' },
+  { numero: 13, criterio: '2. DOCENCIA', nombre: 'Seguimiento al cumplimiento de los resultados de aprendizaje', responsable_nombre: 'Ing. Antonio Cajamarca' },
+  { numero: 14, criterio: '2. DOCENCIA', nombre: 'Tasa de deserción', responsable_nombre: 'Bienestar Estudiantil' },
+  { numero: 15, criterio: '2. DOCENCIA', nombre: 'Tasa de titulación de grado', responsable_nombre: 'Ing. José Carrillo' },
+  { numero: 16, criterio: '2. DOCENCIA', nombre: 'Seguimiento a graduados', responsable_nombre: 'Ing. Antonio Cajamarca' },
+  { numero: 17, criterio: '2. DOCENCIA', nombre: 'Éxito de los graduados', responsable_nombre: 'Ing. Antonio Cajamarca' },
+
+  // 3. INVESTIGACIÓN E INNOVACIÓN
+  { numero: 18, criterio: '3. INVESTIGACIÓN E INNOVACIÓN', nombre: 'Gestión de la investigación e innovación', responsable_nombre: 'PhD. Orlando Álvarez' },
+  { numero: 19, criterio: '3. INVESTIGACIÓN E INNOVACIÓN', nombre: 'Producción académica', responsable_nombre: 'PhD. Orlando Álvarez' },
+  { numero: 20, criterio: '3. INVESTIGACIÓN E INNOVACIÓN', nombre: 'Interdisciplinariedad para la articulación de las funciones sustantivas', responsable_nombre: 'Eco. Jorge Cárdenas / Ing. Jeyson Gaona' },
+
+  // 4. VINCULACIÓN CON LA SOCIEDAD
+  { numero: 21, criterio: '4. VINCULACIÓN CON LA SOCIEDAD', nombre: 'Planificación y gestión de la vinculación con la sociedad', responsable_nombre: 'Ing. Jenny Vizñay / Ing. Juan Pablo Pazmiño' },
+  { numero: 22, criterio: '4. VINCULACIÓN CON LA SOCIEDAD', nombre: 'Mecanismos de transferencia de tecnología y conocimiento', responsable_nombre: 'Ing. Jenny Vizñay / Ing. Juan Pablo Pazmiño' },
+  { numero: 23, criterio: '4. VINCULACIÓN CON LA SOCIEDAD', nombre: 'Prácticas preprofesionales', responsable_nombre: 'Software: Ing. Xavier González | Sistemas: Dr. Orlando Álvarez | VR: Ing. Xavier González | Robótica: Ing. Pablo Buestán | Biomédicos: Ing. Sandro Ortiz' },
+
+  // 5. FUNCIONES ESTRATÉGICAS Y DE SOPORTE
+  { numero: 24, criterio: '5. FUNCIONES ESTRATÉGICAS Y DE SOPORTE', nombre: 'Planificación académica y administrativa de la carrera', responsable_nombre: 'Directores de Carrera' },
+  { numero: 25, criterio: '5. FUNCIONES ESTRATÉGICAS Y DE SOPORTE', nombre: 'Aseguramiento de la calidad de la carrera', responsable_nombre: 'Ing. José Carrillo' },
+  { numero: 26, criterio: '5. FUNCIONES ESTRATÉGICAS Y DE SOPORTE', nombre: 'Ética, transparencia e integridad', responsable_nombre: 'Directores de Carrera' },
+  { numero: 27, criterio: '5. FUNCIONES ESTRATÉGICAS Y DE SOPORTE', nombre: 'Internacionalización y movilidad', responsable_nombre: 'Ing. Andrés Galarza' },
+  { numero: 28, criterio: '5. FUNCIONES ESTRATÉGICAS Y DE SOPORTE', nombre: 'Gestión de la infraestructura física y tecnológica', responsable_nombre: 'Ing. David Calderón' },
+  { numero: 29, criterio: '5. FUNCIONES ESTRATÉGICAS Y DE SOPORTE', nombre: 'Ambientes de aprendizaje', responsable_nombre: 'Ing. David Calderón' },
+  { numero: 30, criterio: '5. FUNCIONES ESTRATÉGICAS Y DE SOPORTE', nombre: 'Herramientas pedagógicas', responsable_nombre: 'Ing. David Calderón' },
+  { numero: 31, criterio: '5. FUNCIONES ESTRATÉGICAS Y DE SOPORTE', nombre: 'Gestión del acervo y recursos bibliográficos', responsable_nombre: 'Biblioteca UCACUE / Directores de Carrera' },
+];
 
 function Toggle({ value, onChange, label }) {
   return (
@@ -40,7 +108,16 @@ export default function ParametrizacionAdmin() {
     agregarCriterio, actualizarCriterio, eliminarCriterio,
     agregarIndicador, actualizarIndicador, eliminarIndicador,
     agregarActividad, actualizarActividad, eliminarActividad,
+    listarUsuarios,
   } = useApp();
+
+  const [usuariosDB, setUsuariosDB] = useState([]);
+
+  useEffect(() => {
+    if (listarUsuarios) {
+      listarUsuarios().then(usrs => setUsuariosDB(usrs || [])).catch(() => {});
+    }
+  }, []);
 
   const [tab, setTab] = useState('universidad');
   const [exito, setExito] = useState('');
@@ -503,7 +580,19 @@ export default function ParametrizacionAdmin() {
                       {carrSelCrit?.periodos.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
                     </select>
                   </FormField>
-                  <FormField label="Nombre"><input value={fCrit.nombre} onChange={e => setFCrit({...fCrit, nombre: e.target.value})} placeholder="Academia, Investigación..." className={inputCls} /></FormField>
+                  <FormField label="Nombre del Criterio">
+                    <select
+                      value={CRITERIOS_PREDEFINIDOS.includes(fCrit.nombre) ? fCrit.nombre : ''}
+                      onChange={e => {
+                        if (e.target.value) setFCrit({ ...fCrit, nombre: e.target.value });
+                      }}
+                      className={`${selectCls} mb-2`}
+                    >
+                      <option value="">-- Seleccionar Criterio Predefinido (opcional) --</option>
+                      {CRITERIOS_PREDEFINIDOS.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                    <input value={fCrit.nombre} onChange={e => setFCrit({...fCrit, nombre: e.target.value})} placeholder="O escribe el nombre del criterio..." className={inputCls} />
+                  </FormField>
                   <Toggle value={fCrit.requiere_firma} onChange={v => setFCrit({...fCrit, requiere_firma: v})} label="Requiere firma digital" />
                   <button type="submit" className="w-full flex items-center justify-center space-x-2 px-4 py-2.5 bg-navy-900 text-white rounded-lg text-sm font-medium hover:bg-navy-800 transition-colors">
                     <Plus size={16} /><span>Crear Criterio</span>
@@ -582,9 +671,76 @@ export default function ParametrizacionAdmin() {
                       {perSelInd?.criterios.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
                     </select>
                   </FormField>
+
+                  <FormField label="Seleccionar Indicador Predefinido (opcional)">
+                    <select
+                      onChange={e => {
+                        const sel = INDICADORES_PREDEFINIDOS.find(i => i.nombre === e.target.value);
+                        if (sel) {
+                          setFInd(prev => ({
+                            ...prev,
+                            numero: sel.numero,
+                            nombre: sel.nombre,
+                            responsable_nombre: sel.responsable_nombre,
+                          }));
+                        }
+                      }}
+                      className={selectCls}
+                    >
+                      <option value="">-- Seleccionar de los 31 Indicadores --</option>
+                      {INDICADORES_PREDEFINIDOS
+                        .filter(i => !critSelInd?.nombre || i.criterio.toLowerCase().includes(critSelInd.nombre.toLowerCase()) || critSelInd.nombre.toLowerCase().includes(i.criterio.toLowerCase()))
+                        .map(i => (
+                          <option key={i.numero} value={i.nombre}>
+                            [{i.numero}] {i.nombre} ({i.criterio})
+                          </option>
+                        ))}
+                    </select>
+                  </FormField>
+
                   <FormField label="Número"><input type="number" value={fInd.numero} onChange={e => setFInd({...fInd, numero: e.target.value})} placeholder="1, 2, 3..." className={inputCls} /></FormField>
                   <FormField label="Nombre"><input value={fInd.nombre} onChange={e => setFInd({...fInd, nombre: e.target.value})} placeholder="Ej. Sílabos, Mallas..." className={inputCls} /></FormField>
-                  <FormField label="Responsable (Texto)"><input value={fInd.responsable_nombre} onChange={e => setFInd({...fInd, responsable_nombre: e.target.value})} placeholder="Directores de carrera..." className={inputCls} /></FormField>
+
+                  <FormField label="Responsable Asignado">
+                    <select
+                      value={fInd.responsable_nombre}
+                      onChange={e => {
+                        const val = e.target.value;
+                        const usr = usuariosDB.find(u => u.nombre === val);
+                        setFInd(prev => ({
+                          ...prev,
+                          responsable_nombre: val,
+                          responsable_id: usr ? usr.id : null,
+                        }));
+                      }}
+                      className={`${selectCls} mb-2`}
+                    >
+                      <option value="">-- Seleccionar Responsable --</option>
+                      {usuariosDB.length > 0 && (
+                        <optgroup label="Usuarios Registrados en Sistema">
+                          {usuariosDB.map(u => (
+                            <option key={u.id} value={u.nombre}>
+                              {u.nombre} ({u.rol?.nombre || u.email})
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                      <optgroup label="Cargos y Entidades Predefinidas">
+                        {RESPONSABLES_PREDEFINIDOS.map(r => (
+                          <option key={r} value={r}>
+                            {r}
+                          </option>
+                        ))}
+                      </optgroup>
+                    </select>
+                    <input
+                      value={fInd.responsable_nombre}
+                      onChange={e => setFInd({...fInd, responsable_nombre: e.target.value})}
+                      placeholder="O ingresar nombre/cargo de responsable personalizado..."
+                      className={inputCls}
+                    />
+                  </FormField>
+
                   <button type="submit" className="w-full flex items-center justify-center space-x-2 px-4 py-2.5 bg-navy-900 text-white rounded-lg text-sm font-medium hover:bg-navy-800 transition-colors">
                     <Plus size={16} /><span>Crear Indicador</span>
                   </button>
@@ -601,7 +757,41 @@ export default function ParametrizacionAdmin() {
                         <>
                           <input type="number" value={editando?.valor?.numero || ''} onChange={e => setEditando(prev => ({ ...prev, valor: { ...prev.valor, numero: e.target.value } }))} placeholder="Número" className={inputSmCls} />
                           <input value={editando?.valor?.nombre || ''} onChange={e => setEditando(prev => ({ ...prev, valor: { ...prev.valor, nombre: e.target.value } }))} placeholder="Nombre" className={`${inputSmCls} mt-1`} />
-                          <input value={editando?.valor?.responsable_nombre || ''} onChange={e => setEditando(prev => ({ ...prev, valor: { ...prev.valor, responsable_nombre: e.target.value } }))} placeholder="Responsable" className={`${inputSmCls} mt-1`} />
+                          <select
+                            value={editando?.valor?.responsable_nombre || ''}
+                            onChange={e => {
+                              const val = e.target.value;
+                              const usr = usuariosDB.find(u => u.nombre === val);
+                              setEditando(prev => ({
+                                ...prev,
+                                valor: {
+                                  ...prev.valor,
+                                  responsable_nombre: val,
+                                  responsable_id: usr ? usr.id : null,
+                                }
+                              }));
+                            }}
+                            className={`${inputSmCls} mt-1`}
+                          >
+                            <option value="">-- Cambiar Responsable --</option>
+                            {usuariosDB.length > 0 && (
+                              <optgroup label="Usuarios Registrados">
+                                {usuariosDB.map(u => (
+                                  <option key={u.id} value={u.nombre}>
+                                    {u.nombre}
+                                  </option>
+                                ))}
+                              </optgroup>
+                            )}
+                            <optgroup label="Cargos Predefinidos">
+                              {RESPONSABLES_PREDEFINIDOS.map(r => (
+                                <option key={r} value={r}>
+                                  {r}
+                                </option>
+                              ))}
+                            </optgroup>
+                          </select>
+                          <input value={editando?.valor?.responsable_nombre || ''} onChange={e => setEditando(prev => ({ ...prev, valor: { ...prev.valor, responsable_nombre: e.target.value } }))} placeholder="O editar texto manualmente" className={`${inputSmCls} mt-1`} />
                         </>
                       }
                     >

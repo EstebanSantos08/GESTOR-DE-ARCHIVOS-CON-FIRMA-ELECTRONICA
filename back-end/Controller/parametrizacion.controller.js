@@ -147,6 +147,7 @@ async function estructura(req, res) {
                           id: ind.id,
                           numero: ind.numero,
                           nombre: ind.nombre,
+                          responsable_nombre: ind.responsable_nombre || null,
                           responsable: ind.responsable || null,
                           actividades: actividades
                             .filter(a => a.indicador_id === ind.id)

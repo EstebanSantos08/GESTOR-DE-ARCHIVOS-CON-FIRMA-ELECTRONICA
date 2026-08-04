@@ -72,8 +72,21 @@ async function seed() {
       { nombre: 'Ana Director',           email: 'director@universidad.edu',    password: 'Director123!',    rol: 'DIRECTOR_CARRERA', facultad_id: facultad.id,  carrera_id: carreraSoftware.id },
       { nombre: 'Juan Docente',           email: 'docente@universidad.edu',     password: 'Docente123!',     rol: 'DOCENTE',          facultad_id: facultad.id,  carrera_id: carreraSoftware.id },
       { nombre: 'Laura Responsable',      email: 'responsable@universidad.edu', password: 'Responsable123!', rol: 'RESPONSABLE_AREA', facultad_id: facultad.id,  carrera_id: null },
-      { nombre: 'Ing. Andrés Galarza',    email: 'agalarza@universidad.edu',    password: 'Docente123!',     rol: 'DOCENTE',          facultad_id: facultad.id,  carrera_id: carreraSoftware.id },
-      { nombre: 'Ing. Antonio Cajamarca', email: 'acajamarca@universidad.edu',  password: 'Docente123!',     rol: 'DOCENTE',          facultad_id: facultad.id,  carrera_id: carreraSoftware.id },
+      { nombre: 'Directores de Carrera',   email: 'directores@universidad.edu',  password: 'Director123!',    rol: 'DIRECTOR_CARRERA', facultad_id: facultad.id,  carrera_id: carreraSoftware.id },
+      { nombre: 'Ing. Andrés Galarza',    email: 'agalarza@universidad.edu',    password: 'Galarza123!',     rol: 'RESPONSABLE_AREA', facultad_id: facultad.id,  carrera_id: carreraSoftware.id },
+      { nombre: 'Ing. Antonio Cajamarca', email: 'acajamarca@universidad.edu',  password: 'Cajamarca123!',   rol: 'RESPONSABLE_AREA', facultad_id: facultad.id,  carrera_id: carreraSoftware.id },
+      { nombre: 'Bienestar Estudiantil',  email: 'bienestar@universidad.edu',   password: 'Bienestar123!',   rol: 'RESPONSABLE_AREA', facultad_id: facultad.id,  carrera_id: null },
+      { nombre: 'Ing. José Carrillo',     email: 'jcarrillo@universidad.edu',   password: 'Carrillo123!',    rol: 'RESPONSABLE_AREA', facultad_id: facultad.id,  carrera_id: null },
+      { nombre: 'PhD. Orlando Álvarez',   email: 'oalvarez@universidad.edu',    password: 'Alvarez123!',     rol: 'RESPONSABLE_AREA', facultad_id: facultad.id,  carrera_id: null },
+      { nombre: 'Eco. Jorge Cárdenas',    email: 'jcardenas@universidad.edu',   password: 'Cardenas123!',    rol: 'RESPONSABLE_AREA', facultad_id: facultad.id,  carrera_id: null },
+      { nombre: 'Ing. Jeyson Gaona',      email: 'jgaona@universidad.edu',      password: 'Gaona123!',       rol: 'RESPONSABLE_AREA', facultad_id: facultad.id,  carrera_id: null },
+      { nombre: 'Ing. Jenny Vizñay',      email: 'jviznay@universidad.edu',     password: 'Viznay123!',      rol: 'RESPONSABLE_AREA', facultad_id: facultad.id,  carrera_id: null },
+      { nombre: 'Ing. Juan Pablo Pazmiño',email: 'jpazmino@universidad.edu',    password: 'Pazmino123!',     rol: 'RESPONSABLE_AREA', facultad_id: facultad.id,  carrera_id: null },
+      { nombre: 'Ing. Xavier González',   email: 'xgonzalez@universidad.edu',   password: 'Gonzalez123!',    rol: 'RESPONSABLE_AREA', facultad_id: facultad.id,  carrera_id: carreraSoftware.id },
+      { nombre: 'Ing. Pablo Buestán',     email: 'pbuestan@universidad.edu',    password: 'Buestan123!',     rol: 'RESPONSABLE_AREA', facultad_id: facultad.id,  carrera_id: null },
+      { nombre: 'Ing. Sandro Ortiz',      email: 'sortiz@universidad.edu',      password: 'Ortiz123!',       rol: 'RESPONSABLE_AREA', facultad_id: facultad.id,  carrera_id: null },
+      { nombre: 'Ing. David Calderón',    email: 'dcalderon@universidad.edu',   password: 'Calderon123!',    rol: 'RESPONSABLE_AREA', facultad_id: facultad.id,  carrera_id: null },
+      { nombre: 'Biblioteca UCACUE',      email: 'biblioteca@universidad.edu',   password: 'Biblioteca123!',  rol: 'RESPONSABLE_AREA', facultad_id: facultad.id,  carrera_id: null },
     ];
 
     console.log('\nUsuarios:');

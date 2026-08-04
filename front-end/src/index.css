@@ -2,4 +2,4 @@
 @tailwind components;
 @tailwind utilities;
 * { box-sizing: border-box; }
-body { margin: 0; font-family: 'Inter', system-ui, sans-serif; background: #f8fafc; }
+body { margin: 0; font-family: 'Inter', system-ui, sans-serif; background: #e2e8f0; }

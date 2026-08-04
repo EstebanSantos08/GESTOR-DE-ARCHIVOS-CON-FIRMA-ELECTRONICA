@@ -34,16 +34,24 @@ class ErrorBoundary extends React.Component {
             <div className="w-12 h-12 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto text-xl font-bold">
               !
             </div>
-            <h2 className="text-xl font-bold text-navy-900">Se produjo un error inesperado</h2>
-            <p className="text-sm text-gray-500">
-              Ocurrió un inconveniente al renderizar la vista. Puedes reiniciar tu sesión para solucionar el problema.
+            <h2 className="text-xl font-bold text-navy-900">Se produjo un error de renderizado</h2>
+            <p className="text-xs text-gray-500 bg-gray-50 p-3 rounded-lg border border-gray-200 text-left font-mono overflow-auto max-h-24">
+              {this.state.error?.message || 'Error desconocido'}
             </p>
-            <button
-              onClick={this.handleReset}
-              className="w-full py-2.5 px-4 bg-navy-900 text-white font-medium rounded-lg text-sm hover:bg-navy-800 transition-colors shadow-sm"
-            >
-              Reiniciar Sesión
-            </button>
+            <div className="flex space-x-3 pt-2">
+              <button
+                onClick={() => this.setState({ hasError: false, error: null })}
+                className="flex-1 py-2.5 px-4 border border-gray-300 text-gray-700 font-medium rounded-lg text-sm hover:bg-gray-50 transition-colors"
+              >
+                Reintentar
+              </button>
+              <button
+                onClick={this.handleReset}
+                className="flex-1 py-2.5 px-4 bg-navy-900 text-white font-medium rounded-lg text-sm hover:bg-navy-800 transition-colors shadow-sm"
+              >
+                Reiniciar Sesión
+              </button>
+            </div>
           </div>
         </div>
       );

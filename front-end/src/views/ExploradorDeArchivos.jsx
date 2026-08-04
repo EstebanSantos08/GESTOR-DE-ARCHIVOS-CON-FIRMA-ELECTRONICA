@@ -150,8 +150,8 @@ export default function ExploradorDeArchivos() {
     }
   }
 
-  const uniActual  = universidades.find(u => u.id === selUniId);
-  const facActual  = uniActual?.facultades.find(f => f.id === selFacId);
+  const uniActual  = (universidades ?? []).find(u => u.id === selUniId);
+  const facActual  = uniActual?.facultades?.find(f => f.id === selFacId);
   const carrActual = facActual?.carreras?.find(c => c.id === selCarrId);
   const periActual = carrActual?.periodos?.find(p => p.id === selPerId);
   const critActual = periActual?.criterios?.find(c => c.id === selCritId);

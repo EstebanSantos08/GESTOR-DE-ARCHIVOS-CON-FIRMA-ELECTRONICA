@@ -1,9 +1,8 @@
-import React, { createContext, useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { AppContext } from './AppContextObject';
 import { mockAuditoria, mockAlertas } from '../data/mockData';
 
 const API_URL = 'http://localhost:3000/api';
-
-export const AppContext = createContext(null);
 
 function tokenValido(token) {
   try {

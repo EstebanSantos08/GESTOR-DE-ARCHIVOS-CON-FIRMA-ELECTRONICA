@@ -4,6 +4,8 @@ import Breadcrumbs from '../components/common/Breadcrumbs';
 import Badge from '../components/common/Badge';
 import { useApp } from '../context/useApp';
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+
 function CarpetaCard({ nombre, descripcion, onClick, onEdit, onDelete }) {
   return (
     <div className="bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md hover:border-navy-200 transition-all duration-200 group relative">
@@ -132,7 +134,7 @@ export default function ExploradorDeArchivos() {
 
   async function handleDescargar(doc) {
     try {
-      const res = await fetch(`http://localhost:3000/api/documentos/${doc.id}/descargar`, {
+      const res = await fetch(`${API_URL}/documentos/${doc.id}/descargar`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw new Error('Error al descargar');

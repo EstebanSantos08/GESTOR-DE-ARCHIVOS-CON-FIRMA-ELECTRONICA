@@ -4,7 +4,7 @@ export default {
   theme: {
     extend: {
       colors: {
-
+/*
         // PALETA ORIGINAL (AZUL / NAVY) - Descomentar si deseas volver al tema original
         navy: {
           50: '#eff6ff',
@@ -16,9 +16,9 @@ export default {
           900: '#1e3a8a',
           950: '#172554',
         }
+*/
 
-
-        /* PALETA ROJO, BLANCO Y PLOMO (ACTIVA)
+        //PALETA ROJO, BLANCO Y PLOMO (ACTIVA)
         navy: {
           50: '#fef2f2',   // Fondo rojo muy suave
           100: '#fee2e2',  // Fondo rojo claro / badges
@@ -28,7 +28,7 @@ export default {
           800: '#991b1b',  // Rojo oscuro (hover)
           900: '#7f1d1d',  // Rojo borgoña corporativo (Sidebar y Encabezado)
           950: '#450a0a',  // Rojo profundo
-        }*/
+        }
       }
     }
   },

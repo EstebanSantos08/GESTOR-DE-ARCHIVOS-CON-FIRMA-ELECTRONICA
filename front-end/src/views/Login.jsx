@@ -86,11 +86,20 @@ export default function Login() {
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-blue-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
+          {/* LOGO ORIGINAL (Descomentar para revertir):
+          <div className="w-16 h-16 bg-navy-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
             <Shield size={30} className="text-white" />
           </div>
+          */}
+          <div className="bg-white p-3 rounded-2xl shadow-xl inline-block mb-4 border border-gray-100 max-w-sm">
+            <img
+              src="/logo-ucacue.png"
+              alt="Universidad Católica de Cuenca"
+              className="h-12 w-auto mx-auto object-contain"
+            />
+          </div>
           <h1 className="text-white text-2xl font-bold">GestDoc</h1>
-          <p className="text-blue-300 text-sm mt-1">Sistema de Gestión Documental y Firma Digital</p>
+          <p className="text-red-200 text-sm mt-1">Sistema de Gestión Documental y Firma Digital</p>
         </div>
 
         <div className="bg-white rounded-2xl shadow-2xl overflow-hidden">

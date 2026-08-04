@@ -45,15 +45,24 @@ export default function Sidebar() {
   return (
     <aside className="fixed left-0 top-0 h-screen w-64 bg-navy-900 flex flex-col z-40 shadow-xl">
       {/* Logo */}
-      <div className="px-6 py-5 border-b border-white/10">
+      <div className="px-5 py-4 border-b border-white/10 flex items-center justify-center bg-white/5">
+        {/* LOGO ORIGINAL (Descomentar para revertir):
         <div className="flex items-center space-x-3">
-          <div className="w-9 h-9 bg-blue-500 rounded-lg flex items-center justify-center flex-shrink-0">
+          <div className="w-9 h-9 bg-navy-600 rounded-lg flex items-center justify-center flex-shrink-0">
             <Shield size={18} className="text-white" />
           </div>
           <div>
             <p className="text-white font-bold text-sm leading-tight">GestDoc</p>
-            <p className="text-blue-300 text-xs">Firma Digital</p>
+            <p className="text-red-300 text-xs">Firma Digital</p>
           </div>
+        </div>
+        */}
+        <div className="bg-white p-2 rounded-xl shadow-md border border-white/20 w-full flex items-center justify-center">
+          <img
+            src="/logo-ucacue.png"
+            alt="Universidad Católica de Cuenca"
+            className="h-9 w-auto object-contain"
+          />
         </div>
       </div>
 

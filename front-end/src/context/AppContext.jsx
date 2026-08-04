@@ -423,8 +423,8 @@ export function AppProvider({ children }) {
     return data;
   }
 
-  async function eliminarUsuario(usuarioId) {
-    const res = await fetch(`${API_URL}/auth/usuarios/${usuarioId}`, {
+  async function eliminarUsuario(usuarioId, hard = false) {
+    const res = await fetch(`${API_URL}/auth/usuarios/${usuarioId}${hard ? '?hard=true' : ''}`, {
       method: 'DELETE',
       headers: authHeaders(),
     });

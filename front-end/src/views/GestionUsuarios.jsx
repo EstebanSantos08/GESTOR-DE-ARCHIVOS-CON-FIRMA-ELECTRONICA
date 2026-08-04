@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Shield, RefreshCw, AlertCircle, Check, Trash2, Save, Key, Edit2, Search, Filter } from 'lucide-react';
+import { Users, Shield, RefreshCw, AlertCircle, Check, Trash2, Save, Key, Edit2, Search, Filter, Power, UserX, UserCheck } from 'lucide-react';
 import { useApp } from '../context/useApp';
 
 const ROL_COLOR = {
@@ -79,7 +79,15 @@ export default function GestionUsuarios() {
 
   function handleEditChange(campo, valor) {
     setEditForm(prev => {
-      const nuevo = { ...prev, [campo]: valor === '' ? null : (campo === 'nombre' || campo === 'email' ? valor : parseInt(valor)) };
+      let valProcesado = valor;
+      if (valor === '' || valor === null || valor === undefined) {
+        valProcesado = null;
+      } else if (campo === 'rol_id' || campo === 'facultad_id' || campo === 'carrera_id') {
+        const parsed = parseInt(valor, 10);
+        valProcesado = isNaN(parsed) ? null : parsed;
+      }
+
+      const nuevo = { ...prev, [campo]: valProcesado };
       
       if (campo === 'rol_id') {
         const rolSeleccionado = roles.find(r => r.id === nuevo.rol_id)?.nombre;
@@ -100,7 +108,13 @@ export default function GestionUsuarios() {
     setEditError('');
     setEditExito(false);
     try {
-      const actualizado = await actualizarUsuario(usuarioEditar.id, editForm);
+      const payloadLimpiado = {
+        ...editForm,
+        facultad_id: (editForm.facultad_id === '' || editForm.facultad_id === null || isNaN(editForm.facultad_id)) ? null : parseInt(editForm.facultad_id, 10),
+        carrera_id: (editForm.carrera_id === '' || editForm.carrera_id === null || isNaN(editForm.carrera_id)) ? null : parseInt(editForm.carrera_id, 10),
+        rol_id: (editForm.rol_id === '' || editForm.rol_id === null || isNaN(editForm.rol_id)) ? undefined : parseInt(editForm.rol_id, 10),
+      };
+      const actualizado = await actualizarUsuario(usuarioEditar.id, payloadLimpiado);
       setUsuarios(prev => prev.map(u => u.id === usuarioEditar.id ? { ...u, ...actualizado } : u));
       setEditExito(true);
       setTimeout(() => {
@@ -113,12 +127,26 @@ export default function GestionUsuarios() {
     }
   }
 
-  async function handleEliminar(u) {
-    if (!window.confirm(`¿Desactivar al usuario "${u.nombre}"? No podrá iniciar sesión.`)) return;
+  async function handleToggleActivo(u) {
+    const accion = u.activo ? 'desactivar' : 'activar';
+    if (!window.confirm(`¿Deseas ${accion} al usuario "${u.nombre}"?`)) return;
     setEliminando(u.id);
     try {
-      await eliminarUsuario(u.id);
-      setUsuarios(prev => prev.map(x => x.id === u.id ? { ...x, activo: false } : x));
+      const res = await eliminarUsuario(u.id, false);
+      setUsuarios(prev => prev.map(x => x.id === u.id ? { ...x, activo: res.activo ?? !u.activo } : x));
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setEliminando(null);
+    }
+  }
+
+  async function handleEliminarDefinitivo(u) {
+    if (!window.confirm(`⚠️ ATENCIÓN: ¿Deseas ELIMINAR PERMANENTEMENTE a "${u.nombre}" de la base de datos?\nEsta acción borrará totalmente la cuenta y no se puede deshacer.`)) return;
+    setEliminando(u.id);
+    try {
+      await eliminarUsuario(u.id, true);
+      setUsuarios(prev => prev.filter(x => x.id !== u.id));
     } catch (err) {
       setError(err.message);
     } finally {
@@ -290,12 +318,24 @@ export default function GestionUsuarios() {
                             <Key size={14} />
                           </button>
                           <button
-                            onClick={() => handleEliminar(u)}
-                            disabled={eliminando === u.id || !u.activo || esMismoUsuario}
-                            title="Desactivar usuario"
-                            className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-40"
+                            onClick={() => handleToggleActivo(u)}
+                            disabled={eliminando === u.id || esMismoUsuario}
+                            title={u.activo ? "Desactivar usuario (deshabilita acceso)" : "Reactivar usuario"}
+                            className={`p-1.5 rounded-lg transition-colors disabled:opacity-40 ${
+                              u.activo
+                                ? 'text-amber-500 hover:text-amber-700 hover:bg-amber-50'
+                                : 'text-green-600 hover:text-green-800 hover:bg-green-50'
+                            }`}
                           >
-                            {eliminando === u.id ? <RefreshCw size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                            {eliminando === u.id ? <RefreshCw size={14} className="animate-spin" /> : (u.activo ? <UserX size={14} /> : <UserCheck size={14} />)}
+                          </button>
+                          <button
+                            onClick={() => handleEliminarDefinitivo(u)}
+                            disabled={eliminando === u.id || esMismoUsuario}
+                            title="Eliminar permanentemente de la base de datos"
+                            className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-40"
+                          >
+                            <Trash2 size={14} />
                           </button>
                         </div>
                       </td>

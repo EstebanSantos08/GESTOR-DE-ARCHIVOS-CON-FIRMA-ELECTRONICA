@@ -107,6 +107,7 @@ async function actualizarRol(req, res) {
 
 async function eliminarUsuario(req, res) {
   try {
+    const { Indicador, Documento } = require('../Model');
     const usuario = await Usuario.findByPk(req.params.id);
     if (!usuario) return res.status(404).json({ error: 'Usuario no encontrado' });
 
@@ -114,8 +115,21 @@ async function eliminarUsuario(req, res) {
       return res.status(400).json({ error: 'No puedes eliminar tu propia cuenta' });
     }
 
-    await usuario.update({ activo: false });
-    res.json({ mensaje: 'Usuario desactivado correctamente' });
+    const hardDelete = req.query.hard === 'true' || req.body?.hard === true;
+
+    if (hardDelete) {
+      // Desvincular de Indicadores y Documentos para evitar violación de FK
+      await Indicador.update({ responsable_id: null }, { where: { responsable_id: usuario.id } });
+      await Documento.update({ firmante_actual_id: null }, { where: { firmante_actual_id: usuario.id } });
+      await Documento.update({ subido_por_id: null }, { where: { subido_por_id: usuario.id } });
+
+      await usuario.destroy();
+      return res.json({ mensaje: 'Usuario eliminado permanentemente de la base de datos', id: req.params.id, hard: true });
+    } else {
+      const nuevoEstado = req.body?.activo !== undefined ? req.body.activo : !usuario.activo;
+      await usuario.update({ activo: nuevoEstado });
+      return res.json({ mensaje: `Usuario ${nuevoEstado ? 'activado' : 'desactivado'} correctamente`, activo: nuevoEstado });
+    }
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -140,14 +154,25 @@ async function actualizarUsuario(req, res) {
     }
 
     const camposActualizar = {};
-    if (nombre !== undefined) camposActualizar.nombre = nombre;
+    if (nombre !== undefined && nombre !== null) camposActualizar.nombre = nombre;
+
+    // Helper para convertir strings vacíos o valores no numéricos en null
+    const parseIntegerId = (val) => {
+      if (val === undefined) return undefined;
+      if (val === null || val === '' || String(val).trim() === '') return null;
+      const parsed = parseInt(val, 10);
+      return isNaN(parsed) ? null : parsed;
+    };
     
-    // Solo admin puede cambiar cosas críticas
+    // Solo admin puede cambiar roles y asignaciones
     if (esAdmin) {
       if (email !== undefined) camposActualizar.email = email;
-      if (facultad_id !== undefined) camposActualizar.facultad_id = facultad_id;
-      if (carrera_id !== undefined) camposActualizar.carrera_id = carrera_id;
-      if (rol_id !== undefined) camposActualizar.rol_id = rol_id;
+      if (facultad_id !== undefined) camposActualizar.facultad_id = parseIntegerId(facultad_id);
+      if (carrera_id !== undefined) camposActualizar.carrera_id = parseIntegerId(carrera_id);
+      if (rol_id !== undefined) {
+        const parsedRol = parseIntegerId(rol_id);
+        if (parsedRol !== null) camposActualizar.rol_id = parsedRol;
+      }
     }
 
     await usuario.update(camposActualizar);

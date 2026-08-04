@@ -15,10 +15,14 @@ function tokenValido(token) {
 }
 
 function parsearUsuario(data) {
+  if (!data) return null;
+  const nombre = data.nombre || data.email || 'Usuario';
+  const avatar = (nombre.split(' ').filter(Boolean).map(n => n[0]).join('') || 'US').substring(0, 2).toUpperCase();
   return {
     ...data,
-    avatar: data.nombre.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase(),
-    rol: data.rol?.nombre || data.rol,
+    nombre,
+    avatar,
+    rol: data.rol?.nombre || data.rol || 'DOCENTE',
   };
 }
 
@@ -43,13 +47,24 @@ export function AppProvider({ children }) {
   const [metricasApi, setMetricasApi] = useState(null);
 
   useEffect(() => {
-    const savedToken = localStorage.getItem('gestdoc_token');
-    const savedUsuario = localStorage.getItem('gestdoc_usuario');
-    if (savedToken && savedUsuario && tokenValido(savedToken)) {
-      const u = JSON.parse(savedUsuario);
-      setToken(savedToken);
-      setUsuario(u);
-      setIsAutenticado(true);
+    try {
+      const savedToken = localStorage.getItem('gestdoc_token');
+      const savedUsuario = localStorage.getItem('gestdoc_usuario');
+      if (savedToken && savedUsuario && tokenValido(savedToken)) {
+        const u = JSON.parse(savedUsuario);
+        const uParsed = parsearUsuario(u);
+        if (uParsed) {
+          setToken(savedToken);
+          setUsuario(uParsed);
+          setIsAutenticado(true);
+        } else {
+          localStorage.removeItem('gestdoc_token');
+          localStorage.removeItem('gestdoc_usuario');
+        }
+      }
+    } catch {
+      localStorage.removeItem('gestdoc_token');
+      localStorage.removeItem('gestdoc_usuario');
     }
   }, []);
 

@@ -32,11 +32,11 @@ export default function Layout() {
           <h1 className="text-lg font-semibold text-navy-900">{vista.titulo}</h1>
           <div className="flex items-center space-x-3">
             <div className="text-right">
-              <p className="text-sm font-medium text-gray-800">{usuario.nombre}</p>
-              <p className="text-xs text-gray-500">{usuario.email}</p>
+              <p className="text-sm font-medium text-gray-800">{usuario?.nombre || 'Usuario'}</p>
+              <p className="text-xs text-gray-500">{usuario?.email || ''}</p>
             </div>
             <div className="w-9 h-9 bg-navy-900 rounded-full flex items-center justify-center">
-              <span className="text-white text-xs font-bold">{usuario.avatar}</span>
+              <span className="text-white text-xs font-bold">{usuario?.avatar || 'US'}</span>
             </div>
           </div>
         </header>

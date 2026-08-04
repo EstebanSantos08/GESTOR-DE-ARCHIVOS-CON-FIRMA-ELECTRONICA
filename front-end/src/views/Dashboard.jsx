@@ -87,15 +87,19 @@ export default function Dashboard() {
             <span>Alertas Urgentes</span>
           </h2>
           <div className="space-y-3">
-            {alertas.map(a => (
-              <div key={a.id} className={`pl-3 py-2 pr-2 rounded-lg border-l-4 bg-gray-50 ${
-                a.urgencia === 'alta' ? 'border-red-400' :
-                a.urgencia === 'media' ? 'border-yellow-400' : 'border-gray-300'
-              }`}>
-                <p className="text-xs font-semibold text-gray-800 truncate">{a.documento}</p>
-                <p className="text-xs text-gray-500 mt-0.5">{a.mensaje}</p>
-              </div>
-            ))}
+            {(!alertas || alertas.length === 0) ? (
+              <p className="text-xs text-gray-400 py-6 text-center">No hay alertas urgentes pendientes</p>
+            ) : (
+              alertas.map(a => (
+                <div key={a.id} className={`pl-3 py-2 pr-2 rounded-lg border-l-4 bg-gray-50 ${
+                  a.urgencia === 'alta' ? 'border-red-400' :
+                  a.urgencia === 'media' ? 'border-yellow-400' : 'border-gray-300'
+                }`}>
+                  <p className="text-xs font-semibold text-gray-800 truncate">{a.documento}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">{a.mensaje}</p>
+                </div>
+              ))
+            )}
           </div>
         </div>
       </div>
@@ -116,14 +120,22 @@ export default function Dashboard() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {auditoria.slice(0, 5).map(a => (
-                <tr key={a.id} className="hover:bg-gray-50/50 transition-colors">
-                  <td className="px-5 py-3 font-medium text-gray-800">{a.usuario}</td>
-                  <td className="px-5 py-3"><Badge tipo={a.tipo} /></td>
-                  <td className="px-5 py-3 text-gray-600">{a.descripcion}</td>
-                  <td className="px-5 py-3 text-gray-400 text-xs">{a.fecha}</td>
+              {(!auditoria || auditoria.length === 0) ? (
+                <tr>
+                  <td colSpan={4} className="px-5 py-6 text-center text-xs text-gray-400">
+                    Sin actividades recientes registradas
+                  </td>
                 </tr>
-              ))}
+              ) : (
+                auditoria.slice(0, 5).map(a => (
+                  <tr key={a.id} className="hover:bg-gray-50/50 transition-colors">
+                    <td className="px-5 py-3 font-medium text-gray-800">{a.usuario}</td>
+                    <td className="px-5 py-3"><Badge tipo={a.tipo} /></td>
+                    <td className="px-5 py-3 text-gray-600">{a.descripcion}</td>
+                    <td className="px-5 py-3 text-gray-400 text-xs">{a.fecha}</td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

@@ -1,4 +1,4 @@
-import React, { createContext, useState, useEffect } from 'react';
+import React, { createContext, useState, useEffect, useMemo } from 'react';
 import { mockAuditoria, mockAlertas } from '../data/mockData';
 
 const API_URL = 'http://localhost:3000/api';
@@ -35,9 +35,7 @@ export function AppProvider({ children }) {
   const [token, setToken] = useState(null);
   const [isAutenticado, setIsAutenticado] = useState(false);
   const [universidades, setUniversidades] = useState([]);
-  const [cargandoEstructura, setCargandoEstructura] = useState(false);
-  const [auditoria, setAuditoria] = useState(mockAuditoria);
-  const [alertas] = useState(mockAlertas);
+  const [documentosGlobales, setDocumentosGlobales] = useState([]);
   const [documentoSeleccionado, setDocumentoSeleccionado] = useState(null);
   const [modalFirmaAbierto, setModalFirmaAbierto] = useState(false);
   const [certBase64, setCertBase64] = useState(null);
@@ -55,12 +53,100 @@ export function AppProvider({ children }) {
     }
   }, []);
 
+  async function cargarDocumentosGlobales(tkn = token) {
+    const activeToken = tkn || token;
+    if (!activeToken) return;
+    try {
+      const res = await fetch(`${API_URL}/documentos?todos=true`, {
+        headers: { Authorization: `Bearer ${activeToken}` },
+      });
+      if (res.ok) {
+        const docs = await res.json();
+        setDocumentosGlobales(docs);
+      }
+    } catch {
+      // silencioso
+    }
+  }
+
   useEffect(() => {
     if (isAutenticado && token) {
       cargarEstructura();
       cargarMetricasApi();
+      cargarDocumentosGlobales(token);
     }
   }, [isAutenticado, token]);
+
+  const auditoria = useMemo(() => {
+    if (!documentosGlobales || documentosGlobales.length === 0) return [];
+    const eventos = [];
+    documentosGlobales.forEach(d => {
+      if (d.creado_en) {
+        eventos.push({
+          id: `subida-${d.id}`,
+          usuario: d.subidoPor?.nombre || 'Docente',
+          tipo: 'CARGA',
+          descripcion: `Subió evidencia "${d.nombre_original}"`,
+          fecha: new Date(d.creado_en).toLocaleString('es-EC', { dateStyle: 'short', timeStyle: 'short' }),
+          timestamp: new Date(d.creado_en).getTime(),
+        });
+      }
+      if (d.actualizado_en && new Date(d.actualizado_en).getTime() > new Date(d.creado_en).getTime() + 1000) {
+        let tipo = 'FIRMA';
+        let desc = `Firmó el documento "${d.nombre_original}" (${d.estado ? d.estado.replace(/_/g, ' ') : ''})`;
+        if (d.estado === 'RECHAZADO') {
+          tipo = 'RECHAZO';
+          desc = `Rechazó el documento "${d.nombre_original}": ${d.observaciones || 'Sin observaciones'}`;
+        } else if (d.estado === 'COMPLETADO') {
+          tipo = 'COMPLETADO';
+          desc = `Documento "${d.nombre_original}" completó todas las firmas`;
+        }
+
+        eventos.push({
+          id: `act-${d.id}-${d.estado}`,
+          usuario: d.firmanteActual?.nombre || d.subidoPor?.nombre || 'Firmante',
+          tipo,
+          descripcion: desc,
+          fecha: new Date(d.actualizado_en).toLocaleString('es-EC', { dateStyle: 'short', timeStyle: 'short' }),
+          timestamp: new Date(d.actualizado_en).getTime(),
+        });
+      }
+    });
+    return eventos.sort((a, b) => b.timestamp - a.timestamp).slice(0, 10);
+  }, [documentosGlobales]);
+
+  const alertas = useMemo(() => {
+    if (!documentosGlobales || documentosGlobales.length === 0) return [];
+    const items = [];
+    documentosGlobales.forEach(d => {
+      if (d.estado === 'RECHAZADO') {
+        items.push({
+          id: `rech-${d.id}`,
+          documento: d.nombre_original,
+          urgencia: 'alta',
+          mensaje: `Rechazado: ${d.observaciones || 'Requiere corrección y reenvío'}`,
+          fecha: d.actualizado_en ? new Date(d.actualizado_en).toLocaleDateString('es-EC') : 'Reciente',
+        });
+      } else if (usuario && d.firmante_actual_id === usuario.id) {
+        items.push({
+          id: `firm-${d.id}`,
+          documento: d.nombre_original,
+          urgencia: 'alta',
+          mensaje: `Requiere tu firma digital (${d.estado ? d.estado.replace(/_/g, ' ') : ''})`,
+          fecha: d.actualizado_en ? new Date(d.actualizado_en).toLocaleDateString('es-EC') : 'Reciente',
+        });
+      } else if (['PENDIENTE', 'FIRMADO_DIRECTOR', 'FIRMADO_SUBDECANO', 'FIRMADO_DECANO'].includes(d.estado)) {
+        items.push({
+          id: `pend-${d.id}`,
+          documento: d.nombre_original,
+          urgencia: 'media',
+          mensaje: `Pendiente de firma (${d.estado ? d.estado.replace(/_/g, ' ') : ''})`,
+          fecha: d.actualizado_en ? new Date(d.actualizado_en).toLocaleDateString('es-EC') : 'Reciente',
+        });
+      }
+    });
+    return items.slice(0, 6);
+  }, [documentosGlobales, usuario]);
 
   function authHeaders() {
     return { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
@@ -275,6 +361,7 @@ export function AppProvider({ children }) {
       _inyectarDocumentosEnActividad(actividadId, docs);
     }
     cargarMetricasApi();
+    cargarDocumentosGlobales();
   }
 
   async function firmarDocumento(docId, nombreDoc) {
@@ -297,21 +384,11 @@ export function AppProvider({ children }) {
 
     _actualizarDocumentoEnEstado(docId, { estado: nuevoEstado });
 
-    const nuevaEntrada = {
-      id: auditoria.length + 1,
-      usuario: usuario.nombre,
-      accion: 'FIRMA',
-      descripcion: `Firmó ${nombreDoc} (${usuario.rol})`,
-      fecha: new Date().toLocaleString('es-EC'),
-      hash: doc.hash_sha256 || '',
-      tipo: 'FIRMA',
-    };
-    setAuditoria(prev => [nuevaEntrada, ...prev]);
-
     if (documentoSeleccionado?.id === docId) {
       setDocumentoSeleccionado(prev => ({ ...prev, estado: nuevoEstado }));
     }
     cargarMetricasApi();
+    cargarDocumentosGlobales();
   }
 
   async function rechazarDocumento(docId, nombreDoc, motivo) {
@@ -325,21 +402,11 @@ export function AppProvider({ children }) {
 
     _actualizarDocumentoEnEstado(docId, { estado: 'RECHAZADO', observaciones: motivo });
 
-    const nuevaEntrada = {
-      id: auditoria.length + 1,
-      usuario: usuario.nombre,
-      accion: 'RECHAZO',
-      descripcion: `Rechazó ${nombreDoc}`,
-      fecha: new Date().toLocaleString('es-EC'),
-      hash: '',
-      tipo: 'RECHAZO',
-    };
-    setAuditoria(prev => [nuevaEntrada, ...prev]);
-
     if (documentoSeleccionado?.id === docId) {
       setDocumentoSeleccionado(prev => ({ ...prev, estado: 'RECHAZADO', observaciones: motivo }));
     }
     cargarMetricasApi();
+    cargarDocumentosGlobales();
   }
 
   async function eliminarDocumento(docId, actividadId) {
@@ -363,6 +430,7 @@ export function AppProvider({ children }) {
 
     if (documentoSeleccionado?.id === docId) setDocumentoSeleccionado(null);
     cargarMetricasApi();
+    cargarDocumentosGlobales();
     return data;
   }
 

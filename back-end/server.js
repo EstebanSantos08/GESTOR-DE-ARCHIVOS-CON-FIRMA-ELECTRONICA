@@ -8,6 +8,7 @@ const { sequelize } = require('./Model');
 const authRoutes = require('./Routes/auth.routes');
 const parametrizacionRoutes = require('./Routes/parametrizacion.routes');
 const documentoRoutes = require('./Routes/documento.routes');
+const flujosRoutes = require('./Routes/flujos.routes');
 
 const app = express();
 
@@ -21,6 +22,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/api/auth', authRoutes);
 app.use('/api/parametrizacion', parametrizacionRoutes);
 app.use('/api/documentos', documentoRoutes);
+app.use('/api/flujos', flujosRoutes);
 
 // ─── Health check ──────────────────────────────────────────────────────────
 app.get('/api/health', (req, res) => {

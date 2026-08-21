@@ -5,20 +5,31 @@ const { Usuario, Rol } = require('../Model');
 const SALT_ROUNDS = 12;
 
 class AuthService {
-  async registrar({ nombre, email, password, rol_id }) {
+  async registrar({ nombre, email, password, roles }) {
     // Evita duplicar cuentas por correo antes de crear el hash de contraseña.
     const existe = await Usuario.findOne({ where: { email } });
     if (existe) throw new Error('El email ya está registrado');
 
     const password_hash = await bcrypt.hash(password, SALT_ROUNDS);
-    const usuario = await Usuario.create({ nombre, email, password_hash, rol_id });
-    return this._omitirPassword(usuario);
+    // Para SQLite/Postgres dentro de transacciones se debe manejar bien, aquí lo hacemos simple
+    const usuario = await Usuario.create({ nombre, email, password_hash });
+    
+    if (roles && roles.length > 0) {
+      await usuario.setRoles(roles);
+    }
+    
+    // Recargamos el usuario con los roles para retornarlo
+    const usuarioConRoles = await Usuario.findByPk(usuario.id, {
+      include: [{ model: Rol, as: 'roles' }]
+    });
+
+    return this._omitirPassword(usuarioConRoles);
   }
 
   async login(email, password) {
     const usuario = await Usuario.findOne({
       where: { email, activo: true },
-      include: [{ model: Rol, as: 'rol' }],
+      include: [{ model: Rol, as: 'roles' }],
     });
 
     if (!usuario) throw new Error('Credenciales inválidas');
@@ -32,13 +43,16 @@ class AuthService {
   }
 
   _generarToken(usuario) {
-    // El JWT transporta identidad y nivel de autorización para RBAC.
+    // El JWT transporta identidad y roles para RBAC.
+    const rolesArray = (usuario.roles || []).map(r => r.nombre);
+    const maxNivel = (usuario.roles || []).reduce((max, r) => Math.max(max, r.nivel), 0);
+    
     return jwt.sign(
       {
         id: usuario.id,
         email: usuario.email,
-        rol: usuario.rol.nombre,
-        nivel: usuario.rol.nivel,
+        roles: rolesArray,
+        nivel: maxNivel,
       },
       process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRES_IN || '8h' }

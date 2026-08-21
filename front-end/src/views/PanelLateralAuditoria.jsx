@@ -4,7 +4,7 @@ import Badge from '../components/common/Badge';
 import ModalFirma from '../components/modals/ModalFirma';
 import { useApp } from '../context/useApp';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+const API_URL = 'http://localhost:3000/api';
 
 function PasoTimeline({ numero, titulo, completado, activo }) {
   return (
@@ -97,27 +97,18 @@ export default function PanelLateralAuditoria() {
     document.body.removeChild(a);
   }
 
-  const puedeFiremar =
-    (usuario.rol === 'DIRECTOR_CARRERA' && doc.estado === 'PENDIENTE') ||
-    (usuario.rol === 'SUBDECANO' && doc.estado === 'FIRMADO_DIRECTOR') ||
-    (usuario.rol === 'DECANO' && doc.estado === 'FIRMADO_SUBDECANO') ||
-    (usuario.rol === 'RECTOR' && doc.estado === 'FIRMADO_DECANO');
+  const userRoles = usuario?.roles || [];
+  const esSuTurno = doc.firmante_actual_id === usuario?.id;
 
   const puedeVerModal =
-    puedeFiremar ||
+    esSuTurno ||
     doc.estado === 'RECHAZADO' ||
     doc.estado === 'COMPLETADO';
 
-  const paso2Completado = ['FIRMADO_DIRECTOR', 'FIRMADO_SUBDECANO', 'FIRMADO_DECANO', 'COMPLETADO'].includes(doc.estado);
-  const paso3Completado = ['FIRMADO_SUBDECANO', 'FIRMADO_DECANO', 'COMPLETADO'].includes(doc.estado);
-  const paso4Completado = ['FIRMADO_DECANO', 'COMPLETADO'].includes(doc.estado);
-  const paso5Completado = doc.estado === 'COMPLETADO';
+  const pasos = doc.flujoFirma?.pasos || [];
+  // Calculamos si un paso está activo o completado
+  // paso_actual empieza en 1.
   
-  const paso2Activo = doc.estado === 'PENDIENTE';
-  const paso3Activo = doc.estado === 'FIRMADO_DIRECTOR';
-  const paso4Activo = doc.estado === 'FIRMADO_SUBDECANO';
-  const paso5Activo = doc.estado === 'FIRMADO_DECANO';
-
   return (
     <>
       <div
@@ -128,7 +119,7 @@ export default function PanelLateralAuditoria() {
 
         {/* Header */}
         <div className="bg-navy-900 px-5 py-4 flex items-center justify-between flex-shrink-0">
-          <h2 className="text-white font-semibold text-sm truncate pr-2">{doc.nombre}</h2>
+          <h2 className="text-white font-semibold text-sm truncate pr-2">{doc.nombre_original || doc.nombre || 'Documento'}</h2>
           <div className="flex items-center space-x-2 flex-shrink-0">
             <button
               onClick={handleDescargar}
@@ -185,14 +176,14 @@ export default function PanelLateralAuditoria() {
               <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Metadatos</h3>
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <span className="text-gray-500">Subido por</span>
-                <span className="font-medium text-gray-800">{doc.subido_por}</span>
+                <span className="font-medium text-gray-800">{doc.subidoPor?.nombre || doc.subido_por || '-'}</span>
                 <span className="text-gray-500">Fecha</span>
-                <span className="font-medium text-gray-800">{doc.fecha}</span>
+                <span className="font-medium text-gray-800">{new Date(doc.creado_en).toLocaleString()}</span>
               </div>
-              {doc.hash && (
+              {doc.hash_sha256 && (
                 <div className="mt-3 pt-3 border-t border-gray-200">
                   <span className="text-xs text-gray-500 block mb-1">Hash SHA-256</span>
-                  <span className="font-mono text-xs text-gray-700 break-all bg-white rounded p-2 block border border-gray-100">{doc.hash}</span>
+                  <span className="font-mono text-xs text-gray-700 break-all bg-white rounded p-2 block border border-gray-100">{doc.hash_sha256}</span>
                 </div>
               )}
               {doc.observaciones && (
@@ -205,32 +196,37 @@ export default function PanelLateralAuditoria() {
 
             {/* Timeline */}
             <div>
-              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-4">Flujo de Firma</h3>
-              <PasoTimeline numero={1} titulo="Carga del documento" completado={true} activo={false} />
-              <PasoTimeline numero={2} titulo="Director de Carrera" completado={paso2Completado} activo={paso2Activo} />
-              <PasoTimeline numero={3} titulo="Subdecano" completado={paso3Completado} activo={paso3Activo} />
-              <PasoTimeline numero={4} titulo="Decano" completado={paso4Completado} activo={paso4Activo} />
-              <PasoTimeline numero={5} titulo="Rector" completado={paso5Completado} activo={paso5Activo} />
+              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-4">
+                Flujo de Firma: {doc.flujoFirma?.nombre || 'Predeterminado'}
+              </h3>
+              
+              {pasos.length > 0 ? (
+                pasos.map((paso, index) => {
+                  // doc.paso_actual inicia en 1, pero puede estar completado o en revision
+                  const completado = doc.estado === 'COMPLETADO' || paso.orden < doc.paso_actual;
+                  const activo = doc.estado !== 'COMPLETADO' && doc.estado !== 'RECHAZADO' && paso.orden === doc.paso_actual;
+                  
+                  return (
+                    <PasoTimeline 
+                      key={paso.id} 
+                      numero={paso.orden} 
+                      titulo={paso.rolRequerido?.descripcion || paso.rolRequerido?.nombre || `Paso ${paso.orden}`} 
+                      completado={completado} 
+                      activo={activo} 
+                    />
+                  );
+                })
+              ) : (
+                <p className="text-xs text-gray-400">No hay información del flujo de firma para este documento.</p>
+              )}
             </div>
-
-            {doc.firmantes && doc.firmantes.length > 0 && (
-              <div className="bg-green-50 rounded-xl p-4">
-                <h3 className="text-xs font-semibold text-green-700 uppercase tracking-wide mb-2">Firmantes</h3>
-                {doc.firmantes.map((f, i) => (
-                  <div key={i} className="flex items-center space-x-2 text-xs text-green-800">
-                    <Check size={12} className="text-green-500" />
-                    <span>{f}</span>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
         </div>
 
         {/* Botón de acción */}
         {puedeVerModal && (
           <div className="p-5 border-t border-gray-100 flex-shrink-0">
-            {puedeFiremar ? (
+            {esSuTurno ? (
               <button
                 onClick={() => setModalAbierto(true)}
                 className="w-full flex items-center justify-center space-x-2 px-4 py-3 bg-navy-900 text-white rounded-xl font-medium text-sm hover:bg-navy-800 transition-colors shadow-lg"

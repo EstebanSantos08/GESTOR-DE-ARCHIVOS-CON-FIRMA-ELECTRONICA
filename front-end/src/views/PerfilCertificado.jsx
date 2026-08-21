@@ -128,7 +128,9 @@ export default function PerfilCertificado() {
             </div>
             <div>
               <p className="font-semibold text-navy-900">{usuario.nombre}</p>
-              <Badge tipo={usuario.rol} className="mt-1" />
+              <div className="flex gap-1 mt-1 flex-wrap">
+                {(usuario.roles || []).map((r, idx) => <Badge key={idx} tipo={r} />)}
+              </div>
             </div>
           </div>
 
@@ -151,8 +153,8 @@ export default function PerfilCertificado() {
             </div>
             <div>
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Rol</label>
-              <div className="border border-gray-100 rounded-lg px-3 py-2.5 bg-gray-50">
-                <Badge tipo={usuario.rol} />
+              <div className="border border-gray-100 rounded-lg px-3 py-2.5 bg-gray-50 flex gap-1 flex-wrap">
+                {(usuario.roles || []).map((r, idx) => <Badge key={idx} tipo={r} />)}
               </div>
             </div>
             <div>
@@ -239,7 +241,7 @@ export default function PerfilCertificado() {
       </div>
 
       {/* Certificado digital */}
-      {(usuario.rol === 'DECANO' || usuario.rol === 'RECTOR') && (
+      {(['RESPONSABLE_AREA', 'DOCENTE', 'DIRECTOR_CARRERA', 'SUBDECANO', 'DECANO', 'RECTOR'].some(rol => (usuario.roles || []).includes(rol))) && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="bg-navy-900 px-6 py-4 flex items-center space-x-3">
             <Shield size={18} className="text-blue-300" />

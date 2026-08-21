@@ -33,7 +33,7 @@ export default function GestionUsuarios() {
 
   // Edición de usuario
   const [usuarioEditar, setUsuarioEditar] = useState(null);
-  const [editForm, setEditForm] = useState({ nombre: '', email: '', rol_id: '', facultad_id: '', carrera_id: '' });
+  const [editForm, setEditForm] = useState({ nombre: '', email: '', roles: [], facultad_id: '', carrera_id: '' });
   const [guardando, setGuardando] = useState(false);
   const [editError, setEditError] = useState('');
   const [editExito, setEditExito] = useState(false);
@@ -69,7 +69,7 @@ export default function GestionUsuarios() {
     setEditForm({
       nombre: u.nombre,
       email: u.email,
-      rol_id: u.rol_id || '',
+      roles: u.roles ? u.roles.map(r => r.id) : [],
       facultad_id: u.facultad_id || '',
       carrera_id: u.carrera_id || '',
     });
@@ -77,28 +77,39 @@ export default function GestionUsuarios() {
     setEditExito(false);
   }
 
+  function handleRoleToggle(rolId) {
+    setEditForm(prev => {
+      const rolesActuales = prev.roles || [];
+      const nuevosRoles = rolesActuales.includes(rolId)
+        ? rolesActuales.filter(id => id !== rolId)
+        : [...rolesActuales, rolId];
+
+      const rolesNombres = roles.filter(r => nuevosRoles.includes(r.id)).map(r => r.nombre);
+      
+      let fac_id = prev.facultad_id;
+      let carr_id = prev.carrera_id;
+
+      if (rolesNombres.includes('RECTOR') || rolesNombres.includes('ADMINISTRADOR')) {
+        fac_id = null;
+        carr_id = null;
+      } else if (rolesNombres.includes('DECANO') || rolesNombres.includes('SUBDECANO') || rolesNombres.includes('RESPONSABLE_AREA')) {
+        carr_id = null;
+      }
+
+      return { ...prev, roles: nuevosRoles, facultad_id: fac_id, carrera_id: carr_id };
+    });
+  }
+
   function handleEditChange(campo, valor) {
     setEditForm(prev => {
       let valProcesado = valor;
       if (valor === '' || valor === null || valor === undefined) {
         valProcesado = null;
-      } else if (campo === 'rol_id' || campo === 'facultad_id' || campo === 'carrera_id') {
+      } else if (campo === 'facultad_id' || campo === 'carrera_id') {
         const parsed = parseInt(valor, 10);
         valProcesado = isNaN(parsed) ? null : parsed;
       }
-
-      const nuevo = { ...prev, [campo]: valProcesado };
-      
-      if (campo === 'rol_id') {
-        const rolSeleccionado = roles.find(r => r.id === nuevo.rol_id)?.nombre;
-        if (rolSeleccionado === 'RECTOR' || rolSeleccionado === 'ADMINISTRADOR') {
-          nuevo.facultad_id = null;
-          nuevo.carrera_id = null;
-        } else if (rolSeleccionado === 'DECANO' || rolSeleccionado === 'SUBDECANO' || rolSeleccionado === 'RESPONSABLE_AREA') {
-          nuevo.carrera_id = null;
-        }
-      }
-      return nuevo;
+      return { ...prev, [campo]: valProcesado };
     });
   }
 
@@ -112,7 +123,7 @@ export default function GestionUsuarios() {
         ...editForm,
         facultad_id: (editForm.facultad_id === '' || editForm.facultad_id === null || isNaN(editForm.facultad_id)) ? null : parseInt(editForm.facultad_id, 10),
         carrera_id: (editForm.carrera_id === '' || editForm.carrera_id === null || isNaN(editForm.carrera_id)) ? null : parseInt(editForm.carrera_id, 10),
-        rol_id: (editForm.rol_id === '' || editForm.rol_id === null || isNaN(editForm.rol_id)) ? undefined : parseInt(editForm.rol_id, 10),
+        roles: editForm.roles,
       };
       const actualizado = await actualizarUsuario(usuarioEditar.id, payloadLimpiado);
       setUsuarios(prev => prev.map(u => u.id === usuarioEditar.id ? { ...u, ...actualizado } : u));
@@ -180,7 +191,7 @@ export default function GestionUsuarios() {
 
   const usuariosFiltrados = usuarios.filter(u => {
     const matchBusqueda = u.nombre.toLowerCase().includes(busqueda.toLowerCase()) || u.email.toLowerCase().includes(busqueda.toLowerCase());
-    const matchRol = filtroRol ? u.rol_id === parseInt(filtroRol) : true;
+    const matchRol = filtroRol ? (u.roles || []).some(r => r.id === parseInt(filtroRol)) : true;
     return matchBusqueda && matchRol;
   });
 
@@ -270,7 +281,7 @@ export default function GestionUsuarios() {
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {usuariosFiltrados.map(u => {
-                  const rolNombre = u.rol?.nombre || '';
+                  const userRoles = u.roles || [];
                   const esMismoUsuario = u.id === usuarioActual?.id;
                   
                   return (
@@ -292,9 +303,14 @@ export default function GestionUsuarios() {
                         </div>
                       </td>
                       <td className="px-5 py-3">
-                        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold border ${ROL_COLOR[rolNombre] || 'bg-gray-100 text-gray-600 border-gray-200'}`}>
-                          {rolNombre}
-                        </span>
+                        <div className="flex flex-wrap gap-1">
+                          {userRoles.map(r => (
+                            <span key={r.id} className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold border ${ROL_COLOR[r.nombre] || 'bg-gray-100 text-gray-600 border-gray-200'}`}>
+                              {r.nombre}
+                            </span>
+                          ))}
+                          {userRoles.length === 0 && <span className="text-gray-400 text-xs">Sin roles</span>}
+                        </div>
                       </td>
                       <td className="px-5 py-3 text-xs text-gray-600">
                         {u.carrera?.nombre || u.facultad?.nombre || 'General'}
@@ -390,20 +406,23 @@ export default function GestionUsuarios() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Rol</label>
-                  <select
-                    value={editForm.rol_id || ''}
-                    onChange={e => handleEditChange('rol_id', e.target.value)}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-navy-500 bg-white"
-                  >
-                    <option value="">Seleccione rol...</option>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Roles</label>
+                  <div className="border border-gray-200 rounded-lg p-3 max-h-48 overflow-y-auto bg-gray-50 space-y-2">
                     {roles.map(r => (
-                      <option key={r.id} value={r.id}>{r.nombre}</option>
+                      <label key={r.id} className="flex items-center space-x-2 cursor-pointer p-1 hover:bg-gray-100 rounded">
+                        <input
+                          type="checkbox"
+                          checked={editForm.roles?.includes(r.id)}
+                          onChange={() => handleRoleToggle(r.id)}
+                          className="rounded text-navy-600 focus:ring-navy-500"
+                        />
+                        <span className="text-sm text-gray-700">{r.nombre}</span>
+                      </label>
                     ))}
-                  </select>
+                  </div>
                 </div>
 
-                {['DECANO', 'SUBDECANO', 'RESPONSABLE_AREA'].includes(roles.find(r => r.id === editForm.rol_id)?.nombre) && (
+                {roles.some(r => editForm.roles?.includes(r.id) && ['DECANO', 'SUBDECANO', 'RESPONSABLE_AREA'].includes(r.nombre)) && (
                   <div>
                     <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Facultad</label>
                     <select
@@ -417,7 +436,7 @@ export default function GestionUsuarios() {
                   </div>
                 )}
 
-                {['DIRECTOR_CARRERA', 'DOCENTE'].includes(roles.find(r => r.id === editForm.rol_id)?.nombre) && (
+                {roles.some(r => editForm.roles?.includes(r.id) && ['DIRECTOR_CARRERA', 'DOCENTE'].includes(r.nombre)) && (
                   <div>
                     <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Carrera</label>
                     <select

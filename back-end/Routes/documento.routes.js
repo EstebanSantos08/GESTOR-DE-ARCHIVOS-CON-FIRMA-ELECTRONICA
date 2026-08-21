@@ -3,10 +3,9 @@ const { autenticar } = require('../Middleware/auth.middleware');
 const { autorizar } = require('../Middleware/rbac.middleware');
 const ctrl = require('../Controller/documento.controller');
 
-// Subir documentos — solo roles que generan evidencia
+// Subir documentos — cualquier usuario autenticado puede subir
 router.post('/subir',
   autenticar,
-  autorizar('DOCENTE', 'RESPONSABLE_AREA', 'DIRECTOR_CARRERA'),
   ctrl.upload.single('archivo'),
   ctrl.subirDocumento
 );
@@ -17,17 +16,15 @@ router.get('/:id', autenticar, ctrl.obtenerDocumento);
 router.get('/:id/descargar', autenticar, ctrl.descargarDocumento);
 router.delete('/:id', autenticar, ctrl.eliminarDocumento);
 
-// Firmar — cadena de 4 firmantes: DIRECTOR_CARRERA → SUBDECANO → DECANO → RECTOR
+// Firmar — el workflow valida que el usuario sea el firmante asignado
 router.post('/:id/firmar',
   autenticar,
-  autorizar('DIRECTOR_CARRERA', 'SUBDECANO', 'DECANO', 'RECTOR'),
   ctrl.firmarDocumento
 );
 
-// Rechazar — mismos roles que pueden firmar
+// Rechazar — el workflow valida que el usuario sea el firmante asignado
 router.post('/:id/rechazar',
   autenticar,
-  autorizar('DIRECTOR_CARRERA', 'SUBDECANO', 'DECANO', 'RECTOR'),
   ctrl.rechazarDocumento
 );
 

@@ -18,7 +18,14 @@ function MetricaCard({ titulo, valor, icon: Icon, colorIcon, colorBg, colorNum }
 }
 
 export default function Dashboard() {
-  const { metricas, universidades, auditoria, alertas } = useApp();
+  const { metricas, universidades, auditoria, alertas, setDocumentoSeleccionado, setModalFirmaAbierto } = useApp();
+
+  const handleDocumentClick = (doc) => {
+    if (doc) {
+      setDocumentoSeleccionado(doc);
+      setModalFirmaAbierto(true);
+    }
+  };
 
   // Calcular datos para gráfico por criterio
   const criteriosData = (universidades ?? []).flatMap(u =>
@@ -95,10 +102,14 @@ export default function Dashboard() {
               <p className="text-xs text-gray-400 py-6 text-center">No hay alertas urgentes pendientes</p>
             ) : (
               alertas.map(a => (
-                <div key={a.id} className={`pl-3 py-2 pr-2 rounded-lg border-l-4 bg-gray-50 ${
-                  a.urgencia === 'alta' ? 'border-red-400' :
-                  a.urgencia === 'media' ? 'border-yellow-400' : 'border-gray-300'
-                }`}>
+                <div 
+                  key={a.id} 
+                  className={`pl-3 py-2 pr-2 rounded-lg border-l-4 bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors ${
+                    a.urgencia === 'alta' ? 'border-red-400' :
+                    a.urgencia === 'media' ? 'border-yellow-400' : 'border-gray-300'
+                  }`}
+                  onClick={() => handleDocumentClick(a.documentoRef)}
+                >
                   <p className="text-xs font-semibold text-gray-800 truncate">{a.documento}</p>
                   <p className="text-xs text-gray-500 mt-0.5">{a.mensaje}</p>
                 </div>
@@ -132,7 +143,11 @@ export default function Dashboard() {
                 </tr>
               ) : (
                 auditoria.slice(0, 5).map(a => (
-                  <tr key={a.id} className="hover:bg-gray-50/50 transition-colors">
+                  <tr 
+                    key={a.id} 
+                    className="hover:bg-gray-50/50 transition-colors cursor-pointer"
+                    onClick={() => handleDocumentClick(a.documentoRef)}
+                  >
                     <td className="px-5 py-3 font-medium text-gray-800">{a.usuario}</td>
                     <td className="px-5 py-3"><Badge tipo={a.tipo} /></td>
                     <td className="px-5 py-3 text-gray-600">{a.descripcion}</td>

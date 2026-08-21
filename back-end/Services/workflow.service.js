@@ -1,83 +1,77 @@
-const { Documento, Usuario, Rol } = require('../Model');
-
-/**
- * Workflow de firma de 4 pasos:
- *
- * PENDIENTE ─→ DIRECTOR_CARRERA firma ─→ FIRMADO_DIRECTOR
- *          ─→ SUBDECANO firma       ─→ FIRMADO_SUBDECANO
- *          ─→ DECANO firma          ─→ FIRMADO_DECANO
- *          ─→ RECTOR firma          ─→ COMPLETADO
- *
- * En cualquier paso, el firmante puede RECHAZAR → RECHAZADO.
- */
-const FLUJO = {
-  PENDIENTE:          { siguienteRol: 'DIRECTOR_CARRERA', estadoSiguiente: 'FIRMADO_DIRECTOR',  timestampField: 'firmado_director_en' },
-  FIRMADO_DIRECTOR:   { siguienteRol: 'SUBDECANO',        estadoSiguiente: 'FIRMADO_SUBDECANO', timestampField: 'firmado_subdecano_en' },
-  FIRMADO_SUBDECANO:  { siguienteRol: 'DECANO',           estadoSiguiente: 'FIRMADO_DECANO',    timestampField: 'firmado_decano_en' },
-  FIRMADO_DECANO:     { siguienteRol: 'RECTOR',           estadoSiguiente: 'COMPLETADO',        timestampField: 'firmado_rector_en' },
-  COMPLETADO:         null,
-  RECHAZADO:          null,
-};
+const { Documento, Usuario, Rol, FlujoFirma, PasoFirma, Criterio, Indicador, Actividad } = require('../Model');
 
 class WorkflowService {
   /**
    * Determina el siguiente firmante y estado según el estado actual del documento.
    */
   async enrutar(documento) {
-    const etapa = FLUJO[documento.estado];
-    if (!etapa) return null;
+    if (!documento.flujo_id) throw new Error('El documento no tiene un flujo de firma asignado');
 
-    const rol = await Rol.findOne({ where: { nombre: etapa.siguienteRol } });
-    if (!rol) throw new Error(`Rol ${etapa.siguienteRol} no existe en BD`);
+    const flujo = await FlujoFirma.findByPk(documento.flujo_id, {
+      include: [{ model: PasoFirma, as: 'pasos', include: [{ model: Rol, as: 'rolRequerido' }] }],
+      order: [[{ model: PasoFirma, as: 'pasos' }, 'orden', 'ASC']],
+    });
 
-    const firmante = await this._buscarFirmante(rol.id, documento.facultad_id);
-    return { firmante, estadoSiguiente: etapa.estadoSiguiente, timestampField: etapa.timestampField };
+    if (!flujo || !flujo.pasos || flujo.pasos.length === 0) {
+      throw new Error('El flujo de firma no existe o no tiene pasos definidos');
+    }
+
+    const pasoActualIndex = documento.paso_actual - 1;
+
+    // Si ya completó todos los pasos
+    if (pasoActualIndex >= flujo.pasos.length) {
+      return { firmante: null, estadoSiguiente: 'COMPLETADO' };
+    }
+
+    const pasoRequerido = flujo.pasos[pasoActualIndex];
+    if (!pasoRequerido.rolRequerido) {
+      throw new Error(`El paso ${pasoRequerido.orden} no tiene un rol válido asignado`);
+    }
+
+    const firmante = await this._buscarFirmante(pasoRequerido.rol_id, documento.facultad_id);
+    return { firmante, estadoSiguiente: 'EN_REVISION' };
   }
 
   /**
-   * Procesa la firma de un documento: valida permisos, marca timestamp,
-   * avanza el estado y asigna al siguiente firmante.
+   * Procesa la firma de un documento: valida permisos, avanza el estado y asigna al siguiente firmante.
    */
   async procesarFirma(documentoId, usuarioFirmante, observaciones = null) {
-    const documento = await Documento.findByPk(documentoId, {
-      include: [{ model: Usuario, as: 'firmanteActual', include: [{ model: Rol, as: 'rol' }] }],
-    });
-
+    const documento = await Documento.findByPk(documentoId);
     if (!documento) throw new Error('Documento no encontrado');
     if (documento.estado === 'COMPLETADO') throw new Error('El documento ya está completado');
     if (documento.estado === 'RECHAZADO') throw new Error('El documento fue rechazado');
 
-    // Verifica que quien firma es el firmante asignado
-    if (documento.firmante_actual_id !== usuarioFirmante.id) {
-      throw new Error('No tiene autorización para firmar este documento en esta etapa');
+    // Verifica que quien firma es el firmante asignado (comparación laxa por posibles diferencias int/string)
+    // eslint-disable-next-line eqeqeq
+    if (documento.firmante_actual_id != usuarioFirmante.id) {
+      throw new Error(`No tiene autorización para firmar este documento en esta etapa. Firmante esperado ID=${documento.firmante_actual_id}, firmante actual ID=${usuarioFirmante.id}`);
     }
 
-    const etapa = FLUJO[documento.estado];
-    if (!etapa) throw new Error('Estado de documento inválido para firma');
-
+    // Avanza el paso
+    const nuevoPaso = documento.paso_actual + 1;
     const actualizacion = {
-      estado: etapa.estadoSiguiente,
-      observaciones,
+      paso_actual: nuevoPaso,
+      observaciones, // Opcional: concatenar o sobrescribir observaciones
     };
 
-    // Marca el timestamp de auditoría de este paso
-    actualizacion[etapa.timestampField] = new Date();
+    // Determinar siguiente enrutamiento
+    const siguiente = await this.enrutar({ ...documento.toJSON(), paso_actual: nuevoPaso });
 
-    // Si el siguiente estado es COMPLETADO, limpia el firmante actual
-    if (etapa.estadoSiguiente === 'COMPLETADO') {
+    if (siguiente.estadoSiguiente === 'COMPLETADO') {
+      actualizacion.estado = 'COMPLETADO';
       actualizacion.firmante_actual_id = null;
     } else {
-      // Asignar al próximo firmante en la cadena
-      const siguiente = await this.enrutar({ ...documento.toJSON(), estado: etapa.estadoSiguiente });
-      if (siguiente && siguiente.firmante) {
-        actualizacion.firmante_actual_id = siguiente.firmante.id;
-      } else {
-        throw new Error(`No se encontró un ${FLUJO[etapa.estadoSiguiente]?.siguienteRol || 'firmante'} para continuar el flujo`);
+      if (!siguiente.firmante) {
+        throw new Error('No se encontró un firmante para el siguiente paso del flujo');
       }
+      actualizacion.estado = 'EN_REVISION';
+      actualizacion.firmante_actual_id = siguiente.firmante.id;
     }
 
     await documento.update(actualizacion);
-    return documento.reload();
+    return documento.reload({
+      include: [{ model: Usuario, as: 'firmanteActual' }]
+    });
   }
 
   /**
@@ -86,7 +80,8 @@ class WorkflowService {
   async rechazar(documentoId, usuarioFirmante, motivo) {
     const documento = await Documento.findByPk(documentoId);
     if (!documento) throw new Error('Documento no encontrado');
-    if (documento.firmante_actual_id !== usuarioFirmante.id) {
+    // eslint-disable-next-line eqeqeq
+    if (documento.firmante_actual_id != usuarioFirmante.id) {
       throw new Error('No tiene autorización para rechazar este documento');
     }
 
@@ -95,38 +90,77 @@ class WorkflowService {
   }
 
   /**
-   * Asigna al DIRECTOR_CARRERA como primer firmante del documento.
+   * Asigna el primer firmante del documento basado en su flujo.
    */
   async asignarFirmanteInicial(documento) {
-    const rol = await Rol.findOne({ where: { nombre: 'DIRECTOR_CARRERA' } });
-    if (!rol) throw new Error('Rol DIRECTOR_CARRERA no configurado');
+    let flujoId = documento.flujo_id;
 
-    const firmante = await this._buscarFirmante(rol.id, documento.facultad_id);
-    if (!firmante) throw new Error('No hay ningún Director de Carrera registrado en el sistema');
+    // Si el documento aún no tiene flujo (ej: recién creado), se determina:
+    if (!flujoId) {
+      // Buscar Criterio -> Indicador -> Actividad
+      const actividad = await Actividad.findByPk(documento.actividad_id, {
+        include: [{
+          model: Indicador, as: 'indicador', include: [{
+            model: Criterio, as: 'criterio'
+          }]
+        }]
+      });
 
-    await documento.update({ firmante_actual_id: firmante.id });
-    return firmante;
+      if (actividad) {
+        if (actividad.flujo_id) {
+          flujoId = actividad.flujo_id;
+        } else if (actividad.indicador && actividad.indicador.criterio) {
+          flujoId = actividad.indicador.criterio.flujo_id;
+        }
+      }
+
+      // Si no hay flujo en el Criterio, usar el global
+      if (!flujoId) {
+        const global = await FlujoFirma.findOne({ where: { es_global: true } });
+        if (!global) throw new Error('No existe flujo global de firmas configurado');
+        flujoId = global.id;
+      }
+
+      await documento.update({ flujo_id: flujoId, paso_actual: 1, estado: 'PENDIENTE' });
+      documento.flujo_id = flujoId;
+      documento.paso_actual = 1;
+    }
+
+    const enrutamiento = await this.enrutar(documento);
+    if (!enrutamiento || !enrutamiento.firmante) {
+      throw new Error('No se encontró firmante inicial para este documento');
+    }
+
+    await documento.update({ firmante_actual_id: enrutamiento.firmante.id, estado: 'PENDIENTE' });
+    return enrutamiento.firmante;
   }
 
   /**
-   * Busca el firmante con el rol indicado.
+   * Busca el firmante con el rol_id indicado.
    * Prioridad: 1) mismo rol + misma facultad, 2) mismo rol sin filtro.
    */
   async _buscarFirmante(rol_id, facultad_id) {
     if (facultad_id) {
       const conFacultad = await Usuario.findOne({
-        where: { rol_id, facultad_id, activo: true },
-        include: [{ model: Rol, as: 'rol' }],
+        where: { facultad_id, activo: true },
+        include: [{
+          model: Rol,
+          as: 'roles',
+          where: { id: rol_id }
+        }],
       });
       if (conFacultad) return conFacultad;
     }
 
     return await Usuario.findOne({
-      where: { rol_id, activo: true },
-      include: [{ model: Rol, as: 'rol' }],
+      where: { activo: true },
+      include: [{
+        model: Rol,
+        as: 'roles',
+        where: { id: rol_id }
+      }],
     });
   }
 }
 
 module.exports = new WorkflowService();
-

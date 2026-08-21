@@ -8,12 +8,8 @@ export default function ModalFirma({ documento, onClose }) {
   const [motivoRechazo, setMotivoRechazo] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
-  const esSuTurno = (
-    (usuario.rol === 'DIRECTOR_CARRERA' && documento?.estado === 'PENDIENTE') ||
-    (usuario.rol === 'SUBDECANO' && documento?.estado === 'FIRMADO_DIRECTOR') ||
-    (usuario.rol === 'DECANO' && documento?.estado === 'FIRMADO_SUBDECANO') ||
-    (usuario.rol === 'RECTOR' && documento?.estado === 'FIRMADO_DECANO')
-  );
+  // eslint-disable-next-line eqeqeq
+  const esSuTurno = usuario && documento?.firmante_actual_id == usuario.id;
 
   const puedeRechazar = esSuTurno;
   const estaRechazado = documento?.estado === 'RECHAZADO';
@@ -48,12 +44,15 @@ export default function ModalFirma({ documento, onClose }) {
   }
 
   const estadoLabel = {
-    PENDIENTE: 'Pendiente de firma Director de Carrera',
-    FIRMADO_DIRECTOR: 'Pendiente de firma Subdecano',
-    FIRMADO_SUBDECANO: 'Pendiente de firma Decano',
-    FIRMADO_DECANO: 'Pendiente de firma Rector',
+    PENDIENTE: 'En Revisión / Pendiente',
     COMPLETADO: 'Completado',
     RECHAZADO: 'Rechazado',
+    EN_REVISION: 'En Revisión (Flujo Activo)',
+  };
+
+  const getEstadoLabel = (estado) => {
+    if (estadoLabel[estado]) return estadoLabel[estado];
+    return estado ? estado.replace(/_/g, ' ') : 'Desconocido';
   };
 
   return (
@@ -85,11 +84,12 @@ export default function ModalFirma({ documento, onClose }) {
                 <span className="text-gray-500">Documento</span>
                 <span className="font-medium text-navy-900 text-right max-w-[200px] truncate">{documento?.nombre}</span>
               </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500">Estado</span>
-                <span className={`font-medium ${estaRechazado ? 'text-red-600' : estaCompletado ? 'text-green-600' : 'text-amber-600'}`}>
-                  {estadoLabel[documento?.estado] || documento?.estado}
-                </span>
+              <div className={`inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-semibold ${
+                estaRechazado ? 'bg-red-50 text-red-700' :
+                estaCompletado ? 'bg-green-50 text-green-700' : 'bg-blue-50 text-blue-700'
+              }`}>
+                {estaRechazado ? <XCircle size={14} /> : estaCompletado ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
+                <span>{getEstadoLabel(documento.estado)}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-gray-500">Subido por</span>

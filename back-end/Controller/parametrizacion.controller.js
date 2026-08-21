@@ -89,11 +89,12 @@ const criterioCtrl = crearCRUD(Criterio);
 
 const indicadorCtrl = crearCRUD(Indicador, [
   { model: Criterio, as: 'criterio', attributes: ['id', 'nombre'] },
-  { model: Usuario, as: 'responsable', attributes: ['id', 'nombre', 'email'] },
+  { model: Usuario, as: 'responsables', attributes: ['id', 'nombre', 'email'] },
 ]);
 
 const actividadCtrl = crearCRUD(Actividad, [
   { model: Indicador, as: 'indicador', attributes: ['id', 'numero', 'nombre'] },
+  { model: Usuario, as: 'usuariosAsignados', attributes: ['id', 'nombre', 'email'], through: { attributes: [] } },
 ]);
 
 // ─── Estructura jerárquica completa ────────────────────────────────────────
@@ -107,10 +108,14 @@ async function estructura(req, res) {
     const criterios     = await Criterio.findAll({ where: { activo: true }, order: [['id', 'ASC']] });
     const indicadores   = await Indicador.findAll({
       where: { activo: true },
-      include: [{ model: Usuario, as: 'responsable', attributes: ['id', 'nombre'] }],
+      include: [{ model: Usuario, as: 'responsables', attributes: ['id', 'nombre'] }],
       order: [['numero', 'ASC']],
     });
-    const actividades   = await Actividad.findAll({ where: { activo: true }, order: [['id', 'ASC']] });
+    const actividades   = await Actividad.findAll({ 
+      where: { activo: true }, 
+      include: [{ model: Usuario, as: 'usuariosAsignados', attributes: ['id', 'nombre'] }],
+      order: [['id', 'ASC']] 
+    });
 
     const resultado = universidades.map(u => ({
       id: u.id,
@@ -141,20 +146,23 @@ async function estructura(req, res) {
                       nombre: c.nombre,
                       descripcion: c.descripcion,
                       requiere_firma: c.requiere_firma,
+                      flujo_id: c.flujo_id || null,
                       indicadores: indicadores
                         .filter(ind => ind.criterio_id === c.id)
                         .map(ind => ({
                           id: ind.id,
                           numero: ind.numero,
                           nombre: ind.nombre,
-                          responsable_nombre: ind.responsable_nombre || null,
-                          responsable: ind.responsable || null,
+                          responsables: ind.responsables || [],
                           actividades: actividades
                             .filter(a => a.indicador_id === ind.id)
                             .map(a => ({
                               id: a.id,
                               nombre: a.nombre,
                               informacion_ayuda: a.descripcion || '',
+                              requiere_firma: a.requiere_firma,
+                              flujo_id: a.flujo_id || null,
+                              usuariosAsignados: a.usuariosAsignados || [],
                               documentos: [],
                             })),
                         })),
@@ -170,9 +178,40 @@ async function estructura(req, res) {
   }
 }
 
+// ─── Controladores personalizados ───
+const asignarUsuariosActividad = async (req, res) => {
+  const { id } = req.params;
+  const { usuariosIds } = req.body;
+  try {
+    const actividad = await Actividad.findByPk(id);
+    if (!actividad) return res.status(404).json({ error: 'Actividad no encontrada' });
+    
+    await actividad.setUsuariosAsignados(usuariosIds || []);
+    res.json({ mensaje: 'Usuarios asignados correctamente' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+const asignarResponsablesIndicador = async (req, res) => {
+  const { id } = req.params;
+  const { responsablesIds } = req.body;
+  try {
+    const indicador = await Indicador.findByPk(id);
+    if (!indicador) return res.status(404).json({ error: 'Indicador no encontrado' });
+    
+    await indicador.setResponsables(responsablesIds || []);
+    res.json({ mensaje: 'Responsables asignados correctamente' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
 module.exports = {
   universidadCtrl, facultadCtrl, carreraCtrl,
   periodoCtrl, criterioCtrl, indicadorCtrl,
-  actividadCtrl, estructura,
+  actividadCtrl,
+  estructura,
+  asignarUsuariosActividad,
+  asignarResponsablesIndicador
 };
-

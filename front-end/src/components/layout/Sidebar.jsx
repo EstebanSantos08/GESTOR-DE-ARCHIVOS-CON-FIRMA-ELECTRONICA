@@ -39,8 +39,9 @@ const ROL_LABEL = {
 
 export default function Sidebar() {
   const { vistaActual, navegarA, usuario, logout } = useApp();
-  const rol = usuario?.rol || '';
-  const itemsVisibles = NAV_ITEMS.filter(i => i.roles.includes(rol));
+  const userRoles = usuario?.roles || [];
+  const rolPrincipal = userRoles.includes('ADMINISTRADOR') ? 'ADMINISTRADOR' : (userRoles[0] || 'DOCENTE');
+  const itemsVisibles = NAV_ITEMS.filter(i => i.roles.some(r => userRoles.includes(r)));
 
   return (
     <aside className="fixed left-0 top-0 h-screen w-64 bg-navy-900 flex flex-col z-40 shadow-xl">
@@ -90,12 +91,14 @@ export default function Sidebar() {
       {/* Usuario + Logout */}
       <div className="px-4 py-4 border-t border-white/10 space-y-3">
         <div className="flex items-center space-x-3">
-          <div className={`w-9 h-9 ${ROL_COLOR[rol] || 'bg-blue-600'} rounded-full flex items-center justify-center flex-shrink-0`}>
+          <div className={`w-9 h-9 ${ROL_COLOR[rolPrincipal] || 'bg-blue-600'} rounded-full flex items-center justify-center flex-shrink-0`}>
             <span className="text-white text-xs font-bold">{usuario?.avatar}</span>
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-white text-xs font-semibold truncate">{usuario?.nombre}</p>
-            <p className="text-blue-300 text-xs">{ROL_LABEL[rol] || rol}</p>
+            <p className="text-blue-300 text-xs truncate" title={userRoles.map(r => ROL_LABEL[r] || r).join(', ')}>
+              {userRoles.map(r => ROL_LABEL[r] || r).join(', ')}
+            </p>
           </div>
         </div>
         <button

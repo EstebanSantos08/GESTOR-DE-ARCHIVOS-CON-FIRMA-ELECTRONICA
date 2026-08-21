@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { AppContext } from './AppContextObject';
 import { mockAuditoria, mockAlertas } from '../data/mockData';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+const API_URL = 'http://localhost:3000/api';
 
 function tokenValido(token) {
   try {
@@ -17,11 +17,18 @@ function parsearUsuario(data) {
   if (!data) return null;
   const nombre = data.nombre || data.email || 'Usuario';
   const avatar = (nombre.split(' ').filter(Boolean).map(n => n[0]).join('') || 'US').substring(0, 2).toUpperCase();
+  let roles = ['DOCENTE'];
+  if (data.roles && Array.isArray(data.roles)) {
+    roles = data.roles.map(r => r.nombre || r);
+  } else if (data.rol) {
+    roles = [data.rol.nombre || data.rol];
+  }
+
   return {
     ...data,
     nombre,
     avatar,
-    rol: data.rol?.nombre || data.rol || 'DOCENTE',
+    roles,
   };
 }
 
@@ -42,6 +49,7 @@ export function AppProvider({ children }) {
   const [documentosGlobales, setDocumentosGlobales] = useState([]);
   const [documentoSeleccionado, setDocumentoSeleccionado] = useState(null);
   const [modalFirmaAbierto, setModalFirmaAbierto] = useState(false);
+  const [flujosFirma, setFlujosFirma] = useState([]);
   const [certBase64, setCertBase64] = useState(null);
   const [certPassword, setCertPassword] = useState('');
   const [metricasApi, setMetricasApi] = useState(null);
@@ -68,11 +76,15 @@ export function AppProvider({ children }) {
     }
   }, []);
 
-  async function cargarDocumentosGlobales(tkn = token) {
+  async function cargarDocumentosGlobales(tkn = token, usr = usuario) {
     const activeToken = tkn || token;
+    const activeUser = usr || usuario;
     if (!activeToken) return;
     try {
-      const res = await fetch(`${API_URL}/documentos?todos=true`, {
+      // Admins pueden ver todos los documentos; el resto solo ve los suyos y donde son firmantes
+      const esAdmin = activeUser?.roles?.includes('ADMINISTRADOR') || activeUser?.roles?.some(r => r === 'ADMINISTRADOR' || r?.nombre === 'ADMINISTRADOR');
+      const url = esAdmin ? `${API_URL}/documentos?todos=true` : `${API_URL}/documentos`;
+      const res = await fetch(url, {
         headers: { Authorization: `Bearer ${activeToken}` },
       });
       if (res.ok) {
@@ -90,7 +102,8 @@ export function AppProvider({ children }) {
     if (isAutenticado && token) {
       cargarEstructura();
       cargarMetricasApi();
-      cargarDocumentosGlobales(token);
+      cargarFlujosFirma();
+      cargarDocumentosGlobales(token, usuario);
     }
   }, [isAutenticado, token]);
 
@@ -126,6 +139,7 @@ export function AppProvider({ children }) {
           descripcion: desc,
           fecha: new Date(d.actualizado_en).toLocaleString('es-EC', { dateStyle: 'short', timeStyle: 'short' }),
           timestamp: new Date(d.actualizado_en).getTime(),
+          documentoRef: d,
         });
       }
     });
@@ -141,24 +155,29 @@ export function AppProvider({ children }) {
           id: `rech-${d.id}`,
           documento: d.nombre_original,
           urgencia: 'alta',
-          mensaje: `Rechazado: ${d.observaciones || 'Requiere corrección y reenvío'}`,
+          mensaje: `Documento rechazado: ${d.observaciones || 'Requiere corrección y reenvío'}`,
           fecha: d.actualizado_en ? new Date(d.actualizado_en).toLocaleDateString('es-EC') : 'Reciente',
+          documentoRef: d,
         });
-      } else if (usuario && d.firmante_actual_id === usuario.id) {
+      // eslint-disable-next-line eqeqeq
+      } else if (usuario && d.firmante_actual_id == usuario.id) {
         items.push({
           id: `firm-${d.id}`,
           documento: d.nombre_original,
           urgencia: 'alta',
           mensaje: `Requiere tu firma digital (${d.estado ? d.estado.replace(/_/g, ' ') : ''})`,
           fecha: d.actualizado_en ? new Date(d.actualizado_en).toLocaleDateString('es-EC') : 'Reciente',
+          documentoRef: d,
         });
-      } else if (['PENDIENTE', 'FIRMADO_DIRECTOR', 'FIRMADO_SUBDECANO', 'FIRMADO_DECANO'].includes(d.estado)) {
+      } else if (d.firmante_actual_id && d.estado !== 'COMPLETADO' && d.estado !== 'RECHAZADO') {
+        // Documento en proceso (cualquier estado con firmante pendiente)
         items.push({
           id: `pend-${d.id}`,
           documento: d.nombre_original,
           urgencia: 'media',
-          mensaje: `Pendiente de firma (${d.estado ? d.estado.replace(/_/g, ' ') : ''})`,
+          mensaje: `Pendiente de firma (${d.estado ? d.estado.replace(/_/g, ' ') : ''}) — firmante: ${d.firmanteActual?.nombre || 'Asignado'}`,
           fecha: d.actualizado_en ? new Date(d.actualizado_en).toLocaleDateString('es-EC') : 'Reciente',
+          documentoRef: d,
         });
       }
     });
@@ -177,6 +196,31 @@ export function AppProvider({ children }) {
       });
       if (res.ok) {
         const data = await res.json();
+        
+        // Filtrar actividades según permisos
+        const isAdmin = usuario?.roles?.some(r => r.nombre === 'ADMINISTRADOR');
+        if (!isAdmin) {
+          data.forEach(u => {
+            u.facultades.forEach(f => {
+              f.carreras.forEach(ca => {
+                ca.periodos.forEach(p => {
+                  p.criterios.forEach(c => {
+                    c.indicadores.forEach(i => {
+                      if (i.actividades) {
+                        i.actividades = i.actividades.filter(a => {
+                          const asignados = a.usuariosAsignados || [];
+                          // Si no hay asignados, es pública. Si hay, debe incluir al usuario actual.
+                          return asignados.length === 0 || asignados.some(usr => usr.id === usuario?.id);
+                        });
+                      }
+                    });
+                  });
+                });
+              });
+            });
+          });
+        }
+        
         setUniversidades(data);
       }
     } catch {
@@ -192,18 +236,17 @@ export function AppProvider({ children }) {
     });
     if (!res.ok) return [];
     const docs = await res.json();
+    // Devolvemos el documento completo con todos los campos del backend
+    // más alias de compatibilidad para el panel lateral
     return docs.map(d => ({
-      id: d.id,
+      ...d,
       nombre: d.nombre_original,
-      estado: d.estado,
       subido_por: d.subidoPor?.nombre || '',
       fecha: new Date(d.creado_en).toLocaleDateString('es-EC'),
       hash: d.hash_sha256 || '',
       tamanio: 'N/A',
       firmantes: [],
       observaciones: d.observaciones || '',
-      facultad_id: d.facultad_id,
-      actividad_id: d.actividad_id,
     }));
   }
 
@@ -397,12 +440,19 @@ export function AppProvider({ children }) {
     if (!res.ok) throw new Error(data.error || 'Error al firmar');
 
     const doc = data.documento;
-    const nuevoEstado = doc.estado;
 
-    _actualizarDocumentoEnEstado(docId, { estado: nuevoEstado });
+    // Actualizar el documento con todos los cambios (estado, firmante, paso)
+    const cambiosDoc = {
+      estado: doc.estado,
+      firmante_actual_id: doc.firmante_actual_id,
+      paso_actual: doc.paso_actual,
+      firmanteActual: doc.firmanteActual || null,
+    };
+    _actualizarDocumentoEnEstado(docId, cambiosDoc);
 
+    // Actualizar el documento seleccionado con datos completos
     if (documentoSeleccionado?.id === docId) {
-      setDocumentoSeleccionado(prev => ({ ...prev, estado: nuevoEstado }));
+      setDocumentoSeleccionado(prev => ({ ...prev, ...cambiosDoc }));
     }
     cargarMetricasApi();
     cargarDocumentosGlobales();
@@ -524,6 +574,49 @@ export function AppProvider({ children }) {
     });
     if (!res.ok) return [];
     return res.json();
+  }
+
+  // CRUD Flujos de Firma
+  async function cargarFlujosFirma() {
+    try {
+      const res = await fetch(`${API_URL}/flujos`, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) setFlujosFirma(await res.json());
+    } catch (e) {}
+  }
+
+  async function crearFlujo(datos) {
+    const res = await fetch(`${API_URL}/flujos`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify(datos)
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Error al crear flujo');
+    await cargarFlujosFirma();
+    return data;
+  }
+
+  async function actualizarFlujo(id, datos) {
+    const res = await fetch(`${API_URL}/flujos/${id}`, {
+      method: 'PUT',
+      headers: authHeaders(),
+      body: JSON.stringify(datos)
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Error al actualizar flujo');
+    await cargarFlujosFirma();
+    return data;
+  }
+
+  async function eliminarFlujo(id) {
+    const res = await fetch(`${API_URL}/flujos/${id}`, {
+      method: 'DELETE',
+      headers: authHeaders()
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Error al eliminar flujo');
+    await cargarFlujosFirma();
+    return data;
   }
 
   // CRUD de Parametrización - Universidades
@@ -907,6 +1000,20 @@ export function AppProvider({ children }) {
     return data;
   }
 
+  async function asignarResponsablesIndicador(id, responsablesIds) {
+    const res = await fetch(`${API_URL}/parametrizacion/indicadores/${id}/responsables`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ responsablesIds }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Error al asignar responsables al indicador');
+    
+    // Recargar toda la estructura para reflejar cambios, ya que la estructura es anidada
+    await cargarEstructura();
+    return data;
+  }
+
   // CRUD Actividades
   async function actualizarActividad(id, univId, facultadId, carreraId, periodoId, criterioId, indicadorId, datos) {
     const res = await fetch(`${API_URL}/parametrizacion/actividades/${id}`, {
@@ -1009,6 +1116,22 @@ export function AppProvider({ children }) {
     return data;
   }
 
+  async function asignarUsuariosActividad(id, univId, facultadId, carreraId, periodoId, criterioId, indicadorId, usuariosIds) {
+    const res = await fetch(`${API_URL}/parametrizacion/actividades/${id}/usuarios`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ usuariosIds }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Error al asignar usuarios a la actividad');
+    
+    // Refresh only the affected activity tree in the local state, or rely on a full refresh?
+    // It's safer to just fetch the full tree again to get the populated users, or manually inject.
+    // For simplicity we fetch the whole tree again to ensure consistency:
+    await cargarEstructura();
+    return data;
+  }
+
   const todosLosDocs = (universidades ?? []).flatMap(u =>
     (u?.facultades ?? []).flatMap(f =>
       (f?.carreras ?? []).flatMap(ca =>
@@ -1051,8 +1174,12 @@ export function AppProvider({ children }) {
       agregarPeriodo, actualizarPeriodo, eliminarPeriodo,
       agregarCarrera, actualizarCarrera, eliminarCarrera,
       agregarCriterio, actualizarCriterio, eliminarCriterio,
-      agregarIndicador, actualizarIndicador, eliminarIndicador,
-      agregarActividad, actualizarActividad, eliminarActividad,
+      agregarIndicador,
+      actualizarIndicador,
+      eliminarIndicador,
+      asignarResponsablesIndicador,
+      agregarActividad, actualizarActividad, eliminarActividad, asignarUsuariosActividad,
+      flujosFirma, crearFlujo, actualizarFlujo, eliminarFlujo,
       metricas, todosLosDocs,
     }}>
       {children}

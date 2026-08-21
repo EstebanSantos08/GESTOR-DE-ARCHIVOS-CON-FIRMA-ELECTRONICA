@@ -41,10 +41,20 @@ export default function ParametrizacionAdmin() {
     agregarCarrera, actualizarCarrera, eliminarCarrera,
     agregarPeriodo, actualizarPeriodo, eliminarPeriodo,
     agregarCriterio, actualizarCriterio, eliminarCriterio,
-    agregarIndicador, actualizarIndicador, eliminarIndicador,
-    agregarActividad, actualizarActividad, eliminarActividad,
+    agregarIndicador, actualizarIndicador, eliminarIndicador, asignarResponsablesIndicador,
+    agregarActividad, actualizarActividad, eliminarActividad, asignarUsuariosActividad,
     listarUsuarios,
+    flujosFirma, crearFlujo, actualizarFlujo, eliminarFlujo,
+    listarRoles,
   } = useApp();
+
+  const [rolesBD, setRolesBD] = useState([]);
+
+  useEffect(() => {
+    if (listarRoles) {
+      listarRoles().then(r => setRolesBD(r || [])).catch(() => {});
+    }
+  }, []);
 
   const [usuariosDB, setUsuariosDB] = useState([]);
 
@@ -65,8 +75,9 @@ export default function ParametrizacionAdmin() {
   const [fCarr, setFCarr] = useState({ nombre: '', univId: '', facId: '' });
   const [fPer,  setFPer]  = useState({ nombre: '', univId: '', facId: '', carrId: '' });
   const [fCrit, setFCrit] = useState({ nombre: '', univId: '', facId: '', carrId: '', perId: '', requiere_firma: true });
-  const [fInd,  setFInd]  = useState({ nombre: '', numero: '', responsable_nombre: '', univId: '', facId: '', carrId: '', perId: '', critId: '' });
-  const [fAct,  setFAct]  = useState({ nombre: '', univId: '', facId: '', carrId: '', perId: '', critId: '', indId: '', informacion_ayuda: '', requiere_firma: true });
+  const [fInd,  setFInd]  = useState({ nombre: '', numero: '', responsablesIds: [], univId: '', facId: '', carrId: '', perId: '', critId: '' });
+  const [fAct,  setFAct]  = useState({ nombre: '', univId: '', facId: '', carrId: '', perId: '', critId: '', indId: '', informacion_ayuda: '', requiere_firma: true, flujo_id: '' });
+  const [fFlujo, setFFlujo] = useState({ nombre: '', es_global: false, pasos: [] });
 
   function mostrarExito(msg) {
     setErrorMsg('');
@@ -124,8 +135,8 @@ export default function ParametrizacionAdmin() {
     e.preventDefault();
     if (!fCrit.nombre || !fCrit.univId || !fCrit.facId || !fCrit.carrId || !fCrit.perId) return;
     try {
-      await agregarCriterio(Number(fCrit.univId), Number(fCrit.facId), Number(fCrit.carrId), Number(fCrit.perId), { nombre: fCrit.nombre, requiere_firma: fCrit.requiere_firma });
-      setFCrit({ nombre: '', univId: '', facId: '', carrId: '', perId: '', requiere_firma: true });
+      await agregarCriterio(Number(fCrit.univId), Number(fCrit.facId), Number(fCrit.carrId), Number(fCrit.perId), { nombre: fCrit.nombre, requiere_firma: fCrit.requiere_firma, flujo_id: fCrit.flujo_id });
+      setFCrit({ nombre: '', univId: '', facId: '', carrId: '', perId: '', requiere_firma: true, flujo_id: '' });
       mostrarExito('Criterio creado exitosamente');
     } catch (err) { mostrarError(err.message); }
   }
@@ -134,8 +145,11 @@ export default function ParametrizacionAdmin() {
     e.preventDefault();
     if (!fInd.nombre || !fInd.numero || !fInd.univId || !fInd.facId || !fInd.carrId || !fInd.perId || !fInd.critId) return;
     try {
-      await agregarIndicador(Number(fInd.univId), Number(fInd.facId), Number(fInd.carrId), Number(fInd.perId), Number(fInd.critId), { nombre: fInd.nombre, numero: Number(fInd.numero), responsable_nombre: fInd.responsable_nombre });
-      setFInd({ nombre: '', numero: '', responsable_nombre: '', univId: '', facId: '', carrId: '', perId: '', critId: '' });
+      const nuevoInd = await agregarIndicador(Number(fInd.univId), Number(fInd.facId), Number(fInd.carrId), Number(fInd.perId), Number(fInd.critId), { nombre: fInd.nombre, numero: Number(fInd.numero) });
+      if (fInd.responsablesIds && fInd.responsablesIds.length > 0) {
+        await asignarResponsablesIndicador(nuevoInd.id, fInd.responsablesIds);
+      }
+      setFInd({ nombre: '', numero: '', responsablesIds: [], univId: '', facId: '', carrId: '', perId: '', critId: '' });
       mostrarExito('Indicador creado exitosamente');
     } catch (err) { mostrarError(err.message); }
   }
@@ -148,9 +162,20 @@ export default function ParametrizacionAdmin() {
         nombre: fAct.nombre,
         informacion_ayuda: fAct.informacion_ayuda,
         requiere_firma: fAct.requiere_firma,
+        flujo_id: fAct.flujo_id || null,
       });
-      setFAct({ nombre: '', univId: '', facId: '', carrId: '', perId: '', critId: '', indId: '', informacion_ayuda: '', requiere_firma: true });
+      setFAct({ nombre: '', univId: '', facId: '', carrId: '', perId: '', critId: '', indId: '', informacion_ayuda: '', requiere_firma: true, flujo_id: '' });
       mostrarExito('Actividad creada exitosamente');
+    } catch (err) { mostrarError(err.message); }
+  }
+
+  async function submitFlujo(e) {
+    e.preventDefault();
+    if (!fFlujo.nombre) return;
+    try {
+      await crearFlujo({ nombre: fFlujo.nombre, es_global: fFlujo.es_global, pasos: fFlujo.pasos });
+      setFFlujo({ nombre: '', es_global: false, pasos: [] });
+      mostrarExito('Flujo creado exitosamente');
     } catch (err) { mostrarError(err.message); }
   }
 
@@ -175,11 +200,21 @@ export default function ParametrizacionAdmin() {
       } else if (tipo === 'periodo') {
         await actualizarPeriodo(id, meta.univId, meta.facId, meta.carrId, valor);
       } else if (tipo === 'criterio') {
-        await actualizarCriterio(id, meta.univId, meta.facId, meta.carrId, meta.perId, valor);
+        const payload = { ...valor, flujo_id: valor.flujo_id || null };
+        await actualizarCriterio(id, meta.univId, meta.facId, meta.carrId, meta.perId, payload);
       } else if (tipo === 'indicador') {
         await actualizarIndicador(id, meta.univId, meta.facId, meta.carrId, meta.perId, meta.critId, valor);
+        if (valor.responsablesIds !== undefined) {
+          await asignarResponsablesIndicador(id, valor.responsablesIds);
+        }
       } else if (tipo === 'actividad') {
-        await actualizarActividad(id, meta.univId, meta.facId, meta.carrId, meta.perId, meta.critId, meta.indId, valor);
+        const payload = { ...valor, flujo_id: valor.flujo_id || null };
+        await actualizarActividad(id, meta.univId, meta.facId, meta.carrId, meta.perId, meta.critId, meta.indId, payload);
+        if (valor.usuariosAsignadosIds !== undefined) {
+          await asignarUsuariosActividad(id, meta.univId, meta.facId, meta.carrId, meta.perId, meta.critId, meta.indId, valor.usuariosAsignadosIds);
+        }
+      } else if (tipo === 'flujo') {
+        await actualizarFlujo(id, valor);
       }
       mostrarExito('Actualizado exitosamente');
       setEditando(null);
@@ -197,6 +232,7 @@ export default function ParametrizacionAdmin() {
       else if (tipo === 'criterio') await eliminarCriterio(id, meta.univId, meta.facId, meta.carrId, meta.perId);
       else if (tipo === 'indicador') await eliminarIndicador(id, meta.univId, meta.facId, meta.carrId, meta.perId, meta.critId);
       else if (tipo === 'actividad') await eliminarActividad(id, meta.univId, meta.facId, meta.carrId, meta.perId, meta.critId, meta.indId);
+      else if (tipo === 'flujo') await eliminarFlujo(id);
       mostrarExito('Eliminado correctamente');
     } catch (err) { mostrarError(err.message); }
     finally { setEliminandoId(null); }
@@ -210,6 +246,7 @@ export default function ParametrizacionAdmin() {
     { id: 'criterio',    label: 'Criterio',    icon: Microscope },
     { id: 'indicador',   label: 'Indicador',   icon: Target },
     { id: 'actividad',   label: 'Actividad',   icon: ClipboardList },
+    { id: 'flujos',      label: 'Flujos Firma', icon: Pencil },
   ];
 
   // Helper getters for dropdowns
@@ -528,6 +565,12 @@ export default function ParametrizacionAdmin() {
                     </select>
                     <input value={fCrit.nombre} onChange={e => setFCrit({...fCrit, nombre: e.target.value})} placeholder="O escribe el nombre del criterio..." className={inputCls} />
                   </FormField>
+                  <FormField label="Flujo de Firma (Opcional)">
+                    <select value={fCrit.flujo_id || ''} onChange={e => setFCrit({...fCrit, flujo_id: e.target.value})} className={selectCls}>
+                      <option value="">-- Usar Flujo Global por Defecto --</option>
+                      {flujosFirma.map(f => <option key={f.id} value={f.id}>{f.nombre} {f.es_global ? '(Global)' : ''}</option>)}
+                    </select>
+                  </FormField>
                   <Toggle value={fCrit.requiere_firma} onChange={v => setFCrit({...fCrit, requiere_firma: v})} label="Requiere firma digital" />
                   <button type="submit" className="w-full flex items-center justify-center space-x-2 px-4 py-2.5 bg-navy-900 text-white rounded-lg text-sm font-medium hover:bg-navy-800 transition-colors">
                     <Plus size={16} /><span>Crear Criterio</span>
@@ -540,10 +583,16 @@ export default function ParametrizacionAdmin() {
                   {universidades.flatMap(u => u.facultades.flatMap(f => (f.carreras || []).flatMap(ca => (ca.periodos || []).flatMap(p => (p.criterios || []).map(c => (
                     <ItemRow
                       key={c.id} tipo="criterio" id={c.id}
-                      meta={{ univId: u.id, facId: f.id, carrId: ca.id, perId: p.id, valorEdicion: { nombre: c.nombre, requiere_firma: c.requiere_firma } }}
+                      meta={{ univId: u.id, facId: f.id, carrId: ca.id, perId: p.id, valorEdicion: { nombre: c.nombre, requiere_firma: c.requiere_firma, flujo_id: c.flujo_id || '' } }}
                       editFields={
                         <>
                           <input value={editando?.valor?.nombre || ''} onChange={e => setEditando(prev => ({ ...prev, valor: { ...prev.valor, nombre: e.target.value } }))} placeholder="Nombre" className={inputSmCls} />
+                          <div className="mt-2">
+                            <select value={editando?.valor?.flujo_id || ''} onChange={e => setEditando(prev => ({ ...prev, valor: { ...prev.valor, flujo_id: e.target.value } }))} className={inputSmCls}>
+                              <option value="">-- Usar Flujo Global por Defecto --</option>
+                              {flujosFirma.map(fl => <option key={fl.id} value={fl.id}>{fl.nombre}</option>)}
+                            </select>
+                          </div>
                           <div className="mt-2">
                             <Toggle
                               value={editando?.valor?.requiere_firma ?? true}
@@ -559,9 +608,16 @@ export default function ParametrizacionAdmin() {
                           <span className="font-medium text-gray-800">{c.nombre}</span>
                           <span className="ml-2 text-gray-400 text-xs">· {p.nombre}</span>
                         </div>
-                        <span className={`text-xs px-2 py-0.5 rounded-full ${c.requiere_firma ? 'bg-blue-100 text-blue-700' : 'bg-gray-200 text-gray-500'}`}>
-                          {c.requiere_firma ? 'Con firma' : 'Sin firma'}
-                        </span>
+                        <div className="flex flex-col items-end space-y-1">
+                          <span className={`text-xs px-2 py-0.5 rounded-full ${c.requiere_firma ? 'bg-blue-100 text-blue-700' : 'bg-gray-200 text-gray-500'}`}>
+                            {c.requiere_firma ? 'Con firma' : 'Sin firma'}
+                          </span>
+                          {c.requiere_firma && (
+                            <span className="text-[10px] text-gray-400">
+                              Flujo: {c.flujo_id ? flujosFirma.find(f => f.id === c.flujo_id)?.nombre : 'Global'}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </ItemRow>
                   ))))))}
@@ -607,7 +663,7 @@ export default function ParametrizacionAdmin() {
                     </select>
                   </FormField>
 
-                  <FormField label="Seleccionar Indicador Predefinido (opcional)">
+                  <FormField label="Seleccionar Indicador Predefinido">
                     <select
                       onChange={e => {
                         const sel = INDICADORES_PREDEFINIDOS.find(i => i.nombre === e.target.value);
@@ -623,57 +679,40 @@ export default function ParametrizacionAdmin() {
                       className={selectCls}
                     >
                       <option value="">-- Seleccionar de los 31 Indicadores --</option>
-                      {INDICADORES_PREDEFINIDOS
-                        .filter(i => !critSelInd?.nombre || i.criterio.toLowerCase().includes(critSelInd.nombre.toLowerCase()) || critSelInd.nombre.toLowerCase().includes(i.criterio.toLowerCase()))
-                        .map(i => (
-                          <option key={i.numero} value={i.nombre}>
-                            [{i.numero}] {i.nombre} ({i.criterio})
-                          </option>
-                        ))}
+                      {INDICADORES_PREDEFINIDOS.map(ind => (
+                        <option key={`${ind.numero}-${ind.nombre}`} value={ind.nombre}>
+                          [{ind.numero}] {ind.nombre} (Criterio: {ind.criterio})
+                        </option>
+                      ))}
                     </select>
                   </FormField>
 
-                  <FormField label="Número"><input type="number" value={fInd.numero} onChange={e => setFInd({...fInd, numero: e.target.value})} placeholder="1, 2, 3..." className={inputCls} /></FormField>
-                  <FormField label="Nombre"><input value={fInd.nombre} onChange={e => setFInd({...fInd, nombre: e.target.value})} placeholder="Ej. Sílabos, Mallas..." className={inputCls} /></FormField>
+                  <FormField label="Número"><input type="number" value={fInd.numero} onChange={e => setFInd({...fInd, numero: e.target.value})} placeholder="1, 2, 3..." className={inputCls} readOnly /></FormField>
+                  <FormField label="Nombre"><input value={fInd.nombre} onChange={e => setFInd({...fInd, nombre: e.target.value})} placeholder="Ej. Sílabos, Mallas..." className={inputCls} readOnly /></FormField>
 
-                  <FormField label="Responsable Asignado">
-                    <select
-                      value={fInd.responsable_nombre}
-                      onChange={e => {
-                        const val = e.target.value;
-                        const usr = usuariosDB.find(u => u.nombre === val);
-                        setFInd(prev => ({
-                          ...prev,
-                          responsable_nombre: val,
-                          responsable_id: usr ? usr.id : null,
-                        }));
-                      }}
-                      className={`${selectCls} mb-2`}
-                    >
-                      <option value="">-- Seleccionar Responsable --</option>
-                      {usuariosDB.length > 0 && (
-                        <optgroup label="Usuarios Registrados en Sistema">
-                          {usuariosDB.map(u => (
-                            <option key={u.id} value={u.nombre}>
-                              {u.nombre} ({u.rol?.nombre || u.email})
-                            </option>
-                          ))}
-                        </optgroup>
-                      )}
-                      <optgroup label="Cargos y Entidades Predefinidas">
-                        {RESPONSABLES_PREDEFINIDOS.map(r => (
-                          <option key={r} value={r}>
-                            {r}
-                          </option>
-                        ))}
-                      </optgroup>
-                    </select>
-                    <input
-                      value={fInd.responsable_nombre}
-                      onChange={e => setFInd({...fInd, responsable_nombre: e.target.value})}
-                      placeholder="O ingresar nombre/cargo de responsable personalizado..."
-                      className={inputCls}
-                    />
+                  <FormField label="Responsables Asignados">
+                    <div className="max-h-48 overflow-y-auto space-y-2 p-2 border border-gray-200 rounded-lg bg-gray-50/50">
+                      {usuariosDB.map(u => {
+                        const seleccionados = fInd.responsablesIds || [];
+                        const isChecked = seleccionados.includes(u.id);
+                        return (
+                          <label key={u.id} className="flex items-center space-x-2 cursor-pointer">
+                            <input 
+                              type="checkbox" 
+                              checked={isChecked}
+                              onChange={(e) => {
+                                const newSelected = e.target.checked 
+                                  ? [...seleccionados, u.id]
+                                  : seleccionados.filter(id => id !== u.id);
+                                setFInd({...fInd, responsablesIds: newSelected});
+                              }}
+                              className="rounded text-navy-600 focus:ring-navy-500 bg-white border-gray-300"
+                            />
+                            <span className="text-xs text-gray-700">{u.nombre} <span className="text-gray-400">({u.email})</span></span>
+                          </label>
+                        );
+                      })}
+                    </div>
                   </FormField>
 
                   <button type="submit" className="w-full flex items-center justify-center space-x-2 px-4 py-2.5 bg-navy-900 text-white rounded-lg text-sm font-medium hover:bg-navy-800 transition-colors">
@@ -687,50 +726,47 @@ export default function ParametrizacionAdmin() {
                   {universidades.flatMap(u => u.facultades.flatMap(f => (f.carreras || []).flatMap(ca => (ca.periodos || []).flatMap(p => (p.criterios || []).flatMap(c => (c.indicadores || []).map(i => (
                     <ItemRow
                       key={i.id} tipo="indicador" id={i.id}
-                      meta={{ univId: u.id, facId: f.id, carrId: ca.id, perId: p.id, critId: c.id, valorEdicion: { nombre: i.nombre, numero: i.numero, responsable_nombre: i.responsable_nombre || '' } }}
+                      meta={{ univId: u.id, facId: f.id, carrId: ca.id, perId: p.id, critId: c.id, valorEdicion: { nombre: i.nombre, numero: i.numero, responsablesIds: i.responsables?.map(u => u.id) || [] } }}
                       editFields={
                         <>
                           <input type="number" value={editando?.valor?.numero || ''} onChange={e => setEditando(prev => ({ ...prev, valor: { ...prev.valor, numero: e.target.value } }))} placeholder="Número" className={inputSmCls} />
                           <input value={editando?.valor?.nombre || ''} onChange={e => setEditando(prev => ({ ...prev, valor: { ...prev.valor, nombre: e.target.value } }))} placeholder="Nombre" className={`${inputSmCls} mt-1`} />
-                          <select
-                            value={editando?.valor?.responsable_nombre || ''}
-                            onChange={e => {
-                              const val = e.target.value;
-                              const usr = usuariosDB.find(u => u.nombre === val);
-                              setEditando(prev => ({
-                                ...prev,
-                                valor: {
-                                  ...prev.valor,
-                                  responsable_nombre: val,
-                                  responsable_id: usr ? usr.id : null,
-                                }
-                              }));
-                            }}
-                            className={`${inputSmCls} mt-1`}
-                          >
-                            <option value="">-- Cambiar Responsable --</option>
-                            {usuariosDB.length > 0 && (
-                              <optgroup label="Usuarios Registrados">
-                                {usuariosDB.map(u => (
-                                  <option key={u.id} value={u.nombre}>
-                                    {u.nombre}
-                                  </option>
-                                ))}
-                              </optgroup>
-                            )}
-                            <optgroup label="Cargos Predefinidos">
-                              {RESPONSABLES_PREDEFINIDOS.map(r => (
-                                <option key={r} value={r}>
-                                  {r}
-                                </option>
-                              ))}
-                            </optgroup>
-                          </select>
-                          <input value={editando?.valor?.responsable_nombre || ''} onChange={e => setEditando(prev => ({ ...prev, valor: { ...prev.valor, responsable_nombre: e.target.value } }))} placeholder="O editar texto manualmente" className={`${inputSmCls} mt-1`} />
+                          <div className="mt-2">
+                            <label className="block text-xs font-semibold text-gray-600 uppercase mb-2">Responsables Asignados</label>
+                            <div className="max-h-32 overflow-y-auto space-y-2 p-2 border border-gray-200 rounded-lg bg-gray-50/50">
+                              {usuariosDB.map(u => {
+                                const seleccionados = editando?.valor?.responsablesIds || [];
+                                const isChecked = seleccionados.includes(u.id);
+                                return (
+                                  <label key={u.id} className="flex items-center space-x-2 cursor-pointer">
+                                    <input 
+                                      type="checkbox" 
+                                      checked={isChecked}
+                                      onChange={(e) => {
+                                        const newSelected = e.target.checked 
+                                          ? [...seleccionados, u.id]
+                                          : seleccionados.filter(id => id !== u.id);
+                                        setEditando(prev => ({ ...prev, valor: { ...prev.valor, responsablesIds: newSelected } }));
+                                      }}
+                                      className="rounded text-navy-600 focus:ring-navy-500 bg-white border-gray-300"
+                                    />
+                                    <span className="text-xs text-gray-700">{u.nombre} <span className="text-gray-400">({u.email})</span></span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </div>
                         </>
                       }
                     >
-                      <span className="font-medium text-gray-800">[{i.numero}] {i.nombre} {i.responsable_nombre && <span className="text-gray-500 font-normal text-xs ml-1">(Resp: {i.responsable_nombre})</span>}</span>
+                      <span className="font-medium text-gray-800">
+                        [{i.numero}] {i.nombre}
+                        {i.responsables && i.responsables.length > 0 && (
+                          <span className="text-gray-500 font-normal text-xs ml-1">
+                            (Resp: {i.responsables.map(r => r.nombre).join(', ')})
+                          </span>
+                        )}
+                      </span>
                       <span className="ml-2 text-gray-400 text-xs">· {c.nombre}</span>
                     </ItemRow>
                   )))))))}
@@ -782,8 +818,14 @@ export default function ParametrizacionAdmin() {
                     </select>
                   </FormField>
                   <FormField label="Nombre"><input value={fAct.nombre} onChange={e => setFAct({...fAct, nombre: e.target.value})} placeholder="Entregables, Informes..." className={inputCls} /></FormField>
-                  <FormField label="Instrucciones de ayuda">
-                    <textarea value={fAct.informacion_ayuda} onChange={e => setFAct({...fAct, informacion_ayuda: e.target.value})} rows={3} placeholder="Describa qué documentos deben subirse..." className={`${inputCls} resize-none`} />
+                  <FormField label="Descripción / Ayuda">
+                    <textarea value={fAct.informacion_ayuda} onChange={e => setFAct({...fAct, informacion_ayuda: e.target.value})} className={inputCls} rows={2} placeholder="Instrucciones para esta actividad..."></textarea>
+                  </FormField>
+                  <FormField label="Flujo de Firma (Opcional)">
+                    <select value={fAct.flujo_id || ''} onChange={e => setFAct({...fAct, flujo_id: e.target.value})} className={selectCls}>
+                      <option value="">-- Heredar de Criterio / Global --</option>
+                      {flujosFirma.map(f => <option key={f.id} value={f.id}>{f.nombre} {f.es_global ? '(Global)' : ''}</option>)}
+                    </select>
                   </FormField>
                   <Toggle value={fAct.requiere_firma} onChange={v => setFAct({...fAct, requiere_firma: v})} label="Requiere firma digital" />
                   <button type="submit" className="w-full flex items-center justify-center space-x-2 px-4 py-2.5 bg-navy-900 text-white rounded-lg text-sm font-medium hover:bg-navy-800 transition-colors">
@@ -797,17 +839,48 @@ export default function ParametrizacionAdmin() {
                   {universidades.flatMap(u => u.facultades.flatMap(f => (f.carreras || []).flatMap(ca => (ca.periodos || []).flatMap(p => (p.criterios || []).flatMap(c => (c.indicadores || []).flatMap(i => (i.actividades || []).map(a => (
                     <ItemRow
                       key={a.id} tipo="actividad" id={a.id}
-                      meta={{ univId: u.id, facId: f.id, carrId: ca.id, perId: p.id, critId: c.id, indId: i.id, valorEdicion: { nombre: a.nombre, informacion_ayuda: a.informacion_ayuda || '', requiere_firma: a.requiere_firma } }}
+                      meta={{ univId: u.id, facId: f.id, carrId: ca.id, perId: p.id, critId: c.id, indId: i.id, valorEdicion: { nombre: a.nombre, informacion_ayuda: a.informacion_ayuda || '', requiere_firma: a.requiere_firma, flujo_id: a.flujo_id || '', usuariosAsignadosIds: a.usuariosAsignados?.map(u => u.id) || [] } }}
                       editFields={
                         <>
                           <input value={editando?.valor?.nombre || ''} onChange={e => setEditando(prev => ({ ...prev, valor: { ...prev.valor, nombre: e.target.value } }))} placeholder="Nombre" className={inputSmCls} />
                           <textarea value={editando?.valor?.informacion_ayuda || ''} onChange={e => setEditando(prev => ({ ...prev, valor: { ...prev.valor, informacion_ayuda: e.target.value } }))} placeholder="Instrucciones" rows={2} className={`${inputSmCls} mt-1 resize-none`} />
                           <div className="mt-2">
+                            <select value={editando?.valor?.flujo_id || ''} onChange={e => setEditando(prev => ({ ...prev, valor: { ...prev.valor, flujo_id: e.target.value } }))} className={inputSmCls}>
+                              <option value="">-- Heredar de Criterio / Global --</option>
+                              {flujosFirma.map(fl => <option key={fl.id} value={fl.id}>{fl.nombre}</option>)}
+                            </select>
+                          </div>
+                          <div className="mt-2 flex items-center space-x-4">
                             <Toggle
                               value={editando?.valor?.requiere_firma ?? true}
                               onChange={v => setEditando(prev => ({ ...prev, valor: { ...prev.valor, requiere_firma: v } }))}
                               label="Requiere firma"
                             />
+                          </div>
+                          <div className="mt-2">
+                            <label className="block text-xs font-semibold text-gray-600 uppercase mb-2">Usuarios Asignados (Vacío = Público)</label>
+                            <div className="max-h-32 overflow-y-auto space-y-2 p-2 border border-gray-200 rounded-lg bg-gray-50/50">
+                              {usuariosDB.map(u => {
+                                const seleccionados = editando?.valor?.usuariosAsignadosIds || [];
+                                const isChecked = seleccionados.includes(u.id);
+                                return (
+                                  <label key={u.id} className="flex items-center space-x-2 cursor-pointer">
+                                    <input 
+                                      type="checkbox" 
+                                      checked={isChecked}
+                                      onChange={(e) => {
+                                        const newSelected = e.target.checked 
+                                          ? [...seleccionados, u.id]
+                                          : seleccionados.filter(id => id !== u.id);
+                                        setEditando(prev => ({ ...prev, valor: { ...prev.valor, usuariosAsignadosIds: newSelected } }));
+                                      }}
+                                      className="rounded text-navy-600 focus:ring-navy-500 bg-white border-gray-300"
+                                    />
+                                    <span className="text-xs text-gray-700">{u.nombre} <span className="text-gray-400">({u.email})</span></span>
+                                  </label>
+                                );
+                              })}
+                            </div>
                           </div>
                         </>
                       }
@@ -816,6 +889,122 @@ export default function ParametrizacionAdmin() {
                       <span className="ml-2 text-gray-400 text-xs">· {i.nombre}</span>
                     </ItemRow>
                   ))))))))}
+                </div>
+              </div>
+            </div>
+          )}
+          {/* Flujos */}
+          {tab === 'flujos' && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              <div>
+                <h3 className="text-sm font-semibold text-navy-900 mb-4">Nuevo Flujo de Firma</h3>
+                <form onSubmit={submitFlujo} className="space-y-4">
+                  <FormField label="Nombre">
+                    <input value={fFlujo.nombre} onChange={e => setFFlujo({...fFlujo, nombre: e.target.value})} placeholder="Flujo de Proyecto, Flujo A..." className={inputCls} />
+                  </FormField>
+                  <Toggle value={fFlujo.es_global} onChange={v => setFFlujo({...fFlujo, es_global: v})} label="Establecer como flujo global por defecto" />
+                  
+                  <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                    <h4 className="text-xs font-semibold text-gray-600 uppercase mb-3">Secuencia de Pasos</h4>
+                    
+                    {fFlujo.pasos.map((paso, idx) => (
+                      <div key={idx} className="flex items-center space-x-2 mb-2">
+                        <span className="text-sm font-medium text-gray-500 w-6">{idx + 1}.</span>
+                        <select 
+                          value={paso} 
+                          onChange={(e) => {
+                            const newPasos = [...fFlujo.pasos];
+                            newPasos[idx] = Number(e.target.value);
+                            setFFlujo({...fFlujo, pasos: newPasos});
+                          }}
+                          className={inputSmCls}
+                        >
+                          <option value="">-- Seleccione un Rol --</option>
+                          {rolesBD.map(r => <option key={r.id} value={r.id}>{r.nombre}</option>)}
+                        </select>
+                        <button type="button" onClick={() => {
+                          const newPasos = [...fFlujo.pasos];
+                          newPasos.splice(idx, 1);
+                          setFFlujo({...fFlujo, pasos: newPasos});
+                        }} className="text-red-500 hover:text-red-700 p-1"><X size={16}/></button>
+                      </div>
+                    ))}
+
+                    <button 
+                      type="button" 
+                      onClick={() => setFFlujo({...fFlujo, pasos: [...fFlujo.pasos, '']})}
+                      className="mt-2 text-xs font-medium text-blue-600 hover:text-blue-800 flex items-center space-x-1"
+                    >
+                      <Plus size={14}/> <span>Agregar Paso</span>
+                    </button>
+                  </div>
+
+                  <button type="submit" className="w-full flex items-center justify-center space-x-2 px-4 py-2.5 bg-navy-900 text-white rounded-lg text-sm font-medium hover:bg-navy-800 transition-colors">
+                    <Plus size={16} /><span>Crear Flujo</span>
+                  </button>
+                </form>
+              </div>
+              
+              <div>
+                <h3 className="text-sm font-semibold text-navy-900 mb-4">Flujos existentes</h3>
+                <div className="space-y-2">
+                  {flujosFirma.map(f => (
+                    <ItemRow
+                      key={f.id} tipo="flujo" id={f.id}
+                      meta={{ valorEdicion: { nombre: f.nombre, es_global: f.es_global, pasos: f.pasos?.map(p => p.rol_id) || [] } }}
+                      editFields={
+                        <>
+                          <input value={editando?.valor?.nombre || ''} onChange={e => setEditando(prev => ({ ...prev, valor: { ...prev.valor, nombre: e.target.value } }))} placeholder="Nombre" className={inputSmCls} />
+                          <div className="mt-2">
+                            <Toggle value={editando?.valor?.es_global ?? false} onChange={v => setEditando(prev => ({ ...prev, valor: { ...prev.valor, es_global: v } }))} label="Flujo global" />
+                          </div>
+                          
+                          <div className="mt-3 space-y-2 border-t pt-2 border-gray-200">
+                            <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Pasos</p>
+                            {(editando?.valor?.pasos || []).map((pasoId, idx) => (
+                              <div key={idx} className="flex items-center space-x-2">
+                                <span className="text-xs w-4 text-gray-500">{idx+1}.</span>
+                                <select 
+                                  value={pasoId} 
+                                  onChange={(e) => {
+                                    const newPasos = [...editando.valor.pasos];
+                                    newPasos[idx] = Number(e.target.value);
+                                    setEditando(prev => ({ ...prev, valor: { ...prev.valor, pasos: newPasos } }));
+                                  }}
+                                  className={inputSmCls}
+                                >
+                                  <option value="">-- Rol --</option>
+                                  {rolesBD.map(r => <option key={r.id} value={r.id}>{r.nombre}</option>)}
+                                </select>
+                                <button type="button" onClick={() => {
+                                  const newPasos = [...editando.valor.pasos];
+                                  newPasos.splice(idx, 1);
+                                  setEditando(prev => ({ ...prev, valor: { ...prev.valor, pasos: newPasos } }));
+                                }} className="text-red-500 p-1"><X size={14}/></button>
+                              </div>
+                            ))}
+                            <button 
+                              type="button" 
+                              onClick={() => setEditando(prev => ({ ...prev, valor: { ...prev.valor, pasos: [...prev.valor.pasos, ''] } }))}
+                              className="text-[11px] font-medium text-blue-600 flex items-center space-x-1"
+                            >
+                              <Plus size={12}/> <span>Añadir paso</span>
+                            </button>
+                          </div>
+                        </>
+                      }
+                    >
+                      <div className="flex flex-col">
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium text-gray-800">{f.nombre}</span>
+                          {f.es_global && <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-sm">GLOBAL</span>}
+                        </div>
+                        <div className="mt-1 text-xs text-gray-500">
+                          {f.pasos?.length || 0} pasos: {(f.pasos || []).map(p => p.rolRequerido?.nombre).join(' → ')}
+                        </div>
+                      </div>
+                    </ItemRow>
+                  ))}
                 </div>
               </div>
             </div>

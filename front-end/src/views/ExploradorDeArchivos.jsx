@@ -4,8 +4,6 @@ import Breadcrumbs from '../components/common/Breadcrumbs';
 import Badge from '../components/common/Badge';
 import { useApp } from '../context/useApp';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
-
 function CarpetaCard({ nombre, descripcion, onClick, onEdit, onDelete }) {
   return (
     <div className="bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md hover:border-navy-200 transition-all duration-200 group relative">
@@ -130,11 +128,12 @@ export default function ExploradorDeArchivos() {
     setFiltroEstado('');
   }, [nivel]);
 
-  const esAdmin = usuario?.rol === 'ADMINISTRADOR' || usuario?.rol === 'RECTOR' || usuario?.rol === 'DECANO';
+  const userRoles = usuario?.roles || [];
+  const esAdmin = userRoles.includes('ADMINISTRADOR') || userRoles.includes('RECTOR') || userRoles.includes('DECANO');
 
   async function handleDescargar(doc) {
     try {
-      const res = await fetch(`${API_URL}/documentos/${doc.id}/descargar`, {
+      const res = await fetch(`http://localhost:3000/api/documentos/${doc.id}/descargar`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw new Error('Error al descargar');
@@ -237,20 +236,15 @@ export default function ExploradorDeArchivos() {
   }
 
   function puedeEliminarDoc(doc) {
-    if (usuario.rol === 'ADMINISTRADOR' || usuario.rol === 'RECTOR') return true;
+    if (userRoles.includes('ADMINISTRADOR') || userRoles.includes('RECTOR')) return true;
     return doc.subido_por === usuario.nombre && ['PENDIENTE', 'RECHAZADO'].includes(doc.estado);
   }
 
   function puedeFirmar(doc) {
-    if (doc.estado === 'COMPLETADO' || doc.estado === 'RECHAZADO') return false;
-    
-    // Jerarquía de 4 pasos
-    if (usuario.rol === 'DIRECTOR_CARRERA' && doc.estado === 'PENDIENTE') return true;
-    if (usuario.rol === 'SUBDECANO' && doc.estado === 'FIRMADO_DIRECTOR') return true;
-    if (usuario.rol === 'DECANO' && doc.estado === 'FIRMADO_SUBDECANO') return true;
-    if (usuario.rol === 'RECTOR' && doc.estado === 'FIRMADO_DECANO') return true;
-    
-    return false;
+    // Solo puede firmar el firmante actual asignado por el workflow
+    if (!doc.estado || doc.estado === 'COMPLETADO' || doc.estado === 'RECHAZADO') return false;
+    // eslint-disable-next-line eqeqeq
+    return doc.firmante_actual_id == usuario?.id;
   }
 
   // ── Editar ────────────────────────────────────────────────────────────────
@@ -539,8 +533,8 @@ export default function ExploradorDeArchivos() {
               </div>
             )}
 
-            {/* Subida — solo DOCENTE o RESPONSABLE_AREA pueden subir */}
-            {(usuario.rol === 'DOCENTE' || usuario.rol === 'RESPONSABLE_AREA' || usuario.rol === 'DIRECTOR_CARRERA') && (
+            {/* Subida — todos los usuarios autenticados pueden subir */}
+            {(
               <div>
                 {errorSubida && (
                   <div className="mb-3 bg-red-50 border border-red-200 rounded-lg p-3 flex items-center space-x-2">

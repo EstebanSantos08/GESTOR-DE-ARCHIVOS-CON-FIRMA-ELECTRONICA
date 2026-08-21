@@ -34,7 +34,7 @@ async function perfil(req, res) {
     const usuario = await Usuario.findByPk(req.usuario.id, {
       attributes: { exclude: ['password_hash'] },
       include: [
-        { model: Rol, as: 'rol' },
+        { model: Rol, as: 'roles' },
         { model: Facultad, as: 'facultad', attributes: ['id', 'nombre'] },
         { model: Carrera, as: 'carrera', attributes: ['id', 'nombre'] },
       ],
@@ -55,7 +55,7 @@ async function registroPublico(req, res) {
     if (!rolDocente) return res.status(500).json({ error: 'Rol DOCENTE no configurado' });
 
     const { nombre, email, password } = req.body;
-    const usuario = await authService.registrar({ nombre, email, password, rol_id: rolDocente.id });
+    const usuario = await authService.registrar({ nombre, email, password, roles: [rolDocente.id] });
     res.status(201).json(usuario);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -67,7 +67,7 @@ async function listarUsuarios(req, res) {
     const usuarios = await Usuario.findAll({
       attributes: { exclude: ['password_hash'] },
       include: [
-        { model: Rol, as: 'rol' },
+        { model: Rol, as: 'roles' },
         { model: Facultad, as: 'facultad', attributes: ['id', 'nombre'] },
         { model: Carrera, as: 'carrera', attributes: ['id', 'nombre'] },
       ],
@@ -81,20 +81,20 @@ async function listarUsuarios(req, res) {
 
 async function actualizarRol(req, res) {
   try {
-    const { rol_id } = req.body;
-    if (!rol_id) return res.status(400).json({ error: 'rol_id requerido' });
-
-    const rolDestino = await Rol.findByPk(rol_id);
-    if (!rolDestino) return res.status(400).json({ error: 'Rol no encontrado' });
+    const { roles } = req.body;
+    if (!roles || !Array.isArray(roles) || roles.length === 0) {
+      return res.status(400).json({ error: 'roles array requerido' });
+    }
 
     const usuario = await Usuario.findByPk(req.params.id);
     if (!usuario) return res.status(404).json({ error: 'Usuario no encontrado' });
 
-    await usuario.update({ rol_id });
+    await usuario.setRoles(roles);
+    
     const actualizado = await Usuario.findByPk(req.params.id, {
       attributes: { exclude: ['password_hash'] },
       include: [
-        { model: Rol, as: 'rol' },
+        { model: Rol, as: 'roles' },
         { model: Facultad, as: 'facultad', attributes: ['id', 'nombre'] },
         { model: Carrera, as: 'carrera', attributes: ['id', 'nombre'] },
       ],
@@ -119,7 +119,6 @@ async function eliminarUsuario(req, res) {
 
     if (hardDelete) {
       // Desvincular de Indicadores y Documentos para evitar violación de FK
-      await Indicador.update({ responsable_id: null }, { where: { responsable_id: usuario.id } });
       await Documento.update({ firmante_actual_id: null }, { where: { firmante_actual_id: usuario.id } });
       await Documento.update({ subido_por_id: null }, { where: { subido_por_id: usuario.id } });
 
@@ -137,7 +136,7 @@ async function eliminarUsuario(req, res) {
 
 async function actualizarUsuario(req, res) {
   try {
-    const { nombre, email, facultad_id, carrera_id, rol_id } = req.body;
+    const { nombre, email, facultad_id, carrera_id, roles } = req.body;
     const usuario = await Usuario.findByPk(req.params.id);
     if (!usuario) return res.status(404).json({ error: 'Usuario no encontrado' });
 
@@ -146,7 +145,7 @@ async function actualizarUsuario(req, res) {
       if (existe) return res.status(400).json({ error: 'El email ya está en uso' });
     }
 
-    const esAdmin = req.usuario.rol === 'ADMINISTRADOR';
+    const esAdmin = req.usuario.roles && req.usuario.roles.includes('ADMINISTRADOR');
     const esElMismo = req.usuario.id === parseInt(req.params.id);
 
     if (!esAdmin && !esElMismo) {
@@ -169,9 +168,8 @@ async function actualizarUsuario(req, res) {
       if (email !== undefined) camposActualizar.email = email;
       if (facultad_id !== undefined) camposActualizar.facultad_id = parseIntegerId(facultad_id);
       if (carrera_id !== undefined) camposActualizar.carrera_id = parseIntegerId(carrera_id);
-      if (rol_id !== undefined) {
-        const parsedRol = parseIntegerId(rol_id);
-        if (parsedRol !== null) camposActualizar.rol_id = parsedRol;
+      if (roles !== undefined && Array.isArray(roles)) {
+        await usuario.setRoles(roles);
       }
     }
 
@@ -179,7 +177,7 @@ async function actualizarUsuario(req, res) {
     const actualizado = await Usuario.findByPk(req.params.id, {
       attributes: { exclude: ['password_hash'] },
       include: [
-        { model: Rol, as: 'rol' },
+        { model: Rol, as: 'roles' },
         { model: Facultad, as: 'facultad', attributes: ['id', 'nombre'] },
         { model: Carrera, as: 'carrera', attributes: ['id', 'nombre'] },
       ],

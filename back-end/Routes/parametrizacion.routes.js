@@ -11,6 +11,8 @@ const {
   indicadorCtrl,
   actividadCtrl,
   estructura,
+  asignarUsuariosActividad,
+  asignarResponsablesIndicador,
 } = require('../Controller/parametrizacion.controller');
 
 // Solo ADMINISTRADOR puede crear/editar/eliminar parametrización
@@ -83,6 +85,10 @@ router.post('/indicadores', ...soloAdmin,
 );
 router.put('/indicadores/:id', ...soloAdmin, indicadorCtrl.actualizar);
 router.delete('/indicadores/:id', ...soloAdmin, indicadorCtrl.eliminar);
+router.post('/indicadores/:id/responsables', ...soloAdmin,
+  body('responsablesIds').isArray().withMessage('responsablesIds debe ser un arreglo'),
+  asignarResponsablesIndicador
+);
 
 // ─── Actividad ─────────────────────────────────────────────────────────────
 router.get('/actividades', autenticar, actividadCtrl.listar);
@@ -94,6 +100,10 @@ router.post('/actividades', ...soloAdmin,
 );
 router.put('/actividades/:id', ...soloAdmin, actividadCtrl.actualizar);
 router.delete('/actividades/:id', ...soloAdmin, actividadCtrl.eliminar);
+router.post('/actividades/:id/usuarios', ...soloAdmin,
+  body('usuariosIds').isArray().withMessage('usuariosIds debe ser un arreglo'),
+  asignarUsuariosActividad
+);
 
 module.exports = router;
 

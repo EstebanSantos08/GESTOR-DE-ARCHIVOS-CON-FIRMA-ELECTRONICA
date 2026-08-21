@@ -2,7 +2,7 @@ const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
 const { validationResult } = require('express-validator');
-const { Documento, Usuario, Rol, Facultad, Actividad } = require('../Model');
+const { Documento, Usuario, Rol, Facultad, Actividad, FlujoFirma, PasoFirma } = require('../Model');
 const firmaService = require('../Services/firma.service');
 const workflowService = require('../Services/workflow.service');
 
@@ -64,20 +64,39 @@ async function subirDocumento(req, res) {
 async function listarDocumentos(req, res) {
   try {
     const where = {};
+    const usuarioRoles = req.usuario.roles || [req.usuario.rol].filter(Boolean);
+    const esAdmin = usuarioRoles.includes('ADMINISTRADOR');
 
     if (req.query.actividad_id) {
-      // Con actividad_id: todos los roles ven todos los docs de esa actividad
+      // Filtrar por actividad — solo documentos de esa actividad
       where.actividad_id = parseInt(req.query.actividad_id);
-    } else if (['DOCENTE', 'RESPONSABLE_AREA'].includes(req.usuario.rol)) {
-      // Roles de subida solo ven sus propios documentos
-      where.subido_por_id = req.usuario.id;
-    } else if (['DIRECTOR_CARRERA', 'SUBDECANO', 'DECANO', 'RECTOR'].includes(req.usuario.rol)) {
-      // Roles firmantes ven docs donde son firmante actual O todos si es query general
-      if (!req.query.todos) {
-        where.firmante_actual_id = req.usuario.id;
+
+      // Si no es admin, además filtrar por visibilidad:
+      // - documentos que subió el usuario, O
+      // - documentos donde es el firmante actual, O
+      // - documentos donde ya participó (firmó en algún paso anterior)
+      if (!esAdmin) {
+        const { Op } = require('sequelize');
+        where[Op.or] = [
+          { subido_por_id: req.usuario.id },
+          { firmante_actual_id: req.usuario.id },
+        ];
       }
+    } else if (esAdmin) {
+      // ADMINISTRADOR ve todos los documentos sin filtro
+      // (solo si pide ?todos=true explícitamente)
+      if (!req.query.todos) {
+        // Sin todos=true, admin también ve solo los relevantes para él
+        // pero puede ver todos con ?todos=true
+      }
+    } else {
+      // Usuarios normales: solo ven documentos que subieron O donde son firmante actual
+      const { Op } = require('sequelize');
+      where[Op.or] = [
+        { subido_por_id: req.usuario.id },
+        { firmante_actual_id: req.usuario.id },
+      ];
     }
-    // ADMINISTRADOR ve todos los documentos sin filtro
 
     if (req.query.estado) where.estado = req.query.estado;
 
@@ -88,8 +107,19 @@ async function listarDocumentos(req, res) {
         { model: Usuario, as: 'firmanteActual', attributes: ['id', 'nombre'] },
         { model: Facultad, as: 'facultad', attributes: ['id', 'nombre'] },
         { model: Actividad, as: 'actividad', attributes: ['id', 'nombre'] },
+        { 
+          model: FlujoFirma, as: 'flujoFirma', 
+          include: [{ model: PasoFirma, as: 'pasos', include: [{ model: Rol, as: 'rolRequerido' }] }] 
+        },
       ],
       order: [['creado_en', 'DESC']],
+    });
+
+    // Ordenar los pasos del flujo si existe
+    documentos.forEach(d => {
+      if (d.flujoFirma && d.flujoFirma.pasos) {
+        d.flujoFirma.pasos.sort((a, b) => a.orden - b.orden);
+      }
     });
 
     res.json(documentos);
@@ -103,11 +133,19 @@ async function obtenerDocumento(req, res) {
     const documento = await Documento.findByPk(req.params.id, {
       include: [
         { model: Usuario, as: 'subidoPor', attributes: ['id', 'nombre', 'email'] },
-        { model: Usuario, as: 'firmanteActual', include: [{ model: Rol, as: 'rol' }] },
+        { model: Usuario, as: 'firmanteActual', include: [{ model: Rol, as: 'roles' }] },
         { model: Facultad, as: 'facultad' },
         { model: Actividad, as: 'actividad' },
+        { 
+          model: FlujoFirma, as: 'flujoFirma', 
+          include: [{ model: PasoFirma, as: 'pasos', include: [{ model: Rol, as: 'rolRequerido' }] }] 
+        },
       ],
     });
+
+    if (documento && documento.flujoFirma && documento.flujoFirma.pasos) {
+      documento.flujoFirma.pasos.sort((a, b) => a.orden - b.orden);
+    }
 
     if (!documento) return res.status(404).json({ error: 'Documento no encontrado' });
     res.json(documento);
@@ -122,7 +160,7 @@ async function firmarDocumento(req, res) {
     if (!documento) return res.status(404).json({ error: 'Documento no encontrado' });
 
     const usuarioFirmante = await Usuario.findByPk(req.usuario.id, {
-      include: [{ model: Rol, as: 'rol' }],
+      include: [{ model: Rol, as: 'roles' }],
     });
 
     // Determina el certificado: primero el enviado por el cliente, luego el del servidor
@@ -152,7 +190,7 @@ async function firmarDocumento(req, res) {
         rutaPdf: documento.ruta_archivo,
         rutaCertP12: certP12Path,
         passwordCert: certPassword,
-        firmante: { nombre: usuarioFirmante.nombre, rol: usuarioFirmante.rol.nombre },
+        firmante: { nombre: usuarioFirmante.nombre, rol: (usuarioFirmante.roles && usuarioFirmante.roles[0]?.nombre) || 'Usuario' },
       });
 
       // Guarda el PDF firmado con nuevo nombre
@@ -214,7 +252,7 @@ async function eliminarDocumento(req, res) {
     // Lógica de eliminación por roles:
     // ADMINISTRADOR puede eliminar cualquier documento
     // El propietario puede eliminar solo si está en PENDIENTE o RECHAZADO
-    const esAdmin = req.usuario.rol === 'ADMINISTRADOR';
+    const esAdmin = req.usuario.roles && req.usuario.roles.includes('ADMINISTRADOR');
     const esPropietario = documento.subido_por_id === req.usuario.id;
     const estadoPermitido = ['PENDIENTE', 'RECHAZADO'].includes(documento.estado);
 
@@ -240,7 +278,7 @@ async function resumenDocumentos(req, res) {
     const where = {};
 
     // DOCENTE y RESPONSABLE_AREA solo ven sus propios documentos
-    if (['DOCENTE', 'RESPONSABLE_AREA'].includes(req.usuario.rol)) {
+    if (req.usuario.roles && (req.usuario.roles.includes('DOCENTE') || req.usuario.roles.includes('RESPONSABLE_AREA'))) {
       where.subido_por_id = req.usuario.id;
     }
     // DIRECTOR_CARRERA, SUBDECANO, DECANO, RECTOR y ADMINISTRADOR ven todos
@@ -250,7 +288,7 @@ async function resumenDocumentos(req, res) {
     res.json({
       total: todos.length,
       pendientesFirma: todos.filter(d => [
-        'PENDIENTE', 'FIRMADO_DIRECTOR', 'FIRMADO_SUBDECANO', 'FIRMADO_DECANO',
+        'PENDIENTE', 'EN_REVISION', 'FIRMADO_DIRECTOR', 'FIRMADO_SUBDECANO', 'FIRMADO_DECANO',
       ].includes(d.estado)).length,
       firmados: todos.filter(d => d.estado === 'COMPLETADO').length,
       rechazados: todos.filter(d => d.estado === 'RECHAZADO').length,

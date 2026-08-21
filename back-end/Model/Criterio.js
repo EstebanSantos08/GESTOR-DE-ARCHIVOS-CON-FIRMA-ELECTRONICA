@@ -8,6 +8,7 @@ const Criterio = sequelize.define('Criterio', {
   descripcion: { type: DataTypes.TEXT },
   periodo_id: { type: DataTypes.INTEGER, allowNull: true },
   requiere_firma: { type: DataTypes.BOOLEAN, defaultValue: true },
+  flujo_id: { type: DataTypes.INTEGER, allowNull: true },
   activo: { type: DataTypes.BOOLEAN, defaultValue: true },
 }, {
   tableName: 'criterios',

@@ -6,6 +6,7 @@ const sequelize = require('../config/database');
 // En cualquier punto puede pasar a RECHAZADO.
 const ESTADOS = [
   'PENDIENTE',
+  'EN_REVISION',
   'FIRMADO_DIRECTOR',
   'FIRMADO_SUBDECANO',
   'FIRMADO_DECANO',
@@ -29,6 +30,8 @@ const Documento = sequelize.define('Documento', {
   },
   facultad_id: { type: DataTypes.INTEGER, allowNull: true },
   actividad_id: { type: DataTypes.INTEGER, allowNull: true },
+  flujo_id: { type: DataTypes.INTEGER, allowNull: true },
+  paso_actual: { type: DataTypes.INTEGER, defaultValue: 1 },
   observaciones: { type: DataTypes.TEXT, allowNull: true },
   hash_sha256: {
     type: DataTypes.STRING(64),

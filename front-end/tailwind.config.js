@@ -4,19 +4,19 @@ export default {
   theme: {
     extend: {
       colors: {
-/*
-        // PALETA ORIGINAL (AZUL / NAVY) - Descomentar si deseas volver al tema original
-        navy: {
-          50: '#eff6ff',
-          100: '#dbeafe',
-          500: '#3b82f6',
-          600: '#2563eb',
-          700: '#1d4ed8',
-          800: '#1e40af',
-          900: '#1e3a8a',
-          950: '#172554',
-        }
-*/
+        /*
+                // PALETA ORIGINAL (AZUL / NAVY) - Descomentar si deseas volver al tema original
+                navy: {
+                  50: '#eff6ff',
+                  100: '#dbeafe',
+                  500: '#3b82f6',
+                  600: '#2563eb',
+                  700: '#1d4ed8',
+                  800: '#1e40af',
+                  900: '#1e3a8a',
+                  950: '#172554',
+                }
+        */
 
         //PALETA ROJO, BLANCO Y PLOMO (ACTIVA)
         navy: {

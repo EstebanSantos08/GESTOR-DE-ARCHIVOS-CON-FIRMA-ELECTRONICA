@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { AppContext } from './AppContextObject';
-import { mockAuditoria, mockAlertas } from '../data/mockData';
 
 const API_URL = 'http://localhost:3000/api';
 
@@ -24,11 +23,21 @@ function parsearUsuario(data) {
     roles = [data.rol.nombre || data.rol];
   }
 
+  // Normaliza carreras: acepta tanto el alias M:N 'carreras' (array de objetos)
+  // como el alias antiguo 'carrera' (objeto único) por compatibilidad transitoria.
+  let carreras = [];
+  if (data.carreras && Array.isArray(data.carreras)) {
+    carreras = data.carreras.map(c => (typeof c === 'object' ? { id: c.id, nombre: c.nombre } : { id: c, nombre: '' }));
+  } else if (data.carrera && typeof data.carrera === 'object') {
+    carreras = [{ id: data.carrera.id, nombre: data.carrera.nombre }];
+  }
+
   return {
     ...data,
     nombre,
     avatar,
     roles,
+    carreras,
   };
 }
 
@@ -370,8 +379,9 @@ export function AppProvider({ children }) {
     localStorage.removeItem('gestdoc_usuario');
   }
 
-  function navegarA(vista) {
+  function navegarA(vista, params = null) {
     setVistaActual(vista);
+    setNavParams(params);
   }
 
   function _inyectarDocumentosEnActividad(actividadId, docs) {
@@ -389,7 +399,9 @@ export function AppProvider({ children }) {
                 indicadores: c.indicadores.map(i => ({
                   ...i,
                   actividades: i.actividades.map(a =>
-                    a.id === actividadId ? { ...a, documentos: docs } : a
+                    a.id === actividadId
+                      ? { ...a, documentos: docs, cantidadDocumentos: Array.isArray(docs) ? docs.length : (a.cantidadDocumentos || 0) }
+                      : a
                   ),
                 })),
               })),
@@ -537,10 +549,14 @@ export function AppProvider({ children }) {
   }
 
   async function actualizarRolUsuario(usuarioId, rol_id) {
-    const res = await fetch(`${API_URL}/auth/usuarios/${usuarioId}/rol`, {
+    // El backend ahora espera un array de IDs en 'roles' (PUT /usuarios/:id).
+    // Se mantiene la firma original (rol_id único) para no romper los llamadores
+    // existentes, pero se envía como array.
+    const roles = Array.isArray(rol_id) ? rol_id : [rol_id];
+    const res = await fetch(`${API_URL}/auth/usuarios/${usuarioId}`, {
       method: 'PUT',
       headers: authHeaders(),
-      body: JSON.stringify({ rol_id }),
+      body: JSON.stringify({ roles }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Error al actualizar rol');
@@ -573,6 +589,123 @@ export function AppProvider({ children }) {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!res.ok) return [];
+    return res.json();
+  }
+
+  // ─── API: Carreras ────────────────────────────────────────────────────────
+  // listarCarreras: devuelve todas las carreras activas de la BD (para selects
+  // en formularios de creación/edición de usuarios sin depender del árbol
+  // jerárquico de universidades).
+  async function listarCarreras() {
+    try {
+      const res = await fetch(`${API_URL}/parametrizacion/carreras`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return [];
+      return res.json();
+    } catch {
+      return [];
+    }
+  }
+
+  // crearCarrera: crea una carrera nueva vía el endpoint de parametrización.
+  // Llama a agregarCarrera del contexto si se conocen univId y facId,
+  // o hace la llamada directa si solo se tienen datos básicos.
+  async function crearCarrera(datos) {
+    const res = await fetch(`${API_URL}/parametrizacion/carreras`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify(datos),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || data.errores?.[0]?.msg || 'Error al crear carrera');
+    return data;
+  }
+
+  // ─── API: Docentes (N:M con Facultades y Actividades) ──────────────────────
+  async function listarDocentes() {
+    const res = await fetch(`${API_URL}/parametrizacion/docentes`, {
+      headers: authHeaders(),
+    });
+    if (!res.ok) throw new Error('Error al listar docentes');
+    return res.json();
+  }
+
+  async function obtenerDocente(id) {
+    const res = await fetch(`${API_URL}/parametrizacion/docentes/${id}`, {
+      headers: authHeaders(),
+    });
+    if (!res.ok) throw new Error('Error al obtener docente');
+    return res.json();
+  }
+
+  async function crearDocente(datos) {
+    const res = await fetch(`${API_URL}/parametrizacion/docentes`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify(datos),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || data.errores?.[0]?.msg || 'Error al crear docente');
+    return data;
+  }
+
+  async function actualizarDocente(id, datos) {
+    const res = await fetch(`${API_URL}/parametrizacion/docentes/${id}`, {
+      method: 'PUT',
+      headers: authHeaders(),
+      body: JSON.stringify(datos),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || data.errores?.[0]?.msg || 'Error al actualizar docente');
+    return data;
+  }
+
+  async function eliminarDocente(id) {
+    const res = await fetch(`${API_URL}/parametrizacion/docentes/${id}`, {
+      method: 'DELETE',
+      headers: authHeaders(),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Error al eliminar docente');
+    return data;
+  }
+
+  async function listarFacultadesCatalogo() {
+    try {
+      const res = await fetch(`${API_URL}/parametrizacion/facultades`, {
+        headers: authHeaders(),
+      });
+      if (!res.ok) return [];
+      return res.json();
+    } catch {
+      return [];
+    }
+  }
+
+  async function listarActividadesCatalogo() {
+    try {
+      const res = await fetch(`${API_URL}/parametrizacion/actividades`, {
+        headers: authHeaders(),
+      });
+      if (!res.ok) return [];
+      return res.json();
+    } catch {
+      return [];
+    }
+  }
+
+  async function listarDocentesElegibles({ facultadId, actividadId, rol } = {}) {
+    const params = new URLSearchParams();
+    if (facultadId) params.append('facultadId', facultadId);
+    if (actividadId) params.append('actividadId', actividadId);
+    if (rol) params.append('rol', rol);
+
+    const query = params.toString() ? `?${params.toString()}` : '';
+    const res = await fetch(`${API_URL}/parametrizacion/docentes/elegibles${query}`, {
+      headers: authHeaders(),
+    });
+    if (!res.ok) throw new Error('Error al listar docentes elegibles');
     return res.json();
   }
 
@@ -1169,6 +1302,9 @@ export function AppProvider({ children }) {
       firmarDocumento, rechazarDocumento, subirDocumento, eliminarDocumento,
       certBase64, certPassword, cargarCertificado, limpiarCertificado, cargarMetricasApi,
       listarUsuarios, actualizarRolUsuario, actualizarUsuario, eliminarUsuario, listarRoles,
+      listarDocentes, obtenerDocente, crearDocente, actualizarDocente, eliminarDocente,
+      listarFacultadesCatalogo, listarActividadesCatalogo, listarDocentesElegibles,
+      listarCarreras, crearCarrera,
       agregarUniversidad, actualizarUniversidad, eliminarUniversidad,
       agregarFacultad, actualizarFacultad, eliminarFacultad,
       agregarPeriodo, actualizarPeriodo, eliminarPeriodo,

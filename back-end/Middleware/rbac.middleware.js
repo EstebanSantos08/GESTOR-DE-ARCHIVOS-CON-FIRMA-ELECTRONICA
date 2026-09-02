@@ -11,7 +11,11 @@ function autorizar(...rolesPermitidos) {
       return res.status(401).json({ error: 'No autenticado' });
     }
 
-    if (!req.usuario.roles || !req.usuario.roles.some(r => rolesPermitidos.includes(r))) {
+    const usuarioRoles = Array.isArray(req.usuario.roles)
+      ? req.usuario.roles
+      : (req.usuario.rol ? [req.usuario.rol] : []);
+
+    if (!usuarioRoles.some(r => rolesPermitidos.includes(r))) {
       return res.status(403).json({
         error: `Acceso denegado. Roles requeridos: ${rolesPermitidos.join(', ')}`,
       });

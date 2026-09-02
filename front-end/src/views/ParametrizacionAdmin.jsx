@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Check, Building2, BookOpen, GraduationCap, CalendarDays, Microscope, Target, ClipboardList, Pencil, Trash2, X, Save } from 'lucide-react';
+import { Plus, Check, Building2, BookOpen, GraduationCap, CalendarDays, Microscope, Target, ClipboardList, Pencil, Trash2, X, Save, UserCheck, UserPlus, Search } from 'lucide-react';
 import { useApp } from '../context/useApp';
 import { RESPONSABLES_PREDEFINIDOS, CRITERIOS_PREDEFINIDOS, INDICADORES_PREDEFINIDOS } from '../data/parametrosPredefinidos';
+import ModalDocenteForm from '../components/modals/ModalDocenteForm';
+import PasoFirmaItem from '../components/flujos/PasoFirmaItem';
 
 export { RESPONSABLES_PREDEFINIDOS, CRITERIOS_PREDEFINIDOS, INDICADORES_PREDEFINIDOS };
 
@@ -44,17 +46,36 @@ export default function ParametrizacionAdmin() {
     agregarIndicador, actualizarIndicador, eliminarIndicador, asignarResponsablesIndicador,
     agregarActividad, actualizarActividad, eliminarActividad, asignarUsuariosActividad,
     listarUsuarios,
+    listarDocentes, eliminarDocente,
     flujosFirma, crearFlujo, actualizarFlujo, eliminarFlujo,
     listarRoles,
+    listarFacultadesCatalogo, listarActividadesCatalogo,
+    navParams,
   } = useApp();
 
   const [rolesBD, setRolesBD] = useState([]);
+  const [catalogoFacultades, setCatalogoFacultades] = useState([]);
+  const [catalogoActividades, setCatalogoActividades] = useState([]);
 
   useEffect(() => {
     if (listarRoles) {
       listarRoles().then(r => setRolesBD(r || [])).catch(() => {});
     }
+    if (listarFacultadesCatalogo) {
+      listarFacultadesCatalogo().then(f => setCatalogoFacultades(f || [])).catch(() => {});
+    }
+    if (listarActividadesCatalogo) {
+      listarActividadesCatalogo().then(a => setCatalogoActividades(a || [])).catch(() => {});
+    }
   }, []);
+
+  const facultadesDisponibles = catalogoFacultades.length > 0
+    ? catalogoFacultades
+    : (universidades || []).flatMap(u => u.facultades || []);
+
+  const actividadesDisponibles = catalogoActividades.length > 0
+    ? catalogoActividades
+    : (universidades || []).flatMap(u => (u.facultades || []).flatMap(f => (f.carreras || []).flatMap(c => (c.periodos || []).flatMap(p => (p.criterios || []).flatMap(cr => (cr.indicadores || []).flatMap(i => i.actividades || []))))));
 
   const [usuariosDB, setUsuariosDB] = useState([]);
 
@@ -64,7 +85,31 @@ export default function ParametrizacionAdmin() {
     }
   }, []);
 
-  const [tab, setTab] = useState('universidad');
+  const [docentes, setDocentes] = useState([]);
+  const [cargandoDocentes, setCargandoDocentes] = useState(false);
+  const [busquedaDocente, setBusquedaDocente] = useState('');
+  const [modalDocente, setModalDocente] = useState({ abierto: false, docente: null });
+
+  const cargarListaDocentes = async () => {
+    if (!listarDocentes) return;
+    setCargandoDocentes(true);
+    try {
+      const data = await listarDocentes();
+      setDocentes(Array.isArray(data) ? data : []);
+    } catch (e) {
+      mostrarError(e.message);
+    } finally {
+      setCargandoDocentes(false);
+    }
+  };
+
+  const [tab, setTab] = useState(navParams?.tab || 'universidad');
+
+  useEffect(() => {
+    if (navParams?.tab) {
+      setTab(navParams.tab);
+    }
+  }, [navParams]);
   const [exito, setExito] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [editando, setEditando] = useState(null); // { tipo, id, valor, meta }
@@ -72,7 +117,7 @@ export default function ParametrizacionAdmin() {
 
   const [fUniv, setFUniv] = useState({ nombre: '', siglas: '' });
   const [fFac,  setFfac]  = useState({ nombre: '', univId: '' });
-  const [fCarr, setFCarr] = useState({ nombre: '', univId: '', facId: '' });
+  const [fCarr, setFCarr] = useState({ nombre: '', descripcion: '', univId: '', facId: '' });
   const [fPer,  setFPer]  = useState({ nombre: '', univId: '', facId: '', carrId: '' });
   const [fCrit, setFCrit] = useState({ nombre: '', univId: '', facId: '', carrId: '', perId: '', requiere_firma: true });
   const [fInd,  setFInd]  = useState({ nombre: '', numero: '', responsablesIds: [], univId: '', facId: '', carrId: '', perId: '', critId: '' });
@@ -115,8 +160,11 @@ export default function ParametrizacionAdmin() {
     e.preventDefault();
     if (!fCarr.nombre || !fCarr.univId || !fCarr.facId) return;
     try {
-      await agregarCarrera(Number(fCarr.univId), Number(fCarr.facId), { nombre: fCarr.nombre });
-      setFCarr({ nombre: '', univId: '', facId: '' });
+      await agregarCarrera(Number(fCarr.univId), Number(fCarr.facId), {
+        nombre: fCarr.nombre,
+        descripcion: fCarr.descripcion || undefined,
+      });
+      setFCarr({ nombre: '', descripcion: '', univId: '', facId: '' });
       mostrarExito('Carrera creada exitosamente');
     } catch (err) { mostrarError(err.message); }
   }
@@ -171,9 +219,21 @@ export default function ParametrizacionAdmin() {
 
   async function submitFlujo(e) {
     e.preventDefault();
-    if (!fFlujo.nombre) return;
+    if (!fFlujo.nombre.trim()) return mostrarError('Nombre del flujo requerido');
+    if (!fFlujo.pasos || fFlujo.pasos.length === 0) return mostrarError('Debe definir al menos un paso de firma');
+
     try {
-      await crearFlujo({ nombre: fFlujo.nombre, es_global: fFlujo.es_global, pasos: fFlujo.pasos });
+      const pasosPayload = fFlujo.pasos.map((p, i) => ({
+        orden: i + 1,
+        usuario_id: typeof p === 'object' && p !== null ? (p.usuario_id || null) : null,
+        rol_id: typeof p === 'object' && p !== null ? (p.rol_id || null) : Number(p),
+      }));
+
+      await crearFlujo({
+        nombre: fFlujo.nombre,
+        es_global: fFlujo.es_global,
+        pasos: pasosPayload,
+      });
       setFFlujo({ nombre: '', es_global: false, pasos: [] });
       mostrarExito('Flujo creado exitosamente');
     } catch (err) { mostrarError(err.message); }
@@ -214,7 +274,16 @@ export default function ParametrizacionAdmin() {
           await asignarUsuariosActividad(id, meta.univId, meta.facId, meta.carrId, meta.perId, meta.critId, meta.indId, valor.usuariosAsignadosIds);
         }
       } else if (tipo === 'flujo') {
-        await actualizarFlujo(id, valor);
+        const pasosPayload = (valor.pasos || []).map((p, i) => ({
+          orden: i + 1,
+          usuario_id: typeof p === 'object' && p !== null ? (p.usuario_id || null) : null,
+          rol_id: typeof p === 'object' && p !== null ? (p.rol_id || null) : Number(p),
+        }));
+        await actualizarFlujo(id, {
+          nombre: valor.nombre,
+          es_global: valor.es_global,
+          pasos: pasosPayload,
+        });
       }
       mostrarExito('Actualizado exitosamente');
       setEditando(null);
@@ -238,6 +307,12 @@ export default function ParametrizacionAdmin() {
     finally { setEliminandoId(null); }
   }
 
+  useEffect(() => {
+    if (tab === 'docentes') {
+      cargarListaDocentes();
+    }
+  }, [tab]);
+
   const TABS = [
     { id: 'universidad', label: 'Universidad', icon: Building2 },
     { id: 'facultad',    label: 'Facultad',    icon: BookOpen },
@@ -246,6 +321,7 @@ export default function ParametrizacionAdmin() {
     { id: 'criterio',    label: 'Criterio',    icon: Microscope },
     { id: 'indicador',   label: 'Indicador',   icon: Target },
     { id: 'actividad',   label: 'Actividad',   icon: ClipboardList },
+    { id: 'docentes',    label: 'Docentes',    icon: UserCheck },
     { id: 'flujos',      label: 'Flujos Firma', icon: Pencil },
   ];
 
@@ -446,27 +522,79 @@ export default function ParametrizacionAdmin() {
                       {univSelCarr?.facultades.map(f => <option key={f.id} value={f.id}>{f.nombre}</option>)}
                     </select>
                   </FormField>
-                  <FormField label="Nombre"><input value={fCarr.nombre} onChange={e => setFCarr({...fCarr, nombre: e.target.value})} placeholder="Ingeniería en..." className={inputCls} /></FormField>
-                  <button type="submit" className="w-full flex items-center justify-center space-x-2 px-4 py-2.5 bg-navy-900 text-white rounded-lg text-sm font-medium hover:bg-navy-800 transition-colors">
+                  <FormField label="Nombre de la Carrera">
+                    <input
+                      value={fCarr.nombre}
+                      onChange={e => setFCarr({...fCarr, nombre: e.target.value})}
+                      placeholder="Ingeniería en Software, TI..."
+                      className={inputCls}
+                      required
+                    />
+                  </FormField>
+                  <FormField label="Descripción (opcional)">
+                    <textarea
+                      value={fCarr.descripcion}
+                      onChange={e => setFCarr({...fCarr, descripcion: e.target.value})}
+                      placeholder="Breve descripción de la carrera..."
+                      rows={3}
+                      className={`${inputCls} resize-none`}
+                    />
+                  </FormField>
+                  <button
+                    type="submit"
+                    disabled={!fCarr.nombre || !fCarr.univId || !fCarr.facId}
+                    className="w-full flex items-center justify-center space-x-2 px-4 py-2.5 bg-navy-900 text-white rounded-lg text-sm font-medium hover:bg-navy-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
                     <Plus size={16} /><span>Crear Carrera</span>
                   </button>
                 </form>
               </div>
               <div>
-                <h3 className="text-sm font-semibold text-navy-900 mb-4">Carreras existentes</h3>
-                <div className="space-y-2">
+                <h3 className="text-sm font-semibold text-navy-900 mb-4">
+                  Carreras existentes
+                  <span className="ml-2 text-xs font-normal text-gray-400">
+                    ({universidades.flatMap(u => u.facultades.flatMap(f => f.carreras || [])).length} total)
+                  </span>
+                </h3>
+                <div className="space-y-2 max-h-[480px] overflow-y-auto pr-1">
                   {universidades.flatMap(u => u.facultades.flatMap(f => (f.carreras || []).map(ca => (
                     <ItemRow
                       key={ca.id} tipo="carrera" id={ca.id}
-                      meta={{ univId: u.id, facId: f.id, valorEdicion: { nombre: ca.nombre } }}
+                      meta={{ univId: u.id, facId: f.id, valorEdicion: { nombre: ca.nombre, descripcion: ca.descripcion || '' } }}
                       editFields={
-                        <input value={editando?.valor?.nombre || ''} onChange={e => setEditando(prev => ({ ...prev, valor: { ...prev.valor, nombre: e.target.value } }))} placeholder="Nombre" className={inputSmCls} />
+                        <>
+                          <input
+                            value={editando?.valor?.nombre || ''}
+                            onChange={e => setEditando(prev => ({ ...prev, valor: { ...prev.valor, nombre: e.target.value } }))}
+                            placeholder="Nombre"
+                            className={inputSmCls}
+                          />
+                          <textarea
+                            value={editando?.valor?.descripcion || ''}
+                            onChange={e => setEditando(prev => ({ ...prev, valor: { ...prev.valor, descripcion: e.target.value } }))}
+                            placeholder="Descripción"
+                            rows={2}
+                            className={`${inputSmCls} mt-1 resize-none`}
+                          />
+                        </>
                       }
                     >
-                      <span className="font-medium text-gray-800">{ca.nombre}</span>
-                      <span className="text-gray-400 text-xs ml-2">· {f.nombre}</span>
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-medium text-gray-800">{ca.nombre}</span>
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700">
+                            {f.nombre}
+                          </span>
+                        </div>
+                        {ca.descripcion && (
+                          <p className="text-xs text-gray-400 mt-0.5 truncate">{ca.descripcion}</p>
+                        )}
+                      </div>
                     </ItemRow>
                   ))))}
+                  {universidades.flatMap(u => u.facultades.flatMap(f => f.carreras || [])).length === 0 && (
+                    <p className="text-sm text-gray-400 text-center py-6">No hay carreras registradas aún.</p>
+                  )}
                 </div>
               </div>
             </div>
@@ -905,37 +1033,54 @@ export default function ParametrizacionAdmin() {
                   <Toggle value={fFlujo.es_global} onChange={v => setFFlujo({...fFlujo, es_global: v})} label="Establecer como flujo global por defecto" />
                   
                   <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
-                    <h4 className="text-xs font-semibold text-gray-600 uppercase mb-3">Secuencia de Pasos</h4>
-                    
-                    {fFlujo.pasos.map((paso, idx) => (
-                      <div key={idx} className="flex items-center space-x-2 mb-2">
-                        <span className="text-sm font-medium text-gray-500 w-6">{idx + 1}.</span>
-                        <select 
-                          value={paso} 
-                          onChange={(e) => {
-                            const newPasos = [...fFlujo.pasos];
-                            newPasos[idx] = Number(e.target.value);
-                            setFFlujo({...fFlujo, pasos: newPasos});
-                          }}
-                          className={inputSmCls}
-                        >
-                          <option value="">-- Seleccione un Rol --</option>
-                          {rolesBD.map(r => <option key={r.id} value={r.id}>{r.nombre}</option>)}
-                        </select>
-                        <button type="button" onClick={() => {
-                          const newPasos = [...fFlujo.pasos];
-                          newPasos.splice(idx, 1);
-                          setFFlujo({...fFlujo, pasos: newPasos});
-                        }} className="text-red-500 hover:text-red-700 p-1"><X size={16}/></button>
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Secuencia de Pasos de Firma</h4>
+                      <span className="text-[11px] text-gray-500 font-medium">
+                        {fFlujo.pasos.length} paso{fFlujo.pasos.length === 1 ? '' : 's'} configurado{fFlujo.pasos.length === 1 ? '' : 's'}
+                      </span>
+                    </div>
+
+                    {fFlujo.pasos.length === 0 ? (
+                      <p className="text-xs text-gray-400 italic py-3 text-center bg-white rounded-lg border border-dashed border-gray-200">
+                        No hay pasos configurados. Haz clic en "Agregar Paso" para asignar firmantes por facultad y actividad.
+                      </p>
+                    ) : (
+                      <div className="space-y-2.5">
+                        {fFlujo.pasos.map((paso, idx) => {
+                          const pasoObj = typeof paso === 'object' && paso !== null ? paso : { rol_id: paso, usuario_id: null, facultad_id: null, actividad_id: null };
+                          return (
+                            <PasoFirmaItem
+                              key={idx}
+                              index={idx}
+                              paso={pasoObj}
+                              onChange={(nuevoPaso) => {
+                                const newPasos = [...fFlujo.pasos];
+                                newPasos[idx] = nuevoPaso;
+                                setFFlujo({ ...fFlujo, pasos: newPasos });
+                              }}
+                              onRemove={() => {
+                                const newPasos = [...fFlujo.pasos];
+                                newPasos.splice(idx, 1);
+                                setFFlujo({ ...fFlujo, pasos: newPasos });
+                              }}
+                              facultades={facultadesDisponibles}
+                              actividades={actividadesDisponibles}
+                              roles={rolesBD}
+                            />
+                          );
+                        })}
                       </div>
-                    ))}
+                    )}
 
                     <button 
                       type="button" 
-                      onClick={() => setFFlujo({...fFlujo, pasos: [...fFlujo.pasos, '']})}
-                      className="mt-2 text-xs font-medium text-blue-600 hover:text-blue-800 flex items-center space-x-1"
+                      onClick={() => setFFlujo({
+                        ...fFlujo,
+                        pasos: [...fFlujo.pasos, { usuario_id: null, rol_id: null, facultad_id: null, actividad_id: null }]
+                      })}
+                      className="mt-3 text-xs font-semibold text-blue-600 hover:text-blue-800 flex items-center space-x-1 py-1"
                     >
-                      <Plus size={14}/> <span>Agregar Paso</span>
+                      <Plus size={14}/> <span>Agregar Paso de Firma</span>
                     </button>
                   </div>
 
@@ -951,7 +1096,18 @@ export default function ParametrizacionAdmin() {
                   {flujosFirma.map(f => (
                     <ItemRow
                       key={f.id} tipo="flujo" id={f.id}
-                      meta={{ valorEdicion: { nombre: f.nombre, es_global: f.es_global, pasos: f.pasos?.map(p => p.rol_id) || [] } }}
+                      meta={{
+                        valorEdicion: {
+                          nombre: f.nombre,
+                          es_global: f.es_global,
+                          pasos: f.pasos?.map(p => ({
+                            usuario_id: p.usuario_id || null,
+                            rol_id: p.rol_id || null,
+                            facultad_id: null,
+                            actividad_id: null,
+                          })) || []
+                        }
+                      }}
                       editFields={
                         <>
                           <input value={editando?.valor?.nombre || ''} onChange={e => setEditando(prev => ({ ...prev, valor: { ...prev.valor, nombre: e.target.value } }))} placeholder="Nombre" className={inputSmCls} />
@@ -959,34 +1115,41 @@ export default function ParametrizacionAdmin() {
                             <Toggle value={editando?.valor?.es_global ?? false} onChange={v => setEditando(prev => ({ ...prev, valor: { ...prev.valor, es_global: v } }))} label="Flujo global" />
                           </div>
                           
-                          <div className="mt-3 space-y-2 border-t pt-2 border-gray-200">
-                            <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Pasos</p>
-                            {(editando?.valor?.pasos || []).map((pasoId, idx) => (
-                              <div key={idx} className="flex items-center space-x-2">
-                                <span className="text-xs w-4 text-gray-500">{idx+1}.</span>
-                                <select 
-                                  value={pasoId} 
-                                  onChange={(e) => {
+                          <div className="mt-3 space-y-2.5 border-t pt-2 border-gray-200">
+                            <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Pasos de Firma</p>
+                            {(editando?.valor?.pasos || []).map((paso, idx) => {
+                              const pasoObj = typeof paso === 'object' && paso !== null ? paso : { rol_id: paso, usuario_id: null, facultad_id: null, actividad_id: null };
+                              return (
+                                <PasoFirmaItem
+                                  key={idx}
+                                  index={idx}
+                                  paso={pasoObj}
+                                  onChange={(nuevoPaso) => {
                                     const newPasos = [...editando.valor.pasos];
-                                    newPasos[idx] = Number(e.target.value);
+                                    newPasos[idx] = nuevoPaso;
                                     setEditando(prev => ({ ...prev, valor: { ...prev.valor, pasos: newPasos } }));
                                   }}
-                                  className={inputSmCls}
-                                >
-                                  <option value="">-- Rol --</option>
-                                  {rolesBD.map(r => <option key={r.id} value={r.id}>{r.nombre}</option>)}
-                                </select>
-                                <button type="button" onClick={() => {
-                                  const newPasos = [...editando.valor.pasos];
-                                  newPasos.splice(idx, 1);
-                                  setEditando(prev => ({ ...prev, valor: { ...prev.valor, pasos: newPasos } }));
-                                }} className="text-red-500 p-1"><X size={14}/></button>
-                              </div>
-                            ))}
+                                  onRemove={() => {
+                                    const newPasos = [...editando.valor.pasos];
+                                    newPasos.splice(idx, 1);
+                                    setEditando(prev => ({ ...prev, valor: { ...prev.valor, pasos: newPasos } }));
+                                  }}
+                                  facultades={facultadesDisponibles}
+                                  actividades={actividadesDisponibles}
+                                  roles={rolesBD}
+                                />
+                              );
+                            })}
                             <button 
                               type="button" 
-                              onClick={() => setEditando(prev => ({ ...prev, valor: { ...prev.valor, pasos: [...prev.valor.pasos, ''] } }))}
-                              className="text-[11px] font-medium text-blue-600 flex items-center space-x-1"
+                              onClick={() => setEditando(prev => ({
+                                ...prev,
+                                valor: {
+                                  ...prev.valor,
+                                  pasos: [...(prev.valor.pasos || []), { usuario_id: null, rol_id: null, facultad_id: null, actividad_id: null }]
+                                }
+                              }))}
+                              className="text-[11px] font-medium text-blue-600 flex items-center space-x-1 pt-1"
                             >
                               <Plus size={12}/> <span>Añadir paso</span>
                             </button>
@@ -1000,7 +1163,7 @@ export default function ParametrizacionAdmin() {
                           {f.es_global && <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-sm">GLOBAL</span>}
                         </div>
                         <div className="mt-1 text-xs text-gray-500">
-                          {f.pasos?.length || 0} pasos: {(f.pasos || []).map(p => p.rolRequerido?.nombre).join(' → ')}
+                          {f.pasos?.length || 0} pasos: {(f.pasos || []).map(p => p.usuarioFirmante ? p.usuarioFirmante.nombre : (p.rolRequerido?.nombre || `Rol #${p.rol_id}`)).join(' → ')}
                         </div>
                       </div>
                     </ItemRow>
@@ -1009,8 +1172,138 @@ export default function ParametrizacionAdmin() {
               </div>
             </div>
           )}
+
+          {/* ══════════ DOCENTES (N:M Facultades y Actividades) ══════════ */}
+          {tab === 'docentes' && (
+            <div className="space-y-6">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-4 border-b border-gray-100">
+                <div>
+                  <h3 className="text-base font-bold text-navy-900">Parametrización de Docentes</h3>
+                  <p className="text-xs text-gray-500">Gestión de docentes con asignación múltiple a Facultades y Actividades (N:M)</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setModalDocente({ abierto: true, docente: null })}
+                  className="flex items-center space-x-1.5 px-4 py-2 bg-navy-900 text-white rounded-lg text-xs font-medium hover:bg-navy-800 transition-colors shadow-xs"
+                >
+                  <UserPlus size={14} />
+                  <span>Nuevo Docente</span>
+                </button>
+              </div>
+
+              {/* Buscador */}
+              <div className="relative">
+                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Buscar docente por nombre o correo..."
+                  value={busquedaDocente}
+                  onChange={e => setBusquedaDocente(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-navy-500 bg-white"
+                />
+              </div>
+
+              {/* Lista */}
+              {cargandoDocentes ? (
+                <div className="py-12 text-center text-xs text-gray-400">Cargando docentes...</div>
+              ) : docentes.length === 0 ? (
+                <div className="py-12 text-center text-xs text-gray-400">No hay docentes registrados aún</div>
+              ) : (
+                <div className="space-y-2">
+                  {docentes
+                    .filter(d =>
+                      (d.nombre || '').toLowerCase().includes(busquedaDocente.toLowerCase()) ||
+                      (d.email || '').toLowerCase().includes(busquedaDocente.toLowerCase())
+                    )
+                    .map(d => (
+                      <div
+                        key={d.id}
+                        className="p-3.5 bg-gray-50 rounded-xl border border-gray-200 flex flex-col md:flex-row md:items-center justify-between gap-3 hover:border-gray-300 transition-all"
+                      >
+                        <div className="flex-1 min-w-0 space-y-1.5">
+                          <div className="flex items-center space-x-2">
+                            <span className="font-semibold text-sm text-navy-900">{d.nombre}</span>
+                            <span className="text-xs text-gray-400">({d.email})</span>
+                          </div>
+                          
+                          <div className="flex flex-wrap gap-3 text-xs">
+                            {/* Facultades */}
+                            <div className="flex items-center gap-1">
+                              <span className="text-gray-500 font-medium">Facultades:</span>
+                              {(d.facultades && d.facultades.length > 0) ? (
+                                d.facultades.map(f => (
+                                  <span key={f.id} className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                                    {f.nombre}
+                                  </span>
+                                ))
+                              ) : (
+                                <span className="text-gray-400 italic">Ninguna</span>
+                              )}
+                            </div>
+
+                            {/* Actividades */}
+                            <div className="flex items-center gap-1">
+                              <span className="text-gray-500 font-medium">Actividades:</span>
+                              {(d.actividades && d.actividades.length > 0) ? (
+                                d.actividades.map(a => (
+                                  <span key={a.id} className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                    {a.nombre}
+                                  </span>
+                                ))
+                              ) : (
+                                <span className="text-gray-400 italic">Ninguna</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Botones de acción */}
+                        <div className="flex items-center space-x-2 flex-shrink-0 self-end md:self-center">
+                          <button
+                            type="button"
+                            onClick={() => setModalDocente({ abierto: true, docente: d })}
+                            className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                            title="Editar Docente"
+                          >
+                            <Pencil size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (!window.confirm(`¿Deseas eliminar al docente "${d.nombre}"?`)) return;
+                              try {
+                                await eliminarDocente(d.id);
+                                mostrarExito('Docente eliminado');
+                                cargarListaDocentes();
+                              } catch (err) {
+                                mostrarError(err.message);
+                              }
+                            }}
+                            className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Eliminar Docente"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Modal para Docentes */}
+      <ModalDocenteForm
+        isOpen={modalDocente.abierto}
+        onClose={() => setModalDocente({ abierto: false, docente: null })}
+        docente={modalDocente.docente}
+        onSuccess={() => {
+          mostrarExito(modalDocente.docente ? 'Docente actualizado correctamente' : 'Docente creado con éxito');
+          cargarListaDocentes();
+        }}
+      />
     </div>
   );
 }

@@ -511,15 +511,21 @@ export default function ExploradorDeArchivos() {
           <div>
             <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold mb-4">Actividades — {indActual?.nombre}</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {getFiltrados(indActual?.actividades).map(a => (
-                <CarpetaCard
-                  key={a.id} nombre={a.nombre}
-                  descripcion={`${a.documentos?.length || 0} documentos`}
-                  onClick={() => entrarActividad(a.id)}
-                  onEdit={esAdmin ? () => abrirEditar('actividad', a.id, a.nombre, { univId: selUniId, facId: selFacId, carrId: selCarrId, perId: selPerId, critId: selCritId, indId: selIndId }) : null}
-                  onDelete={esAdmin ? () => handleEliminar('actividad', a.id, a.nombre, { univId: selUniId, facId: selFacId, carrId: selCarrId, perId: selPerId, critId: selCritId, indId: selIndId }) : null}
-                />
-              ))}
+              {getFiltrados(indActual?.actividades).map(a => {
+                const totalDocs = typeof a.cantidadDocumentos === 'number'
+                  ? a.cantidadDocumentos
+                  : (a.documentos?.length || 0);
+                return (
+                  <CarpetaCard
+                    key={a.id}
+                    nombre={a.nombre}
+                    descripcion={`${totalDocs} documento${totalDocs === 1 ? '' : 's'}`}
+                    onClick={() => entrarActividad(a.id)}
+                    onEdit={esAdmin ? () => abrirEditar('actividad', a.id, a.nombre, { univId: selUniId, facId: selFacId, carrId: selCarrId, perId: selPerId, critId: selCritId, indId: selIndId }) : null}
+                    onDelete={esAdmin ? () => handleEliminar('actividad', a.id, a.nombre, { univId: selUniId, facId: selFacId, carrId: selCarrId, perId: selPerId, critId: selCritId, indId: selIndId }) : null}
+                  />
+                );
+              })}
             </div>
           </div>
         )}

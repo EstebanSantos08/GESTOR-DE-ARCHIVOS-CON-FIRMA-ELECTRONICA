@@ -1,4 +1,51 @@
-const { FlujoFirma, PasoFirma, Rol } = require('../Model');
+const { FlujoFirma, PasoFirma, Rol, Usuario } = require('../Model');
+
+async function procesarPasos(pasos, flujoId) {
+  if (!pasos || !Array.isArray(pasos) || pasos.length === 0) return [];
+
+  const pasosCrear = await Promise.all(
+    pasos.map(async (p, i) => {
+      let rol_id = null;
+      let usuario_id = null;
+
+      if (typeof p === 'object' && p !== null) {
+        usuario_id = p.usuario_id ? parseInt(p.usuario_id, 10) : null;
+        rol_id = p.rol_id ? parseInt(p.rol_id, 10) : null;
+      } else if (typeof p === 'number' || typeof p === 'string') {
+        const val = parseInt(p, 10);
+        if (!isNaN(val)) {
+          const user = await Usuario.findByPk(val, {
+            include: [{ model: Rol, as: 'roles' }]
+          });
+          if (user) {
+            usuario_id = user.id;
+            rol_id = user.roles && user.roles[0] ? user.roles[0].id : null;
+          } else {
+            rol_id = val;
+          }
+        }
+      }
+
+      if (usuario_id && !rol_id) {
+        const user = await Usuario.findByPk(usuario_id, {
+          include: [{ model: Rol, as: 'roles' }]
+        });
+        if (user && user.roles && user.roles[0]) {
+          rol_id = user.roles[0].id;
+        }
+      }
+
+      return {
+        flujo_id: flujoId,
+        orden: i + 1,
+        rol_id: rol_id || null,
+        usuario_id: usuario_id || null,
+      };
+    })
+  );
+
+  return pasosCrear;
+}
 
 async function listarFlujos(req, res) {
   try {
@@ -7,7 +54,10 @@ async function listarFlujos(req, res) {
         {
           model: PasoFirma,
           as: 'pasos',
-          include: [{ model: Rol, as: 'rolRequerido' }]
+          include: [
+            { model: Rol, as: 'rolRequerido' },
+            { model: Usuario, as: 'usuarioFirmante', attributes: ['id', 'nombre', 'email'] },
+          ]
         }
       ],
       order: [
@@ -26,8 +76,6 @@ async function crearFlujo(req, res) {
     const { nombre, es_global, pasos } = req.body;
     
     // Si es global, desmarcar otros globales si se desea que solo haya uno. 
-    // Por requerimiento puede haber múltiples, pero la lógica de workflow.service.js
-    // busca el primero que encuentre con es_global = true si no hay flujo_id.
     if (es_global) {
       await FlujoFirma.update({ es_global: false }, { where: { es_global: true } });
     }
@@ -35,15 +83,25 @@ async function crearFlujo(req, res) {
     const nuevoFlujo = await FlujoFirma.create({ nombre, es_global });
     
     if (pasos && pasos.length > 0) {
-      const pasosCrear = pasos.map((rol_id, i) => ({
-        flujo_id: nuevoFlujo.id,
-        orden: i + 1,
-        rol_id
-      }));
+      const pasosCrear = await procesarPasos(pasos, nuevoFlujo.id);
       await PasoFirma.bulkCreate(pasosCrear);
     }
+
+    const resultado = await FlujoFirma.findByPk(nuevoFlujo.id, {
+      include: [
+        {
+          model: PasoFirma,
+          as: 'pasos',
+          include: [
+            { model: Rol, as: 'rolRequerido' },
+            { model: Usuario, as: 'usuarioFirmante', attributes: ['id', 'nombre', 'email'] },
+          ]
+        }
+      ],
+      order: [[{ model: PasoFirma, as: 'pasos' }, 'orden', 'ASC']]
+    });
     
-    res.status(201).json(nuevoFlujo);
+    res.status(201).json(resultado);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -68,15 +126,25 @@ async function actualizarFlujo(req, res) {
 
     if (pasos) {
       await PasoFirma.destroy({ where: { flujo_id: flujo.id } });
-      const pasosCrear = pasos.map((rol_id, i) => ({
-        flujo_id: flujo.id,
-        orden: i + 1,
-        rol_id
-      }));
+      const pasosCrear = await procesarPasos(pasos, flujo.id);
       await PasoFirma.bulkCreate(pasosCrear);
     }
 
-    res.json({ mensaje: 'Flujo actualizado correctamente' });
+    const resultado = await FlujoFirma.findByPk(flujo.id, {
+      include: [
+        {
+          model: PasoFirma,
+          as: 'pasos',
+          include: [
+            { model: Rol, as: 'rolRequerido' },
+            { model: Usuario, as: 'usuarioFirmante', attributes: ['id', 'nombre', 'email'] },
+          ]
+        }
+      ],
+      order: [[{ model: PasoFirma, as: 'pasos' }, 'orden', 'ASC']]
+    });
+
+    res.json({ mensaje: 'Flujo actualizado correctamente', flujo: resultado });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

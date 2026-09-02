@@ -1,7 +1,45 @@
 import React from 'react';
-import { FileText, Clock, CheckCircle, XCircle, AlertTriangle, Activity } from 'lucide-react';
+import { 
+  FileText, 
+  Clock, 
+  CheckCircle, 
+  XCircle, 
+  AlertTriangle, 
+  UploadCloud, 
+  FileSignature, 
+  GraduationCap, 
+  GitMerge, 
+  Zap, 
+  ArrowRight 
+} from 'lucide-react';
 import { useApp } from '../context/useApp';
 import Badge from '../components/common/Badge';
+
+/**
+ * Componente Link adaptado a la arquitectura de navegación de la aplicación (App.jsx / AppContext).
+ * Proporciona el comportamiento de enlace navegable hacia las vistas principales del sistema.
+ */
+function Link({ to, params, onClick, children, className, ...props }) {
+  const { navegarA } = useApp();
+
+  const handleClick = (e) => {
+    e.preventDefault();
+    if (onClick) onClick(e);
+    const vista = typeof to === 'string' ? to.replace(/^\//, '') : to;
+    navegarA(vista, params);
+  };
+
+  return (
+    <a
+      href={`#/${to}`}
+      onClick={handleClick}
+      className={`block text-left group ${className || ''}`}
+      {...props}
+    >
+      {children}
+    </a>
+  );
+}
 
 function MetricaCard({ titulo, valor, icon: Icon, colorIcon, colorBg, colorNum }) {
   return (
@@ -18,7 +56,7 @@ function MetricaCard({ titulo, valor, icon: Icon, colorIcon, colorBg, colorNum }
 }
 
 export default function Dashboard() {
-  const { metricas, universidades, auditoria, alertas, setDocumentoSeleccionado, setModalFirmaAbierto } = useApp();
+  const { metricas, auditoria, alertas, setDocumentoSeleccionado, setModalFirmaAbierto } = useApp();
 
   const handleDocumentClick = (doc) => {
     if (doc) {
@@ -27,27 +65,53 @@ export default function Dashboard() {
     }
   };
 
-  // Calcular datos para gráfico por criterio
-  const criteriosData = (universidades ?? []).flatMap(u =>
-    (u?.facultades ?? []).flatMap(f =>
-      (f?.carreras ?? []).flatMap(ca =>
-        (ca?.periodos ?? []).flatMap(p =>
-          (p?.criterios ?? []).map(c => {
-            const docs = (c?.indicadores ?? []).flatMap(i =>
-              (i?.actividades ?? []).flatMap(a => a?.documentos ?? [])
-            );
-            return {
-              nombre: c.nombre,
-              total: docs.length,
-              completados: docs.filter(d => d.estado === 'COMPLETADO').length,
-            };
-          })
-        )
-      )
-    )
-  ).filter(c => c.total > 0);
-
-  const maxTotal = Math.max(...criteriosData.map(c => c.total), 1);
+  const accesosRapidos = [
+    {
+      titulo: 'Subir Documento',
+      descripcion: 'Cargar evidencias o nuevos documentos PDF en la estructura institucional.',
+      ruta: 'explorador',
+      params: null,
+      icon: UploadCloud,
+      colorIcon: 'text-blue-600',
+      colorBg: 'bg-blue-50',
+      colorHoverBorder: 'hover:border-blue-500',
+      badge: null,
+    },
+    {
+      titulo: 'Mis Firmas Pendientes',
+      descripcion: 'Bandeja de documentos por firmar con certificado digital PAdES-BES.',
+      ruta: 'explorador',
+      params: null,
+      icon: FileSignature,
+      colorIcon: 'text-amber-600',
+      colorBg: 'bg-amber-50',
+      colorHoverBorder: 'hover:border-amber-500',
+      badge: metricas?.pendientesFirma > 0 ? `${metricas.pendientesFirma} pendientes` : null,
+      badgeColor: 'bg-amber-100 text-amber-800 border-amber-200',
+    },
+    {
+      titulo: 'Gestión de Docentes',
+      descripcion: 'Administrar usuarios, roles docentes y asignaciones a facultades.',
+      ruta: 'usuarios',
+      params: null,
+      icon: GraduationCap,
+      colorIcon: 'text-purple-600',
+      colorBg: 'bg-purple-50',
+      colorHoverBorder: 'hover:border-purple-500',
+      badge: null,
+    },
+    {
+      titulo: 'Configurar Flujos',
+      descripcion: 'Parametrizar los circuitos y secuencia de aprobación de firmas.',
+      ruta: 'parametrizacion',
+      params: { tab: 'flujos' },
+      icon: GitMerge,
+      colorIcon: 'text-indigo-600',
+      colorBg: 'bg-indigo-50',
+      colorHoverBorder: 'hover:border-indigo-500',
+      badge: null,
+    },
+  ];
 
   return (
     <div className="p-6 space-y-6">
@@ -60,34 +124,52 @@ export default function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Gráfico por criterio */}
-        <div className="lg:col-span-2 bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-          <h2 className="text-sm font-semibold text-navy-900 mb-4 flex items-center space-x-2">
-            <Activity size={16} className="text-navy-700" />
-            <span>Avance de Firmas por Criterio</span>
-          </h2>
-          <div className="space-y-4">
-            {criteriosData.length === 0 ? (
-              <p className="text-sm text-gray-400 text-center py-6">Sin datos</p>
-            ) : (
-              criteriosData.map((c, i) => {
-                const pct = c.total > 0 ? Math.round((c.completados / c.total) * 100) : 0;
+        {/* Panel de Accesos Rápidos */}
+        <div className="lg:col-span-2 bg-white rounded-xl p-5 shadow-sm border border-gray-100 flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-semibold text-navy-900 flex items-center space-x-2">
+                <Zap size={16} className="text-amber-500" />
+                <span>Accesos Rápidos</span>
+              </h2>
+              <span className="text-xs text-gray-400 font-normal">Acciones y módulos principales</span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {accesosRapidos.map((acc, index) => {
+                const Icon = acc.icon;
                 return (
-                  <div key={i}>
-                    <div className="flex justify-between text-xs mb-1">
-                      <span className="font-medium text-gray-700 truncate max-w-xs">{c.nombre}</span>
-                      <span className="text-gray-400 ml-2">{c.completados}/{c.total} ({pct}%)</span>
+                  <Link
+                    key={index}
+                    to={acc.ruta}
+                    params={acc.params}
+                    className={`p-4 rounded-xl border border-gray-100 bg-white hover:shadow-md ${acc.colorHoverBorder} transition-all duration-200 relative overflow-hidden`}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className={`w-10 h-10 ${acc.colorBg} rounded-xl flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform duration-200`}>
+                        <Icon size={20} className={acc.colorIcon} />
+                      </div>
+                      <div className="flex items-center space-x-1.5">
+                        {acc.badge && (
+                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${acc.badgeColor}`}>
+                            {acc.badge}
+                          </span>
+                        )}
+                        <ArrowRight size={15} className="text-gray-300 group-hover:text-navy-900 group-hover:translate-x-0.5 transition-all duration-200" />
+                      </div>
                     </div>
-                    <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-navy-700 rounded-full transition-all duration-500"
-                        style={{ width: `${pct}%` }}
-                      />
+                    <div className="mt-3">
+                      <h3 className="text-sm font-semibold text-gray-800 group-hover:text-navy-900 transition-colors">
+                        {acc.titulo}
+                      </h3>
+                      <p className="text-xs text-gray-500 mt-1 line-clamp-2 leading-relaxed">
+                        {acc.descripcion}
+                      </p>
                     </div>
-                  </div>
+                  </Link>
                 );
-              })
-            )}
+              })}
+            </div>
           </div>
         </div>
 
@@ -162,4 +244,3 @@ export default function Dashboard() {
     </div>
   );
 }
-

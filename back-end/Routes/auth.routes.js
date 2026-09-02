@@ -25,7 +25,7 @@ router.post('/registrar',
   body('nombre').notEmpty().withMessage('Nombre requerido'),
   body('email').isEmail().withMessage('Email inválido'),
   body('password').isLength({ min: 8 }).withMessage('Contraseña mínimo 8 caracteres'),
-  body('rol_id').isInt().withMessage('Rol inválido'),
+  body('rol_id').optional().isInt().withMessage('Rol inválido'),
   ctrl.registrar
 );
 
@@ -37,13 +37,15 @@ router.get('/roles', autenticar, async (req, res) => {
   const roles = await Rol.findAll({ order: [['nivel', 'ASC']] });
   res.json(roles);
 });
-// Gestión de Contraseñas
+
+// Gestión de Contraseñas
 router.post('/cambiar-password', autenticar, ctrl.cambiarPassword);
 router.post('/recuperar-password', ctrl.solicitarRecuperacion);
 router.post('/reset-password', ctrl.resetPassword);
 
 // Gestión de usuarios — Solo ADMINISTRADOR
 router.get('/usuarios', autenticar, autorizarAdmin(), ctrl.listarUsuarios);
+router.get('/usuarios/:id', autenticar, ctrl.obtenerUsuario);
 router.put('/usuarios/:id/rol', autenticar, autorizarAdmin(), ctrl.actualizarRol);
 router.put('/usuarios/:id', autenticar, ctrl.actualizarUsuario);
 router.put('/usuarios/:id/password', autenticar, autorizarAdmin(), ctrl.adminResetPassword);

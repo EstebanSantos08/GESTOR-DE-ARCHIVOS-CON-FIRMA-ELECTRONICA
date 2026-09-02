@@ -8,6 +8,9 @@ const workflowService = require('../Services/workflow.service');
 
 // ─── Configuración Multer ──────────────────────────────────────────────────
 const UPLOADS_DIR = process.env.UPLOADS_DIR || './uploads';
+if (!fs.existsSync(UPLOADS_DIR)) {
+  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+}
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, UPLOADS_DIR),
@@ -172,6 +175,8 @@ async function firmarDocumento(req, res) {
       // El firmante envió su propio certificado .p12 como base64
       const certBuffer = Buffer.from(req.body.certBase64, 'base64');
       rutaCertTemporal = path.join(UPLOADS_DIR, `cert_temp_${req.usuario.id}_${Date.now()}.p12`);
+      const dirCert = path.dirname(rutaCertTemporal);
+      if (!fs.existsSync(dirCert)) fs.mkdirSync(dirCert, { recursive: true });
       fs.writeFileSync(rutaCertTemporal, certBuffer);
       certP12Path = rutaCertTemporal;
       certPassword = req.body.certPassword;
@@ -195,6 +200,8 @@ async function firmarDocumento(req, res) {
 
       // Guarda el PDF firmado con nuevo nombre
       const rutaFirmada = documento.ruta_archivo.replace(/\.pdf$/i, '') + `_firmado_${Date.now()}.pdf`;
+      const dirFirmada = path.dirname(rutaFirmada);
+      if (!fs.existsSync(dirFirmada)) fs.mkdirSync(dirFirmada, { recursive: true });
       fs.writeFileSync(rutaFirmada, resultado.pdfFirmado);
 
       // Actualiza la ruta en BD y avanza el estado en el workflow

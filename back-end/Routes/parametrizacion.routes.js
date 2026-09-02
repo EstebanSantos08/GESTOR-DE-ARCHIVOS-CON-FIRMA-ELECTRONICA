@@ -13,6 +13,7 @@ const {
   estructura,
   asignarUsuariosActividad,
   asignarResponsablesIndicador,
+  docenteCtrl,
 } = require('../Controller/parametrizacion.controller');
 
 // Solo ADMINISTRADOR puede crear/editar/eliminar parametrización
@@ -104,6 +105,18 @@ router.post('/actividades/:id/usuarios', ...soloAdmin,
   body('usuariosIds').isArray().withMessage('usuariosIds debe ser un arreglo'),
   asignarUsuariosActividad
 );
+
+// ─── Docentes (Gestión N:M con Facultades y Actividades) ───────────────────
+router.get('/docentes', autenticar, docenteCtrl.listar);
+router.get('/docentes/elegibles', autenticar, docenteCtrl.elegibles);
+router.get('/docentes/:id', autenticar, docenteCtrl.obtener);
+router.post('/docentes', ...soloAdmin,
+  body('nombre').notEmpty().withMessage('Nombre requerido'),
+  body('email').isEmail().withMessage('Email inválido'),
+  docenteCtrl.crear
+);
+router.put('/docentes/:id', ...soloAdmin, docenteCtrl.actualizar);
+router.delete('/docentes/:id', ...soloAdmin, docenteCtrl.eliminar);
 
 module.exports = router;
 

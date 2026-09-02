@@ -1,0 +1,15 @@
+{
+  "name": "gestion-archivos-firma-electronica",
+  "version": "1.0.0",
+  "description": "Gestor de archivos con firma electrónica PAdES-BES — Universidad Católica de Cuenca",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently --kill-others-on-fail --prefix-colors \"bgBlue.bold,bgMagenta.bold\" --names \"BACKEND,FRONTEND\" \"npm run dev --prefix back-end\" \"npm run dev --prefix front-end\"",
+    "install:all": "npm install --prefix back-end && npm install --prefix front-end",
+    "seed": "npm run seed:base --prefix back-end && npm run seed:criterios --prefix back-end && npm run seed:carreras --prefix back-end",
+    "test": "npm test --prefix back-end"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.5"
+  }
+}

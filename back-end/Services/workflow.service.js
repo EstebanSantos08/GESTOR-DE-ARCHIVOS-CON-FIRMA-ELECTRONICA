@@ -1,4 +1,4 @@
-const { Documento, Usuario, Rol, FlujoFirma, PasoFirma, Criterio, Indicador, Actividad } = require('../Model');
+const { Documento, Usuario, Rol, FlujoFirma, PasoFirma, Criterio, Indicador, Actividad, Facultad } = require('../Model');
 
 class WorkflowService {
   /**
@@ -8,7 +8,16 @@ class WorkflowService {
     if (!documento.flujo_id) throw new Error('El documento no tiene un flujo de firma asignado');
 
     const flujo = await FlujoFirma.findByPk(documento.flujo_id, {
-      include: [{ model: PasoFirma, as: 'pasos', include: [{ model: Rol, as: 'rolRequerido' }] }],
+      include: [
+        {
+          model: PasoFirma,
+          as: 'pasos',
+          include: [
+            { model: Rol, as: 'rolRequerido' },
+            { model: Usuario, as: 'usuarioFirmante' }
+          ]
+        }
+      ],
       order: [[{ model: PasoFirma, as: 'pasos' }, 'orden', 'ASC']],
     });
 
@@ -24,11 +33,25 @@ class WorkflowService {
     }
 
     const pasoRequerido = flujo.pasos[pasoActualIndex];
-    if (!pasoRequerido.rolRequerido) {
-      throw new Error(`El paso ${pasoRequerido.orden} no tiene un rol válido asignado`);
+    let firmante = null;
+
+    // 1. Asignación directa si el paso tiene usuario_id configurado
+    if (pasoRequerido.usuario_id) {
+      firmante = await Usuario.findOne({
+        where: { id: pasoRequerido.usuario_id, activo: true },
+        include: [{ model: Rol, as: 'roles' }]
+      });
     }
 
-    const firmante = await this._buscarFirmante(pasoRequerido.rol_id, documento.facultad_id);
+    // 2. Fallback estricto: si no hay usuario_id (o no está activo), buscar por rol_id clásico
+    if (!firmante) {
+      const rolId = pasoRequerido.rol_id || (pasoRequerido.rolRequerido ? pasoRequerido.rolRequerido.id : null);
+      if (!rolId) {
+        throw new Error(`El paso ${pasoRequerido.orden} no tiene un firmante ni un rol válido asignado`);
+      }
+      firmante = await this._buscarFirmante(rolId, documento.facultad_id);
+    }
+
     return { firmante, estadoSiguiente: 'EN_REVISION' };
   }
 
@@ -141,6 +164,25 @@ class WorkflowService {
    */
   async _buscarFirmante(rol_id, facultad_id) {
     if (facultad_id) {
+      // 1. Mismo rol + misma facultad (relación M:N)
+      const conFacultadMN = await Usuario.findOne({
+        where: { activo: true },
+        include: [
+          {
+            model: Rol,
+            as: 'roles',
+            where: { id: rol_id }
+          },
+          {
+            model: Facultad,
+            as: 'facultades',
+            where: { id: facultad_id }
+          }
+        ],
+      });
+      if (conFacultadMN) return conFacultadMN;
+
+      // 2. Mismo rol + misma facultad (campo escalar legacy)
       const conFacultad = await Usuario.findOne({
         where: { facultad_id, activo: true },
         include: [{

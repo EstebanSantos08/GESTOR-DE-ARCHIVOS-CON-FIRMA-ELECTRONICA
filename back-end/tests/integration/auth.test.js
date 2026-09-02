@@ -121,7 +121,10 @@ describe('Auth Routes - Integration', () => {
 
       expect(res.status).toBe(201);
       expect(res.body).toHaveProperty('nombre', usuarioData.nombre);
-      expect(authService.registrar).toHaveBeenCalledWith(usuarioData);
+      expect(authService.registrar).toHaveBeenCalledWith(expect.objectContaining({
+        nombre: usuarioData.nombre,
+        email: usuarioData.email,
+      }));
     });
 
     it('debe retornar 403 si no es ADMINISTRADOR', async () => {

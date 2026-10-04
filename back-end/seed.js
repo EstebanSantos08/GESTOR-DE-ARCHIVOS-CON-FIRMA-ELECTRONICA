@@ -99,16 +99,31 @@ async function seed() {
         defaults: {
           nombre: u.nombre,
           password_hash: hash,
-          rol_id: rol.id,
+          rol_id: rol ? rol.id : null,
           facultad_id: u.facultad_id,
           carrera_id: u.carrera_id,
         },
       });
-      if (!creado && u.carrera_id && !usuario.carrera_id) {
-        await usuario.update({ carrera_id: u.carrera_id });
+      if (!creado) {
+        await usuario.update({
+          password_hash: hash,
+          rol_id: rol ? rol.id : null,
+          facultad_id: u.facultad_id,
+          carrera_id: u.carrera_id,
+          activo: true,
+        });
+      }
+      if (rol) {
+        await usuario.setRoles([rol.id]);
+      }
+      if (u.carrera_id) {
+        await usuario.setCarreras([u.carrera_id]);
+      }
+      if (u.facultad_id) {
+        await usuario.setFacultades([u.facultad_id]);
       }
       usuariosDB[u.rol] = usuario;
-      const estado = creado ? 'CREADO' : 'YA EXISTÍA';
+      const estado = creado ? 'CREADO' : 'ACTUALIZADO';
       console.log(`  [${estado}] ${u.nombre} <${u.email}> — ${u.rol} — password: ${u.password}`);
     }
 

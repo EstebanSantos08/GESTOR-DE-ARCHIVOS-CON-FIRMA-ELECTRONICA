@@ -56,6 +56,25 @@ app.get('/api/health', (req, res) => {
   res.json({ estado: 'OK', timestamp: new Date().toISOString() });
 });
 
+// ─── Endpoint para ejecutar seeds bajo demanda ─────────────────────────────
+app.all('/api/admin/seed', async (req, res) => {
+  try {
+    const { execSync } = require('child_process');
+    console.log('🌱 Ejecutando seed solicitado...');
+    const out1 = execSync('node seed.js', { cwd: __dirname }).toString();
+    const out2 = execSync('node seed-criterios.js', { cwd: __dirname }).toString();
+    const out3 = execSync('node seed-carreras-demo.js', { cwd: __dirname }).toString();
+    res.json({
+      estado: 'OK',
+      mensaje: 'Base de datos poblada exitosamente con todos los seeds.',
+      salida: [out1, out2, out3].join('\n---\n')
+    });
+  } catch (err) {
+    console.error('Error al ejecutar seeds:', err);
+    res.status(500).json({ error: err.message, detalle: err.stdout?.toString() || err.stderr?.toString() });
+  }
+});
+
 // ─── Manejo global de errores ──────────────────────────────────────────────
 app.use((err, req, res, next) => {
   if (err.name === 'MulterError') {
@@ -84,18 +103,19 @@ async function iniciar() {
     await sequelize.sync(syncOptions);
     console.log('Modelos sincronizados con la base de datos');
 
-    // Auto-seed si la base de datos está vacía (primer despliegue en producción)
+    // Auto-seed si la base de datos está vacía o no tiene roles asignados a usuarios
     try {
-      const { Rol } = require('./Model');
+      const { Rol, UsuarioRol } = require('./Model');
       const totalRoles = await Rol.count();
-      if (totalRoles === 0) {
-        console.log('🌱 Base de datos vacía detectada. Ejecutando seed inicial...');
+      const totalAsignaciones = await UsuarioRol.count();
+      if (totalRoles === 0 || totalAsignaciones === 0) {
+        console.log(`🌱 Asignaciones incompletas detectadas (roles: ${totalRoles}, asignaciones: ${totalAsignaciones}). Ejecutando seed...`);
         const { execSync } = require('child_process');
         execSync('node seed.js && node seed-criterios.js && node seed-carreras-demo.js', {
           cwd: __dirname,
           stdio: 'inherit'
         });
-        console.log('✅ Seed inicial completado con éxito.');
+        console.log('✅ Seed completado con éxito.');
       }
     } catch (seedErr) {
       console.warn('⚠️ Nota sobre seed inicial:', seedErr.message);

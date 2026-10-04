@@ -17,10 +17,13 @@ function parsearUsuario(data) {
   const nombre = data.nombre || data.email || 'Usuario';
   const avatar = (nombre.split(' ').filter(Boolean).map(n => n[0]).join('') || 'US').substring(0, 2).toUpperCase();
   let roles = ['DOCENTE'];
-  if (data.roles && Array.isArray(data.roles)) {
-    roles = data.roles.map(r => r.nombre || r);
+  if (data.roles && Array.isArray(data.roles) && data.roles.length > 0) {
+    roles = data.roles.map(r => (typeof r === 'object' && r !== null ? r.nombre : r)).filter(Boolean);
   } else if (data.rol) {
-    roles = [data.rol.nombre || data.rol];
+    roles = [(typeof data.rol === 'object' && data.rol !== null ? data.rol.nombre : data.rol)].filter(Boolean);
+  }
+  if (!roles.length) {
+    roles = ['DOCENTE'];
   }
 
   // Normaliza carreras: acepta tanto el alias M:N 'carreras' (array de objetos)

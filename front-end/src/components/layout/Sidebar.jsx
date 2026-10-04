@@ -39,7 +39,11 @@ const ROL_LABEL = {
 
 export default function Sidebar() {
   const { vistaActual, navegarA, usuario, logout } = useApp();
-  const userRoles = usuario?.roles || [];
+  const rawRoles = usuario?.roles || [];
+  const normalizedRoles = (Array.isArray(rawRoles) ? rawRoles : [rawRoles])
+    .map(r => (typeof r === 'object' && r !== null ? r.nombre : r))
+    .filter(Boolean);
+  const userRoles = normalizedRoles.length > 0 ? normalizedRoles : ['DOCENTE'];
   const rolPrincipal = userRoles.includes('ADMINISTRADOR') ? 'ADMINISTRADOR' : (userRoles[0] || 'DOCENTE');
   const itemsVisibles = NAV_ITEMS.filter(i => i.roles.some(r => userRoles.includes(r)));
 

@@ -13,16 +13,31 @@ const flujosRoutes = require('./Routes/flujos.routes');
 const app = express();
 
 // ─── CORS ─────────────────────────────────────────────────────────────────
-// En producción solo se permiten peticiones desde el dominio del frontend.
-// En desarrollo se permite cualquier origen para facilitar el trabajo local.
-const corsOptions = process.env.NODE_ENV === 'production'
-  ? {
-      origin: process.env.FRONTEND_URL
-        ? process.env.FRONTEND_URL.split(',').map(u => u.trim())
-        : [],
-      credentials: true,
+// En producción se permite FRONTEND_URL, subdominios *.pages.dev (Cloudflare) y localhost.
+const allowedOrigins = process.env.FRONTEND_URL
+  ? process.env.FRONTEND_URL.split(',').map(u => u.trim())
+  : [];
+
+const corsOptions = {
+  origin: (origin, callback) => {
+    // Permitir peticiones sin origen (curl, Postman, server-to-server)
+    if (!origin) return callback(null, true);
+
+    // En desarrollo permitir cualquier origen
+    if (process.env.NODE_ENV !== 'production') return callback(null, true);
+
+    // En producción permitir orígenes explícitos, Cloudflare Pages (*.pages.dev) o localhost
+    const isExplicit = allowedOrigins.includes(origin);
+    const isCloudflarePages = /^https:\/\/[a-zA-Z0-9-]+\.pages\.dev$/.test(origin);
+    const isLocal = /^http:\/\/localhost(:\d+)?$/.test(origin);
+
+    if (isExplicit || isCloudflarePages || isLocal || allowedOrigins.length === 0) {
+      return callback(null, true);
     }
-  : { origin: true, credentials: true };
+    return callback(new Error(`Bloqueado por política CORS: ${origin}`));
+  },
+  credentials: true,
+};
 
 // ─── Seguridad y parseo ────────────────────────────────────────────────────
 app.use(helmet());
@@ -68,6 +83,23 @@ async function iniciar() {
 
     await sequelize.sync(syncOptions);
     console.log('Modelos sincronizados con la base de datos');
+
+    // Auto-seed si la base de datos está vacía (primer despliegue en producción)
+    try {
+      const { Rol } = require('./Model');
+      const totalRoles = await Rol.count();
+      if (totalRoles === 0) {
+        console.log('🌱 Base de datos vacía detectada. Ejecutando seed inicial...');
+        const { execSync } = require('child_process');
+        execSync('node seed.js && node seed-criterios.js && node seed-carreras-demo.js', {
+          cwd: __dirname,
+          stdio: 'inherit'
+        });
+        console.log('✅ Seed inicial completado con éxito.');
+      }
+    } catch (seedErr) {
+      console.warn('⚠️ Nota sobre seed inicial:', seedErr.message);
+    }
 
     app.listen(PORT, HOST, () => {
       console.log(`Servidor corriendo en http://${HOST}:${PORT}`);

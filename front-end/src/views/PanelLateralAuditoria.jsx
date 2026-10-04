@@ -4,7 +4,7 @@ import Badge from '../components/common/Badge';
 import ModalFirma from '../components/modals/ModalFirma';
 import { useApp } from '../context/useApp';
 
-const API_URL = 'http://localhost:3000/api';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
 
 function PasoTimeline({ numero, titulo, completado, activo }) {
   return (

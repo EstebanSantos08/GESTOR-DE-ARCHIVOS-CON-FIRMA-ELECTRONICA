@@ -1,0 +1,96 @@
+# =============================================================================
+#  render.yaml — Configuración de despliegue en Render
+# =============================================================================
+#  Este archivo define los servicios que Render desplegará automáticamente
+#  cuando hagas push al repositorio.
+#
+#  Documentación: https://render.com/docs/blueprint-spec
+# =============================================================================
+
+services:
+  # ─── API Backend (Node.js / Express) ────────────────────────────────────
+  - type: web
+    name: gestor-archivos-api
+    runtime: node
+    region: oregon          # Cambia a "frankfurt" si tus usuarios son de Europa
+    plan: free              # Cambiar a "starter" o superior en producción real
+
+    # Render clona el repo y ejecuta los comandos desde la raíz.
+    # rootDir apunta a la subcarpeta del backend.
+    rootDir: back-end
+
+    buildCommand: npm install
+    startCommand: npm start
+
+    # Variables de entorno — configura los valores secretos directamente
+    # en el Dashboard de Render (no los pongas aquí en texto plano).
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+      # ── Base de datos ──────────────────────────────────────────────────
+      # Opción A: usa una base de datos PostgreSQL de Render (recomendado)
+      # Referencia la BD definida más abajo en la sección "databases".
+      - key: DATABASE_URL
+        fromDatabase:
+          name: gestor-archivos-db
+          property: connectionString
+
+      # Si prefieres variables individuales en vez de DATABASE_URL,
+      # descomenta las siguientes y configúralas en el Dashboard de Render:
+      # - key: DB_HOST
+      #   sync: false
+      # - key: DB_PORT
+      #   value: "5432"
+      # - key: DB_NAME
+      #   sync: false
+      # - key: DB_USER
+      #   sync: false
+      # - key: DB_PASSWORD
+      #   sync: false
+
+      # ── JWT ────────────────────────────────────────────────────────────
+      - key: JWT_SECRET
+        generateValue: true   # Render genera un valor aleatorio seguro automáticamente
+
+      - key: JWT_EXPIRES_IN
+        value: 8h
+
+      # ── CORS — URL del frontend en Cloudflare Pages ────────────────────
+      # Pon aquí tu URL real de Cloudflare Pages una vez que la tengas.
+      # Puedes añadir múltiples URLs separadas por coma.
+      - key: FRONTEND_URL
+        sync: false           # Configura el valor en el Dashboard de Render
+
+      # ── Archivos y certificados ─────────────────────────────────────────
+      - key: UPLOADS_DIR
+        value: ./uploads
+
+      - key: CERTS_DIR
+        value: ./certs
+
+      - key: MAX_FILE_SIZE_MB
+        value: "10"
+
+      # Configura estos en el Dashboard de Render si usas firma institucional:
+      # - key: CERT_P12_PATH
+      #   sync: false
+      # - key: CERT_P12_PASSWORD
+      #   sync: false
+
+    # Render crea el disco persistente para archivos subidos.
+    # IMPORTANTE: El plan Free NO incluye discos persistentes.
+    # En el plan free los archivos subidos se pierden al reiniciar.
+    # Para producción real, usa el plan "starter" o migra a S3/R2.
+    # disk:
+    #   name: uploads
+    #   mountPath: /opt/render/project/src/uploads
+    #   sizeGB: 5
+
+# ─── Base de datos PostgreSQL (Render Managed) ──────────────────────────────
+databases:
+  - name: gestor-archivos-db
+    databaseName: gestion_archivos
+    user: gestor_admin
+    region: oregon    # Debe coincidir con la región del servicio web
+    plan: free        # Cambiar a "starter" o superior en producción real

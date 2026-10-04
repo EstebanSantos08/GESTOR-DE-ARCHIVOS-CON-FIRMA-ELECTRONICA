@@ -13,6 +13,9 @@ node_modules/
 # -----------------------------------------------------------------------------
 .env
 **/.env
+front-end/.env.local
+front-end/.env.production.local
+
 
 # -----------------------------------------------------------------------------
 #  Archivos subidos por usuarios (datos en runtime, no código)

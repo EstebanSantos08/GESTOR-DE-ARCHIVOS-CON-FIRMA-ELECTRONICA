@@ -62,7 +62,7 @@ export default function GestionUsuarios() {
     try {
       const [usrs, rls, carrs] = await Promise.all([
         listarUsuarios(),
-        fetch('http://localhost:3000/api/auth/roles', {
+        fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/auth/roles`, {
           headers: { Authorization: `Bearer ${token}` },
         }).then(r => r.ok ? r.json() : []),
         listarCarreras ? listarCarreras() : Promise.resolve([]),

@@ -12,9 +12,21 @@ const flujosRoutes = require('./Routes/flujos.routes');
 
 const app = express();
 
+// ─── CORS ─────────────────────────────────────────────────────────────────
+// En producción solo se permiten peticiones desde el dominio del frontend.
+// En desarrollo se permite cualquier origen para facilitar el trabajo local.
+const corsOptions = process.env.NODE_ENV === 'production'
+  ? {
+      origin: process.env.FRONTEND_URL
+        ? process.env.FRONTEND_URL.split(',').map(u => u.trim())
+        : [],
+      credentials: true,
+    }
+  : { origin: true, credentials: true };
+
 // ─── Seguridad y parseo ────────────────────────────────────────────────────
 app.use(helmet());
-app.use(cors());
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -40,17 +52,25 @@ app.use((err, req, res, next) => {
 
 // ─── Inicio ────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
+// Render requiere escuchar en 0.0.0.0 (no solo en localhost)
+const HOST = '0.0.0.0';
 
 async function iniciar() {
   try {
     await sequelize.authenticate();
     console.log('Conexión a PostgreSQL establecida');
 
-    await sequelize.sync({ alter: true });
+    // En producción se usa { alter: false } para no mutar el esquema automáticamente.
+    // Usa migraciones explícitas para cambios de esquema en producción.
+    const syncOptions = process.env.NODE_ENV === 'production'
+      ? { alter: false }
+      : { alter: true };
+
+    await sequelize.sync(syncOptions);
     console.log('Modelos sincronizados con la base de datos');
 
-    app.listen(PORT, () => {
-      console.log(`Servidor corriendo en http://localhost:${PORT}`);
+    app.listen(PORT, HOST, () => {
+      console.log(`Servidor corriendo en http://${HOST}:${PORT}`);
       console.log(`Entorno: ${process.env.NODE_ENV || 'development'}`);
     });
   } catch (err) {
@@ -60,3 +80,4 @@ async function iniciar() {
 }
 
 iniciar();
+

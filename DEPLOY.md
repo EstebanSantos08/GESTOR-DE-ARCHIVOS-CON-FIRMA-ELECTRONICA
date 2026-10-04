@@ -158,3 +158,23 @@ hacer login y que las llamadas a la API no den errores de CORS.
 - **Backend**: cada `git push` a la rama principal redesplegará Render automáticamente.
 - **Frontend**: cada `git push` redesplegará Cloudflare Pages automáticamente.
 - No es necesario hacer nada manual en despliegues de rutina.
+
+---
+
+## 7 · URLs y Accesos del Sistema Desplegado
+
+| Servicio | URL Pública | Estado |
+| :--- | :--- | :--- |
+| **Frontend (Cloudflare Pages)** | [https://gestor-archivos-ahx.pages.dev](https://gestor-archivos-ahx.pages.dev) | 🟢 Activo |
+| **Backend API (Render)** | [https://gestor-archivos-api.onrender.com](https://gestor-archivos-api.onrender.com) | 🟢 Activo |
+| **Health Check API** | [https://gestor-archivos-api.onrender.com/api/health](https://gestor-archivos-api.onrender.com/api/health) | 🟢 Activo |
+
+### Credenciales de acceso de prueba:
+- **Administrador**: `admin@universidad.edu` / `Admin123!`
+- **Rector**: `rector@universidad.edu` / `Rector123!`
+- **Decano**: `decano@universidad.edu` / `Decano123!`
+- **Subdecano**: `subdecano@universidad.edu` / `Subdecano123!`
+- **Director de Carrera**: `director@universidad.edu` / `Director123!`
+- **Docente**: `docente@universidad.edu` / `Docente123!`
+- **Responsable de Área**: `responsable@universidad.edu` / `Responsable123!`
+

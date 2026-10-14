@@ -64,11 +64,27 @@ En **Environment** del servicio web, añade:
 | `MAX_FILE_SIZE_MB` | `10` |
 | `CERT_P12_PATH` | *(opcional, si usas firma institucional)* |
 | `CERT_P12_PASSWORD` | *(opcional, si usas firma institucional)* |
+| `R2_ACCOUNT_ID` | *(opcional pero recomendado: Account ID de Cloudflare)* |
+| `R2_ACCESS_KEY_ID` | *(opcional: Access Key ID de R2)* |
+| `R2_SECRET_ACCESS_KEY` | *(opcional: Secret Access Key de R2)* |
+| `R2_BUCKET_NAME` | `gestor-archivos-pdf` *(o el nombre de tu bucket)* |
 
-> [!WARNING]
-> El plan **Free** de Render **no tiene disco persistente**. Los archivos subidos
-> (PDFs) se perderán al reiniciar el servicio. Para producción real, usa el plan
-> **Starter** y activa el disco, o migra el almacenamiento a Cloudflare R2 / AWS S3.
+#### 1.4 Almacenamiento Persistente en Cloudflare R2 (100% Permanente y Gratis)
+
+Para que ningún archivo PDF se pierda cuando Render reinicie el servidor:
+
+1. Ve a **[Cloudflare Dashboard](https://dash.cloudflare.com)** → **R2 Object Storage**.
+2. Haz clic en **"Create bucket"** y nómbralo `gestor-archivos-pdf`.
+3. En la barra derecha de R2, haz clic en **"Manage R2 API Tokens"** → **"Create API Token"**.
+4. Selecciona permisos **"Object Read & Write"** y haz clic en **"Create API Token"**.
+5. Copia los 4 valores y agrégalos en Render (**Environment**):
+   - `R2_ACCOUNT_ID`
+   - `R2_ACCESS_KEY_ID`
+   - `R2_SECRET_ACCESS_KEY`
+   - `R2_BUCKET_NAME` = `gestor-archivos-pdf`
+
+> [!TIP]
+> Si no configuras las variables de R2, el sistema seguirá funcionando guardando los archivos en la carpeta local `./uploads`. Cuando agregues las variables en Render, el sistema comenzará a guardar automáticamente en Cloudflare R2 sin necesidad de reiniciar la base de datos.
 
 > [!NOTE]
 > El servicio Free de Render **hiberna** tras 15 minutos de inactividad. La primera

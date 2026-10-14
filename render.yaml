@@ -78,6 +78,16 @@ services:
       # - key: CERT_P12_PASSWORD
       #   sync: false
 
+      # ── Cloudflare R2 (Almacenamiento Persistente de PDFs) ───────────────
+      - key: R2_ACCOUNT_ID
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_BUCKET_NAME
+        value: gestor-archivos-pdf
+
     # Render crea el disco persistente para archivos subidos.
     # IMPORTANTE: El plan Free NO incluye discos persistentes.
     # En el plan free los archivos subidos se pierden al reiniciar.

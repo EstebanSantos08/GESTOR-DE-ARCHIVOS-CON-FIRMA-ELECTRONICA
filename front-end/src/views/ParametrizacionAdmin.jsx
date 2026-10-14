@@ -1091,7 +1091,18 @@ export default function ParametrizacionAdmin() {
               </div>
               
               <div>
-                <h3 className="text-sm font-semibold text-navy-900 mb-4">Flujos existentes</h3>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-semibold text-navy-900">Flujos existentes</h3>
+                  {flujosFirma.some(f => f.es_global) ? (
+                    <span className="text-[11px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                      ✓ Flujo global activo
+                    </span>
+                  ) : (
+                    <span className="text-[11px] font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                      ⚠️ Sin flujo global explícito
+                    </span>
+                  )}
+                </div>
                 <div className="space-y-2">
                   {flujosFirma.map(f => (
                     <ItemRow
@@ -1160,7 +1171,36 @@ export default function ParametrizacionAdmin() {
                       <div className="flex flex-col">
                         <div className="flex items-center justify-between">
                           <span className="font-medium text-gray-800">{f.nombre}</span>
-                          {f.es_global && <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-sm">GLOBAL</span>}
+                          <div className="flex items-center gap-1.5">
+                            {f.es_global ? (
+                              <span className="text-[10px] font-semibold bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">GLOBAL</span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  try {
+                                    await actualizarFlujo(f.id, {
+                                      nombre: f.nombre,
+                                      es_global: true,
+                                      pasos: (f.pasos || []).map((p, idx) => ({
+                                        orden: idx + 1,
+                                        usuario_id: p.usuario_id || null,
+                                        rol_id: p.rol_id || null,
+                                      }))
+                                    });
+                                    mostrarExito(`"${f.nombre}" establecido como flujo global.`);
+                                  } catch (err) {
+                                    mostrarError(err.message);
+                                  }
+                                }}
+                                className="text-[10px] font-medium text-purple-700 hover:text-purple-900 bg-purple-50 hover:bg-purple-100 border border-purple-200 px-2 py-0.5 rounded transition-colors"
+                                title="Establecer como flujo global por defecto"
+                              >
+                                Hacer Global
+                              </button>
+                            )}
+                          </div>
                         </div>
                         <div className="mt-1 text-xs text-gray-500">
                           {f.pasos?.length || 0} pasos: {(f.pasos || []).map(p => p.usuarioFirmante ? p.usuarioFirmante.nombre : (p.rolRequerido?.nombre || `Rol #${p.rol_id}`)).join(' → ')}

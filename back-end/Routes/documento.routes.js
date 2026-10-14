@@ -14,6 +14,7 @@ router.get('/resumen', autenticar, ctrl.resumenDocumentos);
 router.get('/', autenticar, ctrl.listarDocumentos);
 router.get('/:id', autenticar, ctrl.obtenerDocumento);
 router.get('/:id/descargar', autenticar, ctrl.descargarDocumento);
+router.get('/:id/ver', autenticar, ctrl.verDocumento);
 router.delete('/:id', autenticar, ctrl.eliminarDocumento);
 
 // Firmar — el workflow valida que el usuario sea el firmante asignado

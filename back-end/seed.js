@@ -221,6 +221,11 @@ async function seed() {
       console.log(`  ✅ [${ind.numero}] ${ind.nombre} → ${ind.responsableRol}`);
     }
 
+    // ─── Flujo de Firma Institucional (Global) ────────────────────────────
+    const workflowService = require('./Services/workflow.service');
+    const flujoGlobal = await workflowService.garantizarFlujoGlobal();
+    console.log(`\nFlujo de Firma Global: "${flujoGlobal.nombre}" (id: ${flujoGlobal.id}, global: ${flujoGlobal.es_global})`);
+
     console.log('\n══════════════════════════════════════════');
     console.log('Seed completado exitosamente con 7 niveles.');
     console.log('══════════════════════════════════════════');

@@ -58,15 +58,19 @@ export default function PanelLateralAuditoria() {
     setCargandoPdf(true);
     setErrorPdf('');
 
-    fetch(`${API_URL}/documentos/${doc.id}/descargar`, {
+    fetch(`${API_URL}/documentos/${doc.id}/ver`, {
       headers: { Authorization: `Bearer ${token}` },
     })
-      .then(res => {
-        if (!res.ok) throw new Error('No se pudo cargar el documento');
+      .then(async res => {
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || 'No se pudo cargar el documento');
+        }
         return res.blob();
       })
       .then(blob => {
-        const url = URL.createObjectURL(blob);
+        const pdfBlob = blob.type === 'application/pdf' ? blob : new Blob([blob], { type: 'application/pdf' });
+        const url = URL.createObjectURL(pdfBlob);
         blobUrlRef.current = url;
         setPdfBlobUrl(url);
       })
@@ -91,7 +95,7 @@ export default function PanelLateralAuditoria() {
     if (!pdfBlobUrl) return;
     const a = document.createElement('a');
     a.href = pdfBlobUrl;
-    a.download = doc.nombre;
+    a.download = doc.nombre || 'documento.pdf';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -106,8 +110,6 @@ export default function PanelLateralAuditoria() {
     doc.estado === 'COMPLETADO';
 
   const pasos = doc.flujoFirma?.pasos || [];
-  // Calculamos si un paso está activo o completado
-  // paso_actual empieza en 1.
   
   return (
     <>
@@ -150,8 +152,13 @@ export default function PanelLateralAuditoria() {
               </div>
             ) : errorPdf ? (
               <div className="h-full flex flex-col items-center justify-center space-y-2 px-6 text-center">
-                <AlertCircle size={28} className="text-red-400" />
-                <p className="text-xs text-red-500">{errorPdf}</p>
+                <AlertCircle size={28} className="text-amber-500" />
+                <p className="text-xs font-semibold text-gray-800">No se pudo visualizar el PDF</p>
+                <p className="text-xs text-gray-500 max-w-xs">{errorPdf}</p>
+                <div className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2.5 mt-2 text-left space-y-1">
+                  <p className="font-semibold">Nota de almacenamiento:</p>
+                  <p>Si este documento fue subido antes de un reinicio del servidor, el archivo físico pudo haberse borrado por almacenamiento efímero. Puede volver a subirlo para visualizarlo.</p>
+                </div>
               </div>
             ) : pdfBlobUrl ? (
               <iframe

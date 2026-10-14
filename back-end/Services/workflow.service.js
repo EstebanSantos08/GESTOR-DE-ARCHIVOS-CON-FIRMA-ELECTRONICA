@@ -5,9 +5,17 @@ class WorkflowService {
    * Determina el siguiente firmante y estado según el estado actual del documento.
    */
   async enrutar(documento) {
-    if (!documento.flujo_id) throw new Error('El documento no tiene un flujo de firma asignado');
+    if (!documento.flujo_id) {
+      const global = await this.garantizarFlujoGlobal();
+      if (global) {
+        documento.flujo_id = global.id;
+        if (documento.update) await documento.update({ flujo_id: global.id });
+      } else {
+        throw new Error('El documento no tiene un flujo de firma asignado');
+      }
+    }
 
-    const flujo = await FlujoFirma.findByPk(documento.flujo_id, {
+    let flujo = await FlujoFirma.findByPk(documento.flujo_id, {
       include: [
         {
           model: PasoFirma,
@@ -22,7 +30,14 @@ class WorkflowService {
     });
 
     if (!flujo || !flujo.pasos || flujo.pasos.length === 0) {
-      throw new Error('El flujo de firma no existe o no tiene pasos definidos');
+      const global = await this.garantizarFlujoGlobal();
+      if (global && global.pasos && global.pasos.length > 0) {
+        documento.flujo_id = global.id;
+        if (documento.update) await documento.update({ flujo_id: global.id });
+        flujo = global;
+      } else {
+        throw new Error('El flujo de firma no existe o no tiene pasos definidos');
+      }
     }
 
     const pasoActualIndex = documento.paso_actual - 1;
@@ -120,28 +135,53 @@ class WorkflowService {
 
     // Si el documento aún no tiene flujo (ej: recién creado), se determina:
     if (!flujoId) {
-      // Buscar Criterio -> Indicador -> Actividad
-      const actividad = await Actividad.findByPk(documento.actividad_id, {
-        include: [{
-          model: Indicador, as: 'indicador', include: [{
-            model: Criterio, as: 'criterio'
+      // 1. Buscar en la Actividad -> Indicador -> Criterio
+      if (documento.actividad_id) {
+        const actividad = await Actividad.findByPk(documento.actividad_id, {
+          include: [{
+            model: Indicador, as: 'indicador', include: [{
+              model: Criterio, as: 'criterio'
+            }]
           }]
-        }]
-      });
+        });
 
-      if (actividad) {
-        if (actividad.flujo_id) {
-          flujoId = actividad.flujo_id;
-        } else if (actividad.indicador && actividad.indicador.criterio) {
-          flujoId = actividad.indicador.criterio.flujo_id;
+        if (actividad) {
+          if (actividad.flujo_id) {
+            flujoId = actividad.flujo_id;
+          } else if (actividad.indicador && actividad.indicador.criterio) {
+            flujoId = actividad.indicador.criterio.flujo_id;
+          }
         }
       }
 
-      // Si no hay flujo en el Criterio, usar el global
+      // 2. Si no hay flujo en la Actividad ni en el Criterio:
       if (!flujoId) {
-        const global = await FlujoFirma.findOne({ where: { es_global: true } });
-        if (!global) throw new Error('No existe flujo global de firmas configurado');
-        flujoId = global.id;
+        // A) Intentar con el flujo marcado como global
+        let flujoGlobal = await FlujoFirma.findOne({
+          where: { es_global: true },
+          include: [{ model: PasoFirma, as: 'pasos' }],
+        });
+
+        // B) Fallback inteligente: Si existe un flujo configurado por el usuario (aunque haya olvidado marcar es_global),
+        // adoptarlo como global para no bloquear la producción
+        if (!flujoGlobal || !flujoGlobal.pasos || flujoGlobal.pasos.length === 0) {
+          const todosFlujos = await FlujoFirma.findAll({
+            include: [{ model: PasoFirma, as: 'pasos' }],
+            order: [['id', 'ASC']],
+          });
+          const conPasos = todosFlujos.find(f => f.pasos && f.pasos.length > 0);
+          if (conPasos) {
+            flujoGlobal = conPasos;
+            await flujoGlobal.update({ es_global: true });
+          }
+        }
+
+        // C) Fallback de rescate: Si la base de datos no tiene ningún flujo, garantizar el institucional por defecto
+        if (!flujoGlobal) {
+          flujoGlobal = await this.garantizarFlujoGlobal();
+        }
+
+        flujoId = flujoGlobal.id;
       }
 
       await documento.update({ flujo_id: flujoId, paso_actual: 1, estado: 'PENDIENTE' });
@@ -151,7 +191,7 @@ class WorkflowService {
 
     const enrutamiento = await this.enrutar(documento);
     if (!enrutamiento || !enrutamiento.firmante) {
-      throw new Error('No se encontró firmante inicial para este documento');
+      throw new Error('No se encontró firmante inicial para este documento. Asegúrese de que el primer paso del flujo tenga un usuario asignado o exista un usuario activo con el rol correspondiente.');
     }
 
     await documento.update({ firmante_actual_id: enrutamiento.firmante.id, estado: 'PENDIENTE' });
@@ -159,8 +199,81 @@ class WorkflowService {
   }
 
   /**
+   * Garantiza que exista al menos un Flujo Global con pasos válidos en el sistema.
+   * Si no existe, lo crea automáticamente basándose en los roles institucionales disponibles.
+   */
+  async garantizarFlujoGlobal() {
+    let global = await FlujoFirma.findOne({
+      where: { es_global: true },
+      include: [{ model: PasoFirma, as: 'pasos' }],
+    });
+
+    if (global && global.pasos && global.pasos.length > 0) {
+      return global;
+    }
+
+    const primerFlujo = await FlujoFirma.findOne({
+      include: [{ model: PasoFirma, as: 'pasos' }],
+      order: [['id', 'ASC']],
+    });
+
+    if (primerFlujo && primerFlujo.pasos && primerFlujo.pasos.length > 0) {
+      await primerFlujo.update({ es_global: true });
+      return primerFlujo;
+    }
+
+    // Crear flujo institucional por defecto
+    const nuevoFlujo = await FlujoFirma.create({
+      nombre: 'Flujo Institucional Predeterminado',
+      es_global: true,
+    });
+
+    // Asignar los roles estándar
+    const rolesNombres = ['DIRECTOR_CARRERA', 'SUBDECANO', 'DECANO', 'RECTOR'];
+    const rolesDB = await Rol.findAll({
+      where: { nombre: rolesNombres },
+    });
+
+    const rolesMap = {};
+    rolesDB.forEach(r => { rolesMap[r.nombre] = r.id; });
+
+    const pasosACrear = [];
+    let orden = 1;
+    for (const nom of rolesNombres) {
+      if (rolesMap[nom]) {
+        pasosACrear.push({
+          flujo_id: nuevoFlujo.id,
+          orden: orden++,
+          rol_id: rolesMap[nom],
+          usuario_id: null,
+        });
+      }
+    }
+
+    if (pasosACrear.length === 0) {
+      const todosRoles = await Rol.findAll({ limit: 4, order: [['nivel', 'ASC']] });
+      todosRoles.forEach((r, idx) => {
+        pasosACrear.push({
+          flujo_id: nuevoFlujo.id,
+          orden: idx + 1,
+          rol_id: r.id,
+          usuario_id: null,
+        });
+      });
+    }
+
+    if (pasosACrear.length > 0) {
+      await PasoFirma.bulkCreate(pasosACrear);
+    }
+
+    return await FlujoFirma.findByPk(nuevoFlujo.id, {
+      include: [{ model: PasoFirma, as: 'pasos' }],
+    });
+  }
+
+  /**
    * Busca el firmante con el rol_id indicado.
-   * Prioridad: 1) mismo rol + misma facultad, 2) mismo rol sin filtro.
+   * Prioridad: 1) mismo rol + misma facultad (M:N), 2) mismo rol + facultad (1:N), 3) mismo rol sin filtro, 4) por nombre de rol.
    */
   async _buscarFirmante(rol_id, facultad_id) {
     if (facultad_id) {
@@ -194,7 +307,8 @@ class WorkflowService {
       if (conFacultad) return conFacultad;
     }
 
-    return await Usuario.findOne({
+    // 3. Fallback: mismo rol sin filtro de facultad
+    const sinFacultad = await Usuario.findOne({
       where: { activo: true },
       include: [{
         model: Rol,
@@ -202,6 +316,23 @@ class WorkflowService {
         where: { id: rol_id }
       }],
     });
+    if (sinFacultad) return sinFacultad;
+
+    // 4. Fallback de rescate para producción: buscar cualquier usuario activo con ese rol por nombre si rol_id vino desfasado
+    const rolObj = await Rol.findByPk(rol_id);
+    if (rolObj) {
+      const porNombre = await Usuario.findOne({
+        where: { activo: true },
+        include: [{
+          model: Rol,
+          as: 'roles',
+          where: { nombre: rolObj.nombre }
+        }],
+      });
+      if (porNombre) return porNombre;
+    }
+
+    return null;
   }
 }
 

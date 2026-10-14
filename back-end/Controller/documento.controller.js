@@ -5,6 +5,7 @@ const { validationResult } = require('express-validator');
 const { Documento, Usuario, Rol, Facultad, Actividad, FlujoFirma, PasoFirma } = require('../Model');
 const firmaService = require('../Services/firma.service');
 const workflowService = require('../Services/workflow.service');
+const storageService = require('../Services/storage.service');
 
 // ─── Configuración Multer ──────────────────────────────────────────────────
 const UPLOADS_DIR = process.env.UPLOADS_DIR || './uploads';
@@ -36,16 +37,46 @@ const upload = multer({
   limits: { fileSize: MAX_MB * 1024 * 1024 },
 });
 
+// ─── Funciones Auxiliares ──────────────────────────────────────────────────
+function resolverRutaArchivo(rutaGuardada) {
+  if (!rutaGuardada) return null;
+  // 1. Probar ruta tal cual
+  if (fs.existsSync(rutaGuardada)) return path.resolve(rutaGuardada);
+  // 2. Probar relativa a cwd
+  const desdeCwd = path.resolve(process.cwd(), rutaGuardada);
+  if (fs.existsSync(desdeCwd)) return desdeCwd;
+  // 3. Probar relativa a la raíz del backend
+  const desdeBackend = path.resolve(__dirname, '..', rutaGuardada);
+  if (fs.existsSync(desdeBackend)) return desdeBackend;
+  // 4. Probar en UPLOADS_DIR con el nombre base
+  const enUploads = path.resolve(UPLOADS_DIR, path.basename(rutaGuardada));
+  if (fs.existsSync(enUploads)) return enUploads;
+  return null;
+}
+
 // ─── Controladores ─────────────────────────────────────────────────────────
 async function subirDocumento(req, res) {
   if (!req.file) return res.status(400).json({ error: 'Archivo PDF requerido' });
 
   try {
-    const hashSha256 = firmaService.calcularHash(fs.readFileSync(req.file.path));
+    const fileBuffer = fs.readFileSync(req.file.path);
+    const hashSha256 = firmaService.calcularHash(fileBuffer);
+
+    // Guardar en Cloudflare R2 o en almacenamiento local
+    const rutaOClave = await storageService.guardarArchivo({
+      buffer: fileBuffer,
+      nombreOriginal: req.file.originalname,
+      subcarpeta: 'documentos',
+    });
+
+    // Eliminar archivo temporal si se subió a Cloudflare R2
+    if (storageService.estaConfiguradoR2() && fs.existsSync(req.file.path)) {
+      try { fs.unlinkSync(req.file.path); } catch {}
+    }
 
     const documento = await Documento.create({
       nombre_original: req.file.originalname,
-      ruta_archivo: req.file.path,
+      ruta_archivo: rutaOClave,
       estado: 'PENDIENTE',
       subido_por_id: req.usuario.id,
       facultad_id: req.body.facultad_id || null,
@@ -53,13 +84,14 @@ async function subirDocumento(req, res) {
       hash_sha256: hashSha256,
     });
 
-    // Asigna automáticamente al Decano como primer firmante
+    // Asigna automáticamente el primer firmante según el flujo
     await workflowService.asignarFirmanteInicial(documento);
 
     res.status(201).json(await documento.reload());
   } catch (err) {
-    // Elimina el archivo subido si falla la creación en BD
-    if (req.file) fs.unlinkSync(req.file.path);
+    if (req.file && fs.existsSync(req.file.path)) {
+      try { fs.unlinkSync(req.file.path); } catch {}
+    }
     res.status(500).json({ error: err.message });
   }
 }
@@ -190,22 +222,33 @@ async function firmarDocumento(req, res) {
     }
 
     try {
-      // Aplica firma criptográfica + sello visual
+      // Obtener buffer del PDF (desde Cloudflare R2 o disco local)
+      const pdfBuffer = await storageService.obtenerBuffer(documento.ruta_archivo);
+      if (!pdfBuffer) {
+        return res.status(404).json({
+          error: 'No se puede firmar: el archivo físico no se encuentra en el almacenamiento.',
+          archivoPerdido: true
+        });
+      }
+
+      // Aplica firma criptográfica + sello visual sobre el buffer
       const resultado = await firmaService.firmarDocumento({
-        rutaPdf: documento.ruta_archivo,
+        bufferPdf: pdfBuffer,
         rutaCertP12: certP12Path,
         passwordCert: certPassword,
         firmante: { nombre: usuarioFirmante.nombre, rol: (usuarioFirmante.roles && usuarioFirmante.roles[0]?.nombre) || 'Usuario' },
       });
 
-      // Guarda el PDF firmado con nuevo nombre
-      const rutaFirmada = documento.ruta_archivo.replace(/\.pdf$/i, '') + `_firmado_${Date.now()}.pdf`;
-      const dirFirmada = path.dirname(rutaFirmada);
-      if (!fs.existsSync(dirFirmada)) fs.mkdirSync(dirFirmada, { recursive: true });
-      fs.writeFileSync(rutaFirmada, resultado.pdfFirmado);
+      // Guarda el nuevo PDF firmado en Cloudflare R2 o disco local
+      const nombreFirmado = (documento.nombre_original || 'documento.pdf').replace(/\.pdf$/i, '') + `_firmado_${Date.now()}.pdf`;
+      const nuevaRutaOClave = await storageService.guardarArchivo({
+        buffer: resultado.pdfFirmado,
+        nombreOriginal: nombreFirmado,
+        subcarpeta: 'firmados',
+      });
 
       // Actualiza la ruta en BD y avanza el estado en el workflow
-      await documento.update({ ruta_archivo: rutaFirmada, hash_sha256: resultado.hashSha256 });
+      await documento.update({ ruta_archivo: nuevaRutaOClave, hash_sha256: resultado.hashSha256 });
       const documentoActualizado = await workflowService.procesarFirma(
         documento.id,
         req.usuario,
@@ -236,16 +279,45 @@ async function rechazarDocumento(req, res) {
   }
 }
 
+async function verDocumento(req, res) {
+  try {
+    const documento = await Documento.findByPk(req.params.id);
+    if (!documento) return res.status(404).json({ error: 'Documento no encontrado' });
+
+    const buffer = await storageService.obtenerBuffer(documento.ruta_archivo);
+    if (!buffer) {
+      return res.status(404).json({
+        error: 'El archivo físico no se encuentra en el servidor.',
+        detalle: 'Si el servidor se reinició recientemente y aún no se configuró Cloudflare R2, el archivo físico temporal fue eliminado.',
+        archivoPerdido: true,
+      });
+    }
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(documento.nombre_original)}"`);
+    res.send(buffer);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
 async function descargarDocumento(req, res) {
   try {
     const documento = await Documento.findByPk(req.params.id);
     if (!documento) return res.status(404).json({ error: 'Documento no encontrado' });
 
-    if (!fs.existsSync(documento.ruta_archivo)) {
-      return res.status(404).json({ error: 'Archivo no encontrado en el servidor' });
+    const buffer = await storageService.obtenerBuffer(documento.ruta_archivo);
+    if (!buffer) {
+      return res.status(404).json({
+        error: 'El archivo físico no se encuentra en el servidor.',
+        detalle: 'El archivo no existe en el almacenamiento configurado.',
+        archivoPerdido: true,
+      });
     }
 
-    res.download(documento.ruta_archivo, documento.nombre_original);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(documento.nombre_original)}"`);
+    res.send(buffer);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -267,10 +339,8 @@ async function eliminarDocumento(req, res) {
       return res.status(403).json({ error: 'No tienes permiso para eliminar este documento' });
     }
 
-    // Elimina el archivo físico del disco
-    if (fs.existsSync(documento.ruta_archivo)) {
-      fs.unlinkSync(documento.ruta_archivo);
-    }
+    // Elimina de Cloudflare R2 o del disco local
+    await storageService.eliminarArchivo(documento.ruta_archivo);
 
     await documento.destroy();
     res.json({ mensaje: 'Documento eliminado correctamente' });
@@ -310,6 +380,7 @@ module.exports = {
   subirDocumento,
   listarDocumentos,
   obtenerDocumento,
+  verDocumento,
   firmarDocumento,
   rechazarDocumento,
   descargarDocumento,

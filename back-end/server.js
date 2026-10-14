@@ -121,6 +121,17 @@ async function iniciar() {
       console.warn('⚠️ Nota sobre seed inicial:', seedErr.message);
     }
 
+    // Garantizar que siempre exista al menos un Flujo Global activo en el sistema
+    try {
+      const workflowService = require('./Services/workflow.service');
+      const flujoGlobal = await workflowService.garantizarFlujoGlobal();
+      if (flujoGlobal) {
+        console.log(`✅ Flujo de firma verificado: "${flujoGlobal.nombre}" (ID: ${flujoGlobal.id}, global: ${flujoGlobal.es_global})`);
+      }
+    } catch (flujoErr) {
+      console.warn('⚠️ Nota sobre verificación de flujo global:', flujoErr.message);
+    }
+
     app.listen(PORT, HOST, () => {
       console.log(`Servidor corriendo en http://${HOST}:${PORT}`);
       console.log(`Entorno: ${process.env.NODE_ENV || 'development'}`);

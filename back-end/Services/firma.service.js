@@ -463,10 +463,11 @@ class FirmaService {
    *                     hashSha256: string, fechaFirma: Date,
    *                     firmante: string }>}
    */
-  async firmarDocumento({ rutaPdf, rutaCertP12, passwordCert, firmante }) {
+  async firmarDocumento({ rutaPdf, bufferPdf, rutaCertP12, passwordCert, firmante }) {
     const { clavePrivada, certificado } = this.cargarCertificado(rutaCertP12, passwordCert);
 
-    const pdfOriginal = fs.readFileSync(rutaPdf);
+    const pdfOriginal = bufferPdf || (rutaPdf ? fs.readFileSync(rutaPdf) : null);
+    if (!pdfOriginal) throw new Error('No se proporcionó el archivo PDF para firmar');
     const fechaFirma  = new Date();
 
     // ── Insertar placeholder /Sig con SubFilter ETSI.CAdES.detached ─────

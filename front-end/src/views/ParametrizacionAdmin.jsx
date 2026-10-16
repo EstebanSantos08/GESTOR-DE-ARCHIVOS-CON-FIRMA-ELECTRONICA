@@ -344,7 +344,13 @@ export default function ParametrizacionAdmin() {
   const facSelInd   = univSelInd?.facultades.find(f => f.id === Number(fInd.facId));
   const carrSelInd  = facSelInd?.carreras.find(c => c.id === Number(fInd.carrId));
   const perSelInd   = carrSelInd?.periodos.find(p => p.id === Number(fInd.perId));
-  const critSelInd  = perSelInd?.criterios.find(c => c.id === Number(fInd.critId));
+  const critSelInd  = perSelInd?.criterios?.find(c => String(c.id) === String(fInd.critId));
+
+  const indicadoresFiltrados = critSelInd
+    ? INDICADORES_PREDEFINIDOS.filter(
+        ind => ind.criterio?.toLowerCase().trim() === critSelInd.nombre?.toLowerCase().trim()
+      )
+    : [];
 
   const univSelAct  = universidades.find(u => u.id === Number(fAct.univId));
   const facSelAct   = univSelAct?.facultades.find(f => f.id === Number(fAct.facId));
@@ -785,16 +791,29 @@ export default function ParametrizacionAdmin() {
                     </select>
                   </FormField>
                   <FormField label="Criterio">
-                    <select value={fInd.critId} onChange={e => setFInd({...fInd, critId: e.target.value})} className={selectCls} disabled={!fInd.perId}>
+                    <select
+                      value={fInd.critId}
+                      onChange={e => setFInd({
+                        ...fInd,
+                        critId: e.target.value,
+                        numero: '',
+                        nombre: '',
+                        responsable_nombre: '',
+                      })}
+                      className={selectCls}
+                      disabled={!fInd.perId}
+                    >
                       <option value="">Seleccionar...</option>
-                      {perSelInd?.criterios.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                      {perSelInd?.criterios?.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
                     </select>
                   </FormField>
 
                   <FormField label="Seleccionar Indicador Predefinido">
                     <select
+                      value={indicadoresFiltrados.some(i => i.nombre === fInd.nombre) ? fInd.nombre : ''}
+                      disabled={!fInd.critId}
                       onChange={e => {
-                        const sel = INDICADORES_PREDEFINIDOS.find(i => i.nombre === e.target.value);
+                        const sel = indicadoresFiltrados.find(i => i.nombre === e.target.value);
                         if (sel) {
                           setFInd(prev => ({
                             ...prev,
@@ -802,14 +821,25 @@ export default function ParametrizacionAdmin() {
                             nombre: sel.nombre,
                             responsable_nombre: sel.responsable_nombre,
                           }));
+                        } else {
+                          setFInd(prev => ({
+                            ...prev,
+                            numero: '',
+                            nombre: '',
+                            responsable_nombre: '',
+                          }));
                         }
                       }}
                       className={selectCls}
                     >
-                      <option value="">-- Seleccionar de los 31 Indicadores --</option>
-                      {INDICADORES_PREDEFINIDOS.map(ind => (
+                      <option value="">
+                        {fInd.critId
+                          ? `-- Seleccionar Indicador (${indicadoresFiltrados.length} disponibles) --`
+                          : '-- Primero seleccione un Criterio --'}
+                      </option>
+                      {indicadoresFiltrados.map(ind => (
                         <option key={`${ind.numero}-${ind.nombre}`} value={ind.nombre}>
-                          [{ind.numero}] {ind.nombre} (Criterio: {ind.criterio})
+                          [{ind.numero}] {ind.nombre}
                         </option>
                       ))}
                     </select>

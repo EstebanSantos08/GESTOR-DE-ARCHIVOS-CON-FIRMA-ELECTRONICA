@@ -748,31 +748,34 @@ export default function ParametrizacionAdmin() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               <div>
                 <h3 className="text-sm font-semibold text-navy-900 mb-4">Nuevo Indicador</h3>
-                <form onSubmit={submitInd} className="space-y-4">
-                  <FormField label="Universidad">
-                    <select value={fInd.univId} onChange={e => setFInd({...fInd, univId: e.target.value, facId: '', carrId: '', perId: '', critId: ''})} className={selectCls}>
-                      <option value="">Seleccionar...</option>
-                      {universidades.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
-                    </select>
-                  </FormField>
-                  <FormField label="Facultad">
-                    <select value={fInd.facId} onChange={e => setFInd({...fInd, facId: e.target.value, carrId: '', perId: '', critId: ''})} className={selectCls} disabled={!fInd.univId}>
-                      <option value="">Seleccionar...</option>
-                      {univSelInd?.facultades.map(f => <option key={f.id} value={f.id}>{f.nombre}</option>)}
-                    </select>
-                  </FormField>
-                  <FormField label="Carrera">
-                    <select value={fInd.carrId} onChange={e => setFInd({...fInd, carrId: e.target.value, perId: '', critId: ''})} className={selectCls} disabled={!fInd.facId}>
-                      <option value="">Seleccionar...</option>
-                      {facSelInd?.carreras.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-                    </select>
-                  </FormField>
-                  <FormField label="Período">
-                    <select value={fInd.perId} onChange={e => setFInd({...fInd, perId: e.target.value, critId: ''})} className={selectCls} disabled={!fInd.carrId}>
-                      <option value="">Seleccionar...</option>
-                      {carrSelInd?.periodos.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-                    </select>
-                  </FormField>
+                <form onSubmit={submitInd} className="space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <FormField label="Universidad">
+                      <select value={fInd.univId} onChange={e => setFInd({...fInd, univId: e.target.value, facId: '', carrId: '', perId: '', critId: ''})} className={selectCls}>
+                        <option value="">Seleccionar...</option>
+                        {universidades.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                      </select>
+                    </FormField>
+                    <FormField label="Facultad">
+                      <select value={fInd.facId} onChange={e => setFInd({...fInd, facId: e.target.value, carrId: '', perId: '', critId: ''})} className={selectCls} disabled={!fInd.univId}>
+                        <option value="">Seleccionar...</option>
+                        {univSelInd?.facultades.map(f => <option key={f.id} value={f.id}>{f.nombre}</option>)}
+                      </select>
+                    </FormField>
+                    <FormField label="Carrera">
+                      <select value={fInd.carrId} onChange={e => setFInd({...fInd, carrId: e.target.value, perId: '', critId: ''})} className={selectCls} disabled={!fInd.facId}>
+                        <option value="">Seleccionar...</option>
+                        {facSelInd?.carreras.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                      </select>
+                    </FormField>
+                    <FormField label="Período">
+                      <select value={fInd.perId} onChange={e => setFInd({...fInd, perId: e.target.value, critId: ''})} className={selectCls} disabled={!fInd.carrId}>
+                        <option value="">Seleccionar...</option>
+                        {carrSelInd?.periodos.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                      </select>
+                    </FormField>
+                  </div>
+
                   <FormField label="Criterio">
                     <select
                       value={fInd.critId}
@@ -828,11 +831,21 @@ export default function ParametrizacionAdmin() {
                     </select>
                   </FormField>
 
-                  <FormField label="Número"><input type="number" value={fInd.numero} onChange={e => setFInd({...fInd, numero: e.target.value})} placeholder="1, 2, 3..." className={inputCls} readOnly /></FormField>
-                  <FormField label="Nombre"><input value={fInd.nombre} onChange={e => setFInd({...fInd, nombre: e.target.value})} placeholder="Ej. Sílabos, Mallas..." className={inputCls} readOnly /></FormField>
+                  <div className="grid grid-cols-4 gap-2.5">
+                    <div className="col-span-1">
+                      <FormField label="Número">
+                        <input type="number" value={fInd.numero} onChange={e => setFInd({...fInd, numero: e.target.value})} placeholder="1, 2, 3..." className={inputCls} readOnly />
+                      </FormField>
+                    </div>
+                    <div className="col-span-3">
+                      <FormField label="Nombre">
+                        <input value={fInd.nombre} onChange={e => setFInd({...fInd, nombre: e.target.value})} placeholder="Ej. Sílabos, Mallas..." className={inputCls} readOnly />
+                      </FormField>
+                    </div>
+                  </div>
 
                   <FormField label="Responsables Asignados">
-                    <div className="max-h-48 overflow-y-auto space-y-2 p-2 border border-gray-200 rounded-lg bg-gray-50/50">
+                    <div className="max-h-28 overflow-y-auto space-y-1.5 p-2 border border-gray-200 rounded-lg bg-gray-50/50">
                       {usuariosDB.map(u => {
                         const seleccionados = fInd.responsablesIds || [];
                         const isChecked = seleccionados.includes(u.id);
@@ -921,53 +934,64 @@ export default function ParametrizacionAdmin() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               <div>
                 <h3 className="text-sm font-semibold text-navy-900 mb-4">Nueva Actividad</h3>
-                <form onSubmit={submitAct} className="space-y-4">
-                  <FormField label="Universidad">
-                    <select value={fAct.univId} onChange={e => setFAct({...fAct, univId: e.target.value, facId: '', carrId: '', perId: '', critId: '', indId: ''})} className={selectCls}>
-                      <option value="">Seleccionar...</option>
-                      {universidades.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
-                    </select>
-                  </FormField>
-                  <FormField label="Facultad">
-                    <select value={fAct.facId} onChange={e => setFAct({...fAct, facId: e.target.value, carrId: '', perId: '', critId: '', indId: ''})} className={selectCls} disabled={!fAct.univId}>
-                      <option value="">Seleccionar...</option>
-                      {univSelAct?.facultades.map(f => <option key={f.id} value={f.id}>{f.nombre}</option>)}
-                    </select>
-                  </FormField>
-                  <FormField label="Carrera">
-                    <select value={fAct.carrId} onChange={e => setFAct({...fAct, carrId: e.target.value, perId: '', critId: '', indId: ''})} className={selectCls} disabled={!fAct.facId}>
-                      <option value="">Seleccionar...</option>
-                      {facSelAct?.carreras.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-                    </select>
-                  </FormField>
-                  <FormField label="Período">
-                    <select value={fAct.perId} onChange={e => setFAct({...fAct, perId: e.target.value, critId: '', indId: ''})} className={selectCls} disabled={!fAct.carrId}>
-                      <option value="">Seleccionar...</option>
-                      {carrSelAct?.periodos.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-                    </select>
-                  </FormField>
-                  <FormField label="Criterio">
-                    <select value={fAct.critId} onChange={e => setFAct({...fAct, critId: e.target.value, indId: ''})} className={selectCls} disabled={!fAct.perId}>
-                      <option value="">Seleccionar...</option>
-                      {perSelAct?.criterios.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-                    </select>
-                  </FormField>
-                  <FormField label="Indicador">
-                    <select value={fAct.indId} onChange={e => setFAct({...fAct, indId: e.target.value})} className={selectCls} disabled={!fAct.critId}>
-                      <option value="">Seleccionar...</option>
-                      {critSelAct?.indicadores.map(i => <option key={i.id} value={i.id}>{i.nombre}</option>)}
-                    </select>
-                  </FormField>
-                  <FormField label="Nombre"><input value={fAct.nombre} onChange={e => setFAct({...fAct, nombre: e.target.value})} placeholder="Entregables, Informes..." className={inputCls} /></FormField>
+                <form onSubmit={submitAct} className="space-y-3">
+                  <div className="p-3 bg-gray-50/70 rounded-lg border border-gray-200">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <FormField label="Universidad">
+                        <select value={fAct.univId} onChange={e => setFAct({...fAct, univId: e.target.value, facId: '', carrId: '', perId: '', critId: '', indId: ''})} className={selectCls}>
+                          <option value="">Seleccionar...</option>
+                          {universidades.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                        </select>
+                      </FormField>
+                      <FormField label="Facultad">
+                        <select value={fAct.facId} onChange={e => setFAct({...fAct, facId: e.target.value, carrId: '', perId: '', critId: '', indId: ''})} className={selectCls} disabled={!fAct.univId}>
+                          <option value="">Seleccionar...</option>
+                          {univSelAct?.facultades.map(f => <option key={f.id} value={f.id}>{f.nombre}</option>)}
+                        </select>
+                      </FormField>
+                      <FormField label="Carrera">
+                        <select value={fAct.carrId} onChange={e => setFAct({...fAct, carrId: e.target.value, perId: '', critId: '', indId: ''})} className={selectCls} disabled={!fAct.facId}>
+                          <option value="">Seleccionar...</option>
+                          {facSelAct?.carreras.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                        </select>
+                      </FormField>
+                      <FormField label="Período">
+                        <select value={fAct.perId} onChange={e => setFAct({...fAct, perId: e.target.value, critId: '', indId: ''})} className={selectCls} disabled={!fAct.carrId}>
+                          <option value="">Seleccionar...</option>
+                          {carrSelAct?.periodos.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                        </select>
+                      </FormField>
+                      <FormField label="Criterio">
+                        <select value={fAct.critId} onChange={e => setFAct({...fAct, critId: e.target.value, indId: ''})} className={selectCls} disabled={!fAct.perId}>
+                          <option value="">Seleccionar...</option>
+                          {perSelAct?.criterios.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                        </select>
+                      </FormField>
+                      <FormField label="Indicador">
+                        <select value={fAct.indId} onChange={e => setFAct({...fAct, indId: e.target.value})} className={selectCls} disabled={!fAct.critId}>
+                          <option value="">Seleccionar...</option>
+                          {critSelAct?.indicadores.map(i => <option key={i.id} value={i.id}>{i.nombre}</option>)}
+                        </select>
+                      </FormField>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <FormField label="Nombre">
+                      <input value={fAct.nombre} onChange={e => setFAct({...fAct, nombre: e.target.value})} placeholder="Entregables, Informes..." className={inputCls} />
+                    </FormField>
+                    <FormField label="Flujo de Firma (Opcional)">
+                      <select value={fAct.flujo_id || ''} onChange={e => setFAct({...fAct, flujo_id: e.target.value})} className={selectCls}>
+                        <option value="">-- Usar Flujo Global por Defecto --</option>
+                        {flujosFirma.map(f => <option key={f.id} value={f.id}>{f.nombre} {f.es_global ? '(Global)' : ''}</option>)}
+                      </select>
+                    </FormField>
+                  </div>
+
                   <FormField label="Descripción / Ayuda">
-                    <textarea value={fAct.informacion_ayuda} onChange={e => setFAct({...fAct, informacion_ayuda: e.target.value})} className={inputCls} rows={2} placeholder="Instrucciones para esta actividad..."></textarea>
+                    <textarea value={fAct.informacion_ayuda} onChange={e => setFAct({...fAct, informacion_ayuda: e.target.value})} className={`${inputCls} resize-none`} rows={2} placeholder="Instrucciones para esta actividad..."></textarea>
                   </FormField>
-                  <FormField label="Flujo de Firma (Opcional)">
-                    <select value={fAct.flujo_id || ''} onChange={e => setFAct({...fAct, flujo_id: e.target.value})} className={selectCls}>
-                      <option value="">-- Usar Flujo Global por Defecto --</option>
-                      {flujosFirma.map(f => <option key={f.id} value={f.id}>{f.nombre} {f.es_global ? '(Global)' : ''}</option>)}
-                    </select>
-                  </FormField>
+
                   <Toggle value={fAct.requiere_firma} onChange={v => setFAct({...fAct, requiere_firma: v})} label="Requiere firma digital" />
                   <button type="submit" className="w-full flex items-center justify-center space-x-2 px-4 py-2.5 bg-navy-900 text-white rounded-lg text-sm font-medium hover:bg-navy-800 transition-colors">
                     <Plus size={16} /><span>Crear Actividad</span>

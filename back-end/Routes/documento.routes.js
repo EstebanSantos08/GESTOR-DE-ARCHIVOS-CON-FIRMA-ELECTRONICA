@@ -11,6 +11,7 @@ router.post('/subir',
 );
 
 router.get('/resumen', autenticar, ctrl.resumenDocumentos);
+router.post('/purgar-todos', autenticar, ctrl.purgarTodosDocumentos);
 router.get('/', autenticar, ctrl.listarDocumentos);
 router.get('/:id', autenticar, ctrl.obtenerDocumento);
 router.get('/:id/descargar', autenticar, ctrl.descargarDocumento);

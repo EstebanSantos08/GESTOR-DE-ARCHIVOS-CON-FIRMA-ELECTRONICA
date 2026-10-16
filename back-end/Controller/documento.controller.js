@@ -305,6 +305,36 @@ async function resumenDocumentos(req, res) {
   }
 }
 
+async function purgarTodosDocumentos(req, res) {
+  try {
+    const esAdmin = req.usuario.roles && req.usuario.roles.includes('ADMINISTRADOR');
+    if (!esAdmin) {
+      return res.status(403).json({ error: 'No autorizado. Solo ADMINISTRADOR puede purgar documentos.' });
+    }
+
+    const docs = await Documento.findAll();
+    for (const doc of docs) {
+      try {
+        if (doc.ruta_archivo && fs.existsSync(doc.ruta_archivo)) {
+          fs.unlinkSync(doc.ruta_archivo);
+        }
+      } catch (err) {
+        console.warn(`No se pudo eliminar el archivo físico: ${doc.ruta_archivo}`, err.message);
+      }
+    }
+
+    try {
+      await Documento.destroy({ where: {}, truncate: true, cascade: true });
+    } catch {
+      await Documento.destroy({ where: {}, cascade: true });
+    }
+
+    res.json({ mensaje: 'Todos los documentos y archivos han sido purgados exitosamente' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
 module.exports = {
   upload,
   subirDocumento,
@@ -314,5 +344,6 @@ module.exports = {
   rechazarDocumento,
   descargarDocumento,
   eliminarDocumento,
+  purgarTodosDocumentos,
   resumenDocumentos,
 };

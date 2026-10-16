@@ -516,6 +516,21 @@ export function AppProvider({ children }) {
     return data;
   }
 
+  async function purgarDocumentos() {
+    const res = await fetch(`${API_URL}/documentos/purgar-todos`, {
+      method: 'POST',
+      headers: authHeaders(),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Error al purgar documentos');
+
+    setDocumentosGlobales([]);
+    if (documentoSeleccionado) setDocumentoSeleccionado(null);
+    await cargarMetricasApi();
+    await cargarDocumentosGlobales();
+    return data;
+  }
+
   function _actualizarDocumentoEnEstado(docId, cambios) {
     setUniversidades(prev =>
       prev.map(u => ({
@@ -1302,7 +1317,7 @@ export function AppProvider({ children }) {
       auditoria, alertas,
       documentoSeleccionado, setDocumentoSeleccionado,
       modalFirmaAbierto, setModalFirmaAbierto,
-      firmarDocumento, rechazarDocumento, subirDocumento, eliminarDocumento,
+      firmarDocumento, rechazarDocumento, subirDocumento, eliminarDocumento, purgarDocumentos,
       certBase64, certPassword, cargarCertificado, limpiarCertificado, cargarMetricasApi,
       listarUsuarios, actualizarRolUsuario, actualizarUsuario, eliminarUsuario, listarRoles,
       listarDocentes, obtenerDocente, crearDocente, actualizarDocente, eliminarDocente,

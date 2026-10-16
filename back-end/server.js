@@ -141,11 +141,8 @@ async function iniciar() {
     await sequelize.authenticate();
     console.log('Conexión a PostgreSQL establecida');
 
-    const syncOptions = process.env.NODE_ENV === 'production'
-      ? { alter: false }
-      : { alter: true };
-
-    await sequelize.sync(syncOptions);
+    // Forzar actualización segura del esquema para incorporar nuevas columnas (como ruta_archivo_original)
+    await sequelize.sync({ alter: true });
     console.log('Modelos sincronizados con la base de datos');
 
     // Auto-seed si la base de datos está vacía

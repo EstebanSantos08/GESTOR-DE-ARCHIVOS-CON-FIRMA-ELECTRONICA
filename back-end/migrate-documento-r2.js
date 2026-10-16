@@ -19,17 +19,26 @@ async function migrarDocumentoR2() {
 
     if (!columnas.ruta_archivo_original) {
       console.log('-> Agregando columna ruta_archivo_original a tabla documentos...');
-      await queryInterface.addColumn('documentos', 'ruta_archivo_original', {
-        type: sequelize.Sequelize.STRING(500),
-        allowNull: true,
-        comment: 'Clave R2 de la versión original del documento para trazabilidad',
-      });
-      console.log('✓ Columna ruta_archivo_original agregada exitosamente');
+      try {
+        await queryInterface.addColumn('documentos', 'ruta_archivo_original', {
+          type: sequelize.Sequelize.STRING(500),
+          allowNull: true,
+          comment: 'Clave R2 de la versión original del documento para trazabilidad',
+        });
+        console.log('✓ Columna ruta_archivo_original agregada exitosamente');
+      } catch (addColErr) {
+        // Manejar el caso si la columna ya fue creada concurrentemente
+        if (addColErr.message && (addColErr.message.includes('already exists') || addColErr.message.includes('ya existe'))) {
+          console.log('✓ Columna ruta_archivo_original ya fue creada previamente');
+        } else {
+          throw addColErr;
+        }
+      }
     } else {
       console.log('✓ Columna ruta_archivo_original ya existe en documentos');
     }
 
-    // Sincronizar de forma no destructiva
+    // Sincronizar de forma no destructiva el modelo
     await Documento.sync({ alter: true });
     console.log('✓ Modelo Documento sincronizado con éxito');
 

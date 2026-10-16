@@ -183,8 +183,8 @@ export default function ParametrizacionAdmin() {
     e.preventDefault();
     if (!fCrit.nombre || !fCrit.univId || !fCrit.facId || !fCrit.carrId || !fCrit.perId) return;
     try {
-      await agregarCriterio(Number(fCrit.univId), Number(fCrit.facId), Number(fCrit.carrId), Number(fCrit.perId), { nombre: fCrit.nombre, requiere_firma: fCrit.requiere_firma, flujo_id: fCrit.flujo_id });
-      setFCrit({ nombre: '', univId: '', facId: '', carrId: '', perId: '', requiere_firma: true, flujo_id: '' });
+      await agregarCriterio(Number(fCrit.univId), Number(fCrit.facId), Number(fCrit.carrId), Number(fCrit.perId), { nombre: fCrit.nombre, requiere_firma: fCrit.requiere_firma, flujo_id: null });
+      setFCrit({ nombre: '', univId: '', facId: '', carrId: '', perId: '', requiere_firma: true });
       mostrarExito('Criterio creado exitosamente');
     } catch (err) { mostrarError(err.message); }
   }
@@ -699,12 +699,6 @@ export default function ParametrizacionAdmin() {
                     </select>
                     <input value={fCrit.nombre} onChange={e => setFCrit({...fCrit, nombre: e.target.value})} placeholder="O escribe el nombre del criterio..." className={inputCls} />
                   </FormField>
-                  <FormField label="Flujo de Firma (Opcional)">
-                    <select value={fCrit.flujo_id || ''} onChange={e => setFCrit({...fCrit, flujo_id: e.target.value})} className={selectCls}>
-                      <option value="">-- Usar Flujo Global por Defecto --</option>
-                      {flujosFirma.map(f => <option key={f.id} value={f.id}>{f.nombre} {f.es_global ? '(Global)' : ''}</option>)}
-                    </select>
-                  </FormField>
                   <Toggle value={fCrit.requiere_firma} onChange={v => setFCrit({...fCrit, requiere_firma: v})} label="Requiere firma digital" />
                   <button type="submit" className="w-full flex items-center justify-center space-x-2 px-4 py-2.5 bg-navy-900 text-white rounded-lg text-sm font-medium hover:bg-navy-800 transition-colors">
                     <Plus size={16} /><span>Crear Criterio</span>
@@ -717,16 +711,10 @@ export default function ParametrizacionAdmin() {
                   {universidades.flatMap(u => u.facultades.flatMap(f => (f.carreras || []).flatMap(ca => (ca.periodos || []).flatMap(p => (p.criterios || []).map(c => (
                     <ItemRow
                       key={c.id} tipo="criterio" id={c.id}
-                      meta={{ univId: u.id, facId: f.id, carrId: ca.id, perId: p.id, valorEdicion: { nombre: c.nombre, requiere_firma: c.requiere_firma, flujo_id: c.flujo_id || '' } }}
+                      meta={{ univId: u.id, facId: f.id, carrId: ca.id, perId: p.id, valorEdicion: { nombre: c.nombre, requiere_firma: c.requiere_firma } }}
                       editFields={
                         <>
                           <input value={editando?.valor?.nombre || ''} onChange={e => setEditando(prev => ({ ...prev, valor: { ...prev.valor, nombre: e.target.value } }))} placeholder="Nombre" className={inputSmCls} />
-                          <div className="mt-2">
-                            <select value={editando?.valor?.flujo_id || ''} onChange={e => setEditando(prev => ({ ...prev, valor: { ...prev.valor, flujo_id: e.target.value } }))} className={inputSmCls}>
-                              <option value="">-- Usar Flujo Global por Defecto --</option>
-                              {flujosFirma.map(fl => <option key={fl.id} value={fl.id}>{fl.nombre}</option>)}
-                            </select>
-                          </div>
                           <div className="mt-2">
                             <Toggle
                               value={editando?.valor?.requiere_firma ?? true}
@@ -746,11 +734,6 @@ export default function ParametrizacionAdmin() {
                           <span className={`text-xs px-2 py-0.5 rounded-full ${c.requiere_firma ? 'bg-blue-100 text-blue-700' : 'bg-gray-200 text-gray-500'}`}>
                             {c.requiere_firma ? 'Con firma' : 'Sin firma'}
                           </span>
-                          {c.requiere_firma && (
-                            <span className="text-[10px] text-gray-400">
-                              Flujo: {c.flujo_id ? flujosFirma.find(f => f.id === c.flujo_id)?.nombre : 'Global'}
-                            </span>
-                          )}
                         </div>
                       </div>
                     </ItemRow>
@@ -981,7 +964,7 @@ export default function ParametrizacionAdmin() {
                   </FormField>
                   <FormField label="Flujo de Firma (Opcional)">
                     <select value={fAct.flujo_id || ''} onChange={e => setFAct({...fAct, flujo_id: e.target.value})} className={selectCls}>
-                      <option value="">-- Heredar de Criterio / Global --</option>
+                      <option value="">-- Usar Flujo Global por Defecto --</option>
                       {flujosFirma.map(f => <option key={f.id} value={f.id}>{f.nombre} {f.es_global ? '(Global)' : ''}</option>)}
                     </select>
                   </FormField>
@@ -1004,7 +987,7 @@ export default function ParametrizacionAdmin() {
                           <textarea value={editando?.valor?.informacion_ayuda || ''} onChange={e => setEditando(prev => ({ ...prev, valor: { ...prev.valor, informacion_ayuda: e.target.value } }))} placeholder="Instrucciones" rows={2} className={`${inputSmCls} mt-1 resize-none`} />
                           <div className="mt-2">
                             <select value={editando?.valor?.flujo_id || ''} onChange={e => setEditando(prev => ({ ...prev, valor: { ...prev.valor, flujo_id: e.target.value } }))} className={inputSmCls}>
-                              <option value="">-- Heredar de Criterio / Global --</option>
+                              <option value="">-- Usar Flujo Global por Defecto --</option>
                               {flujosFirma.map(fl => <option key={fl.id} value={fl.id}>{fl.nombre}</option>)}
                             </select>
                           </div>

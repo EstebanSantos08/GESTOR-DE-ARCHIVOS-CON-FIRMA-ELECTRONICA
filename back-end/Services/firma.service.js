@@ -26,13 +26,21 @@ const fs     = require('fs');
 const crypto = require('crypto');
 const { webcrypto } = require('node:crypto');
 
-const { plainAddPlaceholder }         = require('@signpdf/placeholder-plain');
-const { SignPdf, Signer }             = require('@signpdf/signpdf');
+const { plainAddPlaceholder }           = require('@signpdf/placeholder-plain');
+const { SignPdf, Signer }               = require('@signpdf/signpdf');
 const { SUBFILTER_ETSI_CADES_DETACHED } = require('@signpdf/utils');
 
 // pkijs + asn1js para CAdES-BES real
 const pkijs  = require('pkijs');
 const asn1js = require('asn1js');
+
+// ── Error Personalizado para Certificados ─────────────────────────────────────
+class CertificadoInvalidoError extends Error {
+  constructor(mensaje = 'Contraseña o formato de certificado PKCS#12 (.p12) inválido') {
+    super(mensaje);
+    this.name = 'CertificadoInvalidoError';
+  }
+}
 
 // ── Inicializar el motor criptográfico de pkijs con WebCrypto nativo de Node ──
 pkijs.setEngine(
@@ -75,7 +83,6 @@ function posicionSello(pageWidth, rol) {
     default:                 return { x: (pageWidth - SELLO_W) / 2,     y: MARGEN };
   }
 }
-
 
 /**
  * Convierte una clave privada forge a un Buffer DER PKCS#8 sin cifrar,
@@ -120,11 +127,13 @@ class CadesSigner extends Signer {
   /**
    * @param {forge.pki.PrivateKey}  forgeKey   Clave privada extraída del .p12
    * @param {forge.pki.Certificate} forgeCert  Certificado extraído del .p12
+   * @param {Array<forge.pki.Certificate>} [cadena] Cadena de certificados adicionales (CA intermedia / raíz)
    */
-  constructor(forgeKey, forgeCert) {
+  constructor(forgeKey, forgeCert, cadena = []) {
     super();
     this.forgeKey  = forgeKey;
     this.forgeCert = forgeCert;
+    this.cadena    = cadena || [];
   }
 
   /**
@@ -283,7 +292,25 @@ class CadesSigner extends Signer {
     // Actualizar la firma en el SignerInfo (OCTET STRING)
     signerInfo.signature = new asn1js.OctetString({ valueHex: rawSignature });
 
-    // ── 9. Construir SignedData ────────────────────────────────────────────
+    // ── 9. Construir certificados a incluir en SignedData ──────────────────
+    // Incluir el certificado del firmante y la cadena de CA (intermedia/raíz)
+    const certsParaFirmar = [pkijsCert];
+    if (Array.isArray(this.cadena)) {
+      for (const certCa of this.cadena) {
+        try {
+          const caDer = forgeCertToDer(certCa);
+          const caBer = new Uint8Array(caDer).buffer;
+          const caAsn1 = asn1js.fromBER(caBer);
+          if (caAsn1.result) {
+            certsParaFirmar.push(new pkijs.Certificate({ schema: caAsn1.result }));
+          }
+        } catch {
+          // Ignorar certificado de cadena si no puede ser convertido
+        }
+      }
+    }
+
+    // ── 10. Construir SignedData ───────────────────────────────────────────
     const signedData = new pkijs.SignedData({
       version: new asn1js.Integer({ value: 1 }),
       digestAlgorithms: [
@@ -296,11 +323,11 @@ class CadesSigner extends Signer {
         eContentType: OID_DATA,
         // Sin eContent → firma detached (requerido por PAdES)
       }),
-      certificates: [pkijsCert],
+      certificates: certsParaFirmar,
       signerInfos: [signerInfo],
     });
 
-    // ── 10. Envolver en ContentInfo y serializar ───────────────────────────
+    // ── 11. Envolver en ContentInfo y serializar ──────────────────────────
     const contentInfo = new pkijs.ContentInfo({
       contentType: pkijs.ContentInfo.SIGNED_DATA,
       content: signedData.toSchema(true),
@@ -315,32 +342,91 @@ class CadesSigner extends Signer {
 
 class FirmaService {
   /**
-   * Lee un certificado .p12 y extrae la clave privada y el certificado público.
-   * Sigue usando node-forge exclusivamente para el parseo del PKCS#12.
+   * Lee un certificado .p12 y extrae la clave privada, el certificado público y la cadena.
+   * Admite Buffer en memoria (prioridad) o ruta en disco (fallback heredado).
    *
-   * @param {string} rutaP12
-   * @param {string} password
-   * @returns {{ clavePrivada: forge.pki.PrivateKey, certificado: forge.pki.Certificate }}
+   * @param {Buffer | string} origen  Buffer del .p12 o ruta en el sistema de archivos
+   * @param {string} password         Contraseña del .p12
+   * @returns {{ clavePrivada: forge.pki.PrivateKey, certificado: forge.pki.Certificate, cadena: Array<forge.pki.Certificate> }}
    */
-  cargarCertificado(rutaP12, password) {
-    const buffer  = fs.readFileSync(rutaP12);
-    // toString('binary') evita el stack overflow de forge.util.binary.raw.encode
-    // con Uint8Array grandes pasados a String.fromCharCode.apply()
-    const p12Der  = buffer.toString('binary');
-    const p12Asn1 = forge.asn1.fromDer(p12Der);
-    const p12     = forge.pkcs12.pkcs12FromAsn1(p12Asn1, false, password);
-
-    const keyBags  = p12.getBags({ bagType: forge.pki.oids.pkcs8ShroudedKeyBag });
-    const clavePrivada = keyBags[forge.pki.oids.pkcs8ShroudedKeyBag][0]?.key;
-
-    const certBags = p12.getBags({ bagType: forge.pki.oids.certBag });
-    const certificado = certBags[forge.pki.oids.certBag][0]?.cert;
-
-    if (!clavePrivada || !certificado) {
-      throw new Error('No se pudo extraer la clave o el certificado del archivo .p12');
+  cargarCertificado(origen, password) {
+    let buffer;
+    if (Buffer.isBuffer(origen)) {
+      buffer = origen;
+    } else if (typeof origen === 'string') {
+      if (!fs.existsSync(origen)) {
+        throw new CertificadoInvalidoError('El archivo de certificado no existe en la ruta indicada');
+      }
+      buffer = fs.readFileSync(origen);
+    } else {
+      throw new CertificadoInvalidoError('Origen de certificado inválido: debe ser un Buffer o una ruta válida');
     }
 
-    return { clavePrivada, certificado };
+    // toString('binary') evita el stack overflow de forge.util.binary.raw.encode
+    // con Uint8Array grandes pasados a String.fromCharCode.apply()
+    const p12Der = buffer.toString('binary');
+    let p12;
+    try {
+      const p12Asn1 = forge.asn1.fromDer(p12Der);
+      p12 = forge.pkcs12.pkcs12FromAsn1(p12Asn1, false, password);
+    } catch {
+      throw new CertificadoInvalidoError('Error al leer el certificado .p12: contraseña incorrecta o archivo dañado');
+    }
+
+    // 1. Buscar clave privada en pkcs8ShroudedKeyBag y luego en keyBag
+    const shroudedBags = p12.getBags({ bagType: forge.pki.oids.pkcs8ShroudedKeyBag });
+    let clavePrivada = shroudedBags[forge.pki.oids.pkcs8ShroudedKeyBag]?.[0]?.key;
+
+    if (!clavePrivada) {
+      const normalKeyBags = p12.getBags({ bagType: forge.pki.oids.keyBag });
+      clavePrivada = normalKeyBags[forge.pki.oids.keyBag]?.[0]?.key;
+    }
+
+    if (!clavePrivada) {
+      throw new CertificadoInvalidoError('No se encontró una clave privada válida en el certificado .p12');
+    }
+
+    // 2. Extraer todos los certificados del PKCS#12
+    const certBags = p12.getBags({ bagType: forge.pki.oids.certBag });
+    const listaCertificados = (certBags[forge.pki.oids.certBag] || [])
+      .map((b) => b.cert)
+      .filter(Boolean);
+
+    if (listaCertificados.length === 0) {
+      throw new CertificadoInvalidoError('No se encontraron certificados en el archivo .p12');
+    }
+
+    // 3. Seleccionar el certificado cuya clave pública coincide con la clave privada (comparar n y e en RSA)
+    let certificado = null;
+    const cadena = [];
+
+    for (const cert of listaCertificados) {
+      const pubKey = cert.publicKey;
+      const coincideRsa =
+        pubKey &&
+        clavePrivada.n &&
+        pubKey.n &&
+        (clavePrivada.n.compareTo
+          ? clavePrivada.n.compareTo(pubKey.n) === 0
+          : clavePrivada.n.toString(16) === pubKey.n.toString(16)) &&
+        (clavePrivada.e.compareTo
+          ? clavePrivada.e.compareTo(pubKey.e) === 0
+          : clavePrivada.e.toString(16) === pubKey.e.toString(16));
+
+      if (!certificado && coincideRsa) {
+        certificado = cert;
+      } else {
+        cadena.push(cert);
+      }
+    }
+
+    // Fallback: si no se encontró por comparación RSA (ej: certificados atípicos), usar el primero
+    if (!certificado) {
+      certificado = listaCertificados[0];
+      cadena.splice(0, 1);
+    }
+
+    return { clavePrivada, certificado, cadena };
   }
 
   /**
@@ -355,7 +441,7 @@ class FirmaService {
       `FIRMA DIGITAL PAdES-BES`,
       `Firmante: ${firmante.nombre || 'Pendiente'}`,
       `Cargo: ${firmante.rol || 'N/A'}`,
-      `Fecha emisión: ${fechaEmision.toLocaleString('es-EC')}`,
+      `Fecha emisión: ${fechaEmision.toLocaleString('es-EC', { timeZone: 'America/Guayaquil' })}`,
       `Hash SHA-256: Generado en flujo de aprobación`,
     ].join('\n');
 
@@ -424,7 +510,7 @@ class FirmaService {
 
       ultimaPag.drawText(nombreTruncado, { x: x + 5, y: textoY,      size: 6.5, font,        color: rgb(0.1,  0.1,  0.1)  });
       ultimaPag.drawText(firmante.rol || '', { x: x + 5, y: textoY - 10, size: 6, font: fontNormal, color: rgb(0.3, 0.3, 0.3) });
-      ultimaPag.drawText(fechaEmision.toLocaleDateString('es-EC'),
+      ultimaPag.drawText(fechaEmision.toLocaleDateString('es-EC', { timeZone: 'America/Guayaquil' }),
                                          { x: x + 5, y: textoY - 20, size: 6,   font: fontNormal, color: rgb(0.3,  0.3,  0.3)  });
       ultimaPag.drawText('PAdES-BES · Verif. QR',
                                          { x: x + 5, y: textoY - 30, size: 5.5, font: fontNormal, color: rgb(0.55, 0.55, 0.55) });
@@ -449,7 +535,7 @@ class FirmaService {
   /**
    * Pipeline de firma PAdES-BES estrictamente criptográfico.
    *
-   * Asume que el PDF en `rutaPdf` ya tiene todos los sellos visuales estampados
+   * Asume que el PDF ya tiene todos los sellos visuales estampados
    * previamente mediante `prepararDocumento`. Nunca invoca pdf-lib ni altera
    * la estructura de bytes previa, preservando la integridad de firmas anteriores.
    *
@@ -457,21 +543,42 @@ class FirmaService {
    *   1. Inyecta placeholder AcroForm /Sig con SubFilter ETSI.CAdES.detached
    *   2. Firma criptográficamente con CadesSigner (CMS SignedData CAdES-BES)
    *
-   * @param {{ rutaPdf: string, rutaCertP12: string, passwordCert: string,
+   * @param {{ pdfBuffer?: Buffer, rutaPdf?: string, certBuffer?: Buffer, rutaCertP12?: string, passwordCert: string,
    *            firmante: { nombre: string, rol: string } }} opciones
    * @returns {Promise<{ pdfFirmado: Buffer, firmaDer: null,
    *                     hashSha256: string, fechaFirma: Date,
    *                     firmante: string }>}
    */
-  async firmarDocumento({ rutaPdf, rutaCertP12, passwordCert, firmante }) {
-    const { clavePrivada, certificado } = this.cargarCertificado(rutaCertP12, passwordCert);
+  async firmarDocumento({ pdfBuffer, rutaPdf, certBuffer, rutaCertP12, passwordCert, firmante }) {
+    // 1. Resolver pdfBuffer con prioridad
+    let pdfAUsar = pdfBuffer;
+    if (!pdfAUsar && rutaPdf) {
+      if (!fs.existsSync(rutaPdf)) {
+        throw new Error(`El archivo PDF no existe en la ruta especificada: ${rutaPdf}`);
+      }
+      pdfAUsar = fs.readFileSync(rutaPdf);
+    }
+    if (!pdfAUsar) {
+      throw new Error('Se requiere un pdfBuffer o rutaPdf para firmar el documento');
+    }
 
-    const pdfOriginal = fs.readFileSync(rutaPdf);
-    const fechaFirma  = new Date();
+    // Validar que empiece con %PDF-
+    if (!Buffer.isBuffer(pdfAUsar) || pdfAUsar.subarray(0, 5).toString('utf-8') !== '%PDF-') {
+      throw new Error('El archivo provisto no es un PDF válido (cabecera %PDF- no encontrada)');
+    }
+
+    // 2. Resolver certBuffer con prioridad
+    const certOrigen = certBuffer || rutaCertP12;
+    if (!certOrigen) {
+      throw new Error('Se requiere certBuffer o rutaCertP12 para cargar el certificado de firma');
+    }
+
+    const { clavePrivada, certificado, cadena } = this.cargarCertificado(certOrigen, passwordCert);
+    const fechaFirma = new Date();
 
     // ── Insertar placeholder /Sig con SubFilter ETSI.CAdES.detached ─────
     const pdfConPlaceholder = plainAddPlaceholder({
-      pdfBuffer:       pdfOriginal,
+      pdfBuffer:       pdfAUsar,
       reason:          `Firma digital PAdES-BES — ${firmante.rol}`,
       contactInfo:     firmante.nombre,
       name:            firmante.nombre,
@@ -482,7 +589,7 @@ class FirmaService {
 
     // ── Firma criptográfica CAdES-BES con pkijs ───────────────────────────
     const signpdf    = new SignPdf();
-    const signer     = new CadesSigner(clavePrivada, certificado);
+    const signer     = new CadesSigner(clavePrivada, certificado, cadena);
     const pdfFirmado = await signpdf.sign(pdfConPlaceholder, signer, fechaFirma);
 
     const hashSha256 = crypto.createHash('sha256').update(pdfFirmado).digest('hex');
@@ -506,4 +613,7 @@ class FirmaService {
   }
 }
 
-module.exports = new FirmaService();
+const firmaServiceInstance = new FirmaService();
+firmaServiceInstance.CertificadoInvalidoError = CertificadoInvalidoError;
+
+module.exports = firmaServiceInstance;

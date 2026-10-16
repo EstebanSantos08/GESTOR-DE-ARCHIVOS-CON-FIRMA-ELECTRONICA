@@ -57,9 +57,12 @@ class WorkflowService {
 
   /**
    * Procesa la firma de un documento: valida permisos, avanza el estado y asigna al siguiente firmante.
+   * Soporta transacciones de Sequelize para atomicidad.
    */
-  async procesarFirma(documentoId, usuarioFirmante, observaciones = null) {
-    const documento = await Documento.findByPk(documentoId);
+  async procesarFirma(documentoId, usuarioFirmante, observaciones = null, options = {}) {
+    const tx = options.transaction;
+    const findOpts = tx ? { transaction: tx } : undefined;
+    const documento = await Documento.findByPk(documentoId, findOpts);
     if (!documento) throw new Error('Documento no encontrado');
     if (documento.estado === 'COMPLETADO') throw new Error('El documento ya está completado');
     if (documento.estado === 'RECHAZADO') throw new Error('El documento fue rechazado');
@@ -91,6 +94,14 @@ class WorkflowService {
       actualizacion.firmante_actual_id = siguiente.firmante.id;
     }
 
+    if (tx) {
+      await documento.update(actualizacion, { transaction: tx });
+      return documento.reload({
+        include: [{ model: Usuario, as: 'firmanteActual' }],
+        transaction: tx,
+      });
+    }
+
     await documento.update(actualizacion);
     return documento.reload({
       include: [{ model: Usuario, as: 'firmanteActual' }]
@@ -100,22 +111,32 @@ class WorkflowService {
   /**
    * Rechaza un documento — solo el firmante actual puede rechazar.
    */
-  async rechazar(documentoId, usuarioFirmante, motivo) {
-    const documento = await Documento.findByPk(documentoId);
+  async rechazar(documentoId, usuarioFirmante, motivo, options = {}) {
+    const tx = options.transaction;
+    const findOpts = tx ? { transaction: tx } : undefined;
+    const documento = await Documento.findByPk(documentoId, findOpts);
     if (!documento) throw new Error('Documento no encontrado');
     // eslint-disable-next-line eqeqeq
     if (documento.firmante_actual_id != usuarioFirmante.id) {
       throw new Error('No tiene autorización para rechazar este documento');
     }
 
-    await documento.update({ estado: 'RECHAZADO', observaciones: motivo, firmante_actual_id: null });
+    const payload = { estado: 'RECHAZADO', observaciones: motivo, firmante_actual_id: null };
+    if (tx) {
+      await documento.update(payload, { transaction: tx });
+      return documento.reload({ transaction: tx });
+    }
+
+    await documento.update(payload);
     return documento.reload();
   }
 
   /**
    * Asigna el primer firmante del documento basado en su flujo.
    */
-  async asignarFirmanteInicial(documento) {
+  async asignarFirmanteInicial(documento, options = {}) {
+    const tx = options.transaction;
+    const queryOpts = tx ? { transaction: tx } : {};
     let flujoId = documento.flujo_id;
 
     // Si el documento aún no tiene flujo (ej: recién creado), se determina:
@@ -126,7 +147,8 @@ class WorkflowService {
           model: Indicador, as: 'indicador', include: [{
             model: Criterio, as: 'criterio'
           }]
-        }]
+        }],
+        ...queryOpts,
       });
 
       if (actividad) {
@@ -137,14 +159,18 @@ class WorkflowService {
         }
       }
 
-      // Si no hay flujo en el Criterio, usar el global
+      // Si no hay flujo en el Criterio ni Actividad, usar el global
       if (!flujoId) {
-        const global = await FlujoFirma.findOne({ where: { es_global: true } });
+        const global = await FlujoFirma.findOne({ where: { es_global: true }, ...queryOpts });
         if (!global) throw new Error('No existe flujo global de firmas configurado');
         flujoId = global.id;
       }
 
-      await documento.update({ flujo_id: flujoId, paso_actual: 1, estado: 'PENDIENTE' });
+      if (tx) {
+        await documento.update({ flujo_id: flujoId, paso_actual: 1, estado: 'PENDIENTE' }, { transaction: tx });
+      } else {
+        await documento.update({ flujo_id: flujoId, paso_actual: 1, estado: 'PENDIENTE' });
+      }
       documento.flujo_id = flujoId;
       documento.paso_actual = 1;
     }
@@ -154,8 +180,54 @@ class WorkflowService {
       throw new Error('No se encontró firmante inicial para este documento');
     }
 
-    await documento.update({ firmante_actual_id: enrutamiento.firmante.id, estado: 'PENDIENTE' });
+    if (tx) {
+      await documento.update({ firmante_actual_id: enrutamiento.firmante.id, estado: 'PENDIENTE' }, { transaction: tx });
+    } else {
+      await documento.update({ firmante_actual_id: enrutamiento.firmante.id, estado: 'PENDIENTE' });
+    }
     return enrutamiento.firmante;
+  }
+
+  /**
+   * Obtiene la lista completa de firmantes planificados en el flujo asignado al documento.
+   * Útil para generar los sellos visuales antes de la primera firma en prepararDocumento.
+   */
+  async obtenerFirmantesProgramados(documento) {
+    if (!documento.flujo_id) return [];
+
+    const flujo = await FlujoFirma.findByPk(documento.flujo_id, {
+      include: [
+        {
+          model: PasoFirma,
+          as: 'pasos',
+          include: [
+            { model: Rol, as: 'rolRequerido' },
+            { model: Usuario, as: 'usuarioFirmante' }
+          ]
+        }
+      ],
+      order: [[{ model: PasoFirma, as: 'pasos' }, 'orden', 'ASC']],
+    });
+
+    if (!flujo || !flujo.pasos) return [];
+
+    const firmantes = [];
+    for (const paso of flujo.pasos) {
+      let nombre = paso.usuarioFirmante?.nombre;
+      const rol = paso.rolRequerido?.nombre || 'Firmante';
+
+      if (!nombre && paso.rol_id) {
+        const u = await this._buscarFirmante(paso.rol_id, documento.facultad_id);
+        if (u) nombre = u.nombre;
+      }
+
+      firmantes.push({
+        nombre: nombre || 'Pendiente',
+        rol: rol,
+      });
+    }
+
+    return firmantes;
   }
 
   /**

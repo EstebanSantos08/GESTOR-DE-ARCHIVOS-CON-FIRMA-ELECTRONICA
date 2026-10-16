@@ -18,6 +18,11 @@ const Documento = sequelize.define('Documento', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   nombre_original: { type: DataTypes.STRING(255), allowNull: false },
   ruta_archivo: { type: DataTypes.STRING(500), allowNull: false },
+  ruta_archivo_original: {
+    type: DataTypes.STRING(500),
+    allowNull: true,
+    comment: 'Clave R2 de la versión original del documento para trazabilidad',
+  },
   estado: {
     type: DataTypes.ENUM(...ESTADOS),
     defaultValue: 'PENDIENTE',
@@ -36,7 +41,7 @@ const Documento = sequelize.define('Documento', {
   hash_sha256: {
     type: DataTypes.STRING(64),
     allowNull: true,
-    comment: 'Hash del archivo en el momento de subida',
+    comment: 'Hash SHA-256 del archivo en su versión actual',
   },
   // Timestamps de auditoría — cada paso de firma se marca
   firmado_director_en: { type: DataTypes.DATE, allowNull: true },
@@ -53,4 +58,3 @@ const Documento = sequelize.define('Documento', {
 Documento.ESTADOS = ESTADOS;
 
 module.exports = Documento;
-

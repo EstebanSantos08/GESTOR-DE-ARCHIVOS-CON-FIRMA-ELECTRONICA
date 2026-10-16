@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Folder, Upload, Eye, PenLine, Info, FileText, ChevronRight, XCircle, RefreshCw, Pencil, Trash2, X, Save, Download, Search, Filter } from 'lucide-react';
+import { Folder, Upload, Eye, PenLine, Info, FileText, ChevronRight, XCircle, RefreshCw, Pencil, Trash2, X, Save, Download, Search, Filter, AlertTriangle } from 'lucide-react';
 import Breadcrumbs from '../components/common/Breadcrumbs';
 import Badge from '../components/common/Badge';
 import { useApp } from '../context/useApp';
@@ -84,6 +84,57 @@ function ModalEditar({ titulo, valor, onChange, onGuardar, onCancelar, extraCamp
   );
 }
 
+function ModalConfirmar({ abierto, titulo, mensaje, onConfirmar, onCancelar }) {
+  const [cargando, setCargando] = useState(false);
+
+  if (!abierto) return null;
+
+  const handleConfirm = async () => {
+    setCargando(true);
+    try {
+      await onConfirmar();
+    } finally {
+      setCargando(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-6 w-full max-w-sm mx-auto space-y-4">
+        <div className="flex items-start space-x-3.5">
+          <div className="w-10 h-10 rounded-full bg-red-50 border border-red-100 flex items-center justify-center flex-shrink-0 text-red-600">
+            <AlertTriangle size={20} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="text-base font-semibold text-gray-900 leading-6">{titulo || 'Confirmar eliminación'}</h3>
+            <p className="text-sm text-gray-500 mt-1 leading-relaxed">{mensaje}</p>
+          </div>
+        </div>
+
+        <div className="flex items-center space-x-2.5 pt-2">
+          <button
+            type="button"
+            onClick={onCancelar}
+            disabled={cargando}
+            className="flex-1 px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium rounded-xl transition-colors disabled:opacity-50"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={handleConfirm}
+            disabled={cargando}
+            className="flex-1 flex items-center justify-center space-x-1.5 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-xl transition-colors shadow-sm disabled:opacity-50"
+          >
+            {cargando ? <RefreshCw size={14} className="animate-spin" /> : <Trash2 size={14} />}
+            <span>{cargando ? 'Eliminando...' : 'Eliminar'}</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ExploradorDeArchivos() {
   const {
     universidades,
@@ -116,6 +167,7 @@ export default function ExploradorDeArchivos() {
   const [errorSubida, setErrorSubida] = useState('');
   const [cargandoDocs, setCargandoDocs] = useState(false);
   const [modalEdit, setModalEdit] = useState(null);
+  const [modalConfirm, setModalConfirm] = useState({ abierto: false, titulo: '', mensaje: '', onConfirm: null });
   const [errorEdit, setErrorEdit] = useState('');
   const [eliminandoDocId, setEliminandoDocId] = useState(null);
   const [busqueda, setBusqueda] = useState('');
@@ -223,16 +275,22 @@ export default function ExploradorDeArchivos() {
     manejarArchivo(e.dataTransfer.files[0]);
   }
 
-  async function handleEliminarDoc(doc) {
-    if (!window.confirm(`¿Eliminar "${doc.nombre}"? Esta acción no se puede deshacer.`)) return;
-    setEliminandoDocId(doc.id);
-    try {
-      await eliminarDocumento(doc.id, selActId);
-    } catch (err) {
-      alert(err.message);
-    } finally {
-      setEliminandoDocId(null);
-    }
+  function handleEliminarDoc(doc) {
+    setModalConfirm({
+      abierto: true,
+      titulo: 'Eliminar documento',
+      mensaje: `¿Estás seguro de eliminar "${doc.nombre}"? Esta acción no se puede deshacer.`,
+      onConfirm: async () => {
+        setEliminandoDocId(doc.id);
+        try {
+          await eliminarDocumento(doc.id, selActId);
+        } catch (err) {
+          alert(err.message);
+        } finally {
+          setEliminandoDocId(null);
+        }
+      },
+    });
   }
 
   function puedeEliminarDoc(doc) {
@@ -281,34 +339,40 @@ export default function ExploradorDeArchivos() {
 
   // ── Eliminar ──────────────────────────────────────────────────────────────
 
-  async function handleEliminar(tipo, id, nombre, meta = {}) {
-    if (!window.confirm(`¿Eliminar "${nombre}"? Esta acción no se puede deshacer.`)) return;
-    try {
-      if (tipo === 'universidad') {
-        await eliminarUniversidad(id);
-        if (selUniId === id) setNivel('universidades');
-      } else if (tipo === 'facultad') {
-        await eliminarFacultad(id, meta.univId);
-        if (selFacId === id) setNivel('facultades');
-      } else if (tipo === 'carrera') {
-        await eliminarCarrera(id, meta.univId, meta.facId);
-        if (selCarrId === id) setNivel('carreras');
-      } else if (tipo === 'periodo') {
-        await eliminarPeriodo(id, meta.univId, meta.facId, meta.carrId);
-        if (selPerId === id) setNivel('periodos');
-      } else if (tipo === 'criterio') {
-        await eliminarCriterio(id, meta.univId, meta.facId, meta.carrId, meta.perId);
-        if (selCritId === id) setNivel('criterios');
-      } else if (tipo === 'indicador') {
-        await eliminarIndicador(id, meta.univId, meta.facId, meta.carrId, meta.perId, meta.critId);
-        if (selIndId === id) setNivel('indicadores');
-      } else if (tipo === 'actividad') {
-        await eliminarActividad(id, meta.univId, meta.facId, meta.carrId, meta.perId, meta.critId, meta.indId);
-        if (selActId === id) setNivel('actividades');
-      }
-    } catch (err) {
-      alert(err.message);
-    }
+  function handleEliminar(tipo, id, nombre, meta = {}) {
+    setModalConfirm({
+      abierto: true,
+      titulo: `Eliminar ${tipo}`,
+      mensaje: `¿Estás seguro de eliminar "${nombre}"? Esta acción no se puede deshacer.`,
+      onConfirm: async () => {
+        try {
+          if (tipo === 'universidad') {
+            await eliminarUniversidad(id);
+            if (selUniId === id) setNivel('universidades');
+          } else if (tipo === 'facultad') {
+            await eliminarFacultad(id, meta.univId);
+            if (selFacId === id) setNivel('facultades');
+          } else if (tipo === 'carrera') {
+            await eliminarCarrera(id, meta.univId, meta.facId);
+            if (selCarrId === id) setNivel('carreras');
+          } else if (tipo === 'periodo') {
+            await eliminarPeriodo(id, meta.univId, meta.facId, meta.carrId);
+            if (selPerId === id) setNivel('periodos');
+          } else if (tipo === 'criterio') {
+            await eliminarCriterio(id, meta.univId, meta.facId, meta.carrId, meta.perId);
+            if (selCritId === id) setNivel('criterios');
+          } else if (tipo === 'indicador') {
+            await eliminarIndicador(id, meta.univId, meta.facId, meta.carrId, meta.perId, meta.critId);
+            if (selIndId === id) setNivel('indicadores');
+          } else if (tipo === 'actividad') {
+            await eliminarActividad(id, meta.univId, meta.facId, meta.carrId, meta.perId, meta.critId, meta.indId);
+            if (selActId === id) setNivel('actividades');
+          }
+        } catch (err) {
+          alert(err.message);
+        }
+      },
+    });
   }
 
   const docsActual = actActual?.documentos || [];
@@ -400,6 +464,20 @@ export default function ExploradorDeArchivos() {
           }
         />
       )}
+
+      {/* Modal confirmación */}
+      <ModalConfirmar
+        abierto={modalConfirm.abierto}
+        titulo={modalConfirm.titulo}
+        mensaje={modalConfirm.mensaje}
+        onConfirmar={async () => {
+          if (modalConfirm.onConfirm) {
+            await modalConfirm.onConfirm();
+          }
+          setModalConfirm({ abierto: false, titulo: '', mensaje: '', onConfirm: null });
+        }}
+        onCancelar={() => setModalConfirm({ abierto: false, titulo: '', mensaje: '', onConfirm: null })}
+      />
 
       <div className="flex-1 p-6 overflow-auto">
 

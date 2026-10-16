@@ -4,12 +4,6 @@ import { useApp } from '../context/useApp';
 
 const CUENTAS_DEMO = [
   { rol: 'ADMIN',        email: 'admin@universidad.edu',       password: 'Admin123!',       color: 'bg-gray-100 text-gray-800 border-gray-200' },
-  { rol: 'RECTOR',       email: 'rector@universidad.edu',      password: 'Rector123!',      color: 'bg-purple-100 text-purple-800 border-purple-200' },
-  { rol: 'DECANO',       email: 'decano@universidad.edu',      password: 'Decano123!',      color: 'bg-blue-100 text-blue-800 border-blue-200' },
-  { rol: 'SUBDECANO',    email: 'subdecano@universidad.edu',   password: 'Subdecano123!',   color: 'bg-indigo-100 text-indigo-800 border-indigo-200' },
-  { rol: 'DIRECTOR',     email: 'director@universidad.edu',    password: 'Director123!',    color: 'bg-teal-100 text-teal-800 border-teal-200' },
-  { rol: 'RESPONSABLE',  email: 'responsable@universidad.edu', password: 'Responsable123!', color: 'bg-orange-100 text-orange-800 border-orange-200' },
-  { rol: 'DOCENTE',      email: 'agalarza@universidad.edu',    password: 'Docente123!',     color: 'bg-green-100 text-green-800 border-green-200' },
 ];
 
 export default function Login() {

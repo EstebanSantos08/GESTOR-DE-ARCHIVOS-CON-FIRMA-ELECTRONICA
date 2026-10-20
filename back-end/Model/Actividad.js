@@ -6,7 +6,8 @@ const Actividad = sequelize.define('Actividad', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   nombre: { type: DataTypes.STRING(200), allowNull: false },
   descripcion: { type: DataTypes.TEXT },
-  indicador_id: { type: DataTypes.INTEGER, allowNull: false },
+  indicador_id: { type: DataTypes.INTEGER, allowNull: true },
+  subcriterio_id: { type: DataTypes.INTEGER, allowNull: true },
   flujo_id: { type: DataTypes.INTEGER, allowNull: true },
   activo: { type: DataTypes.BOOLEAN, defaultValue: true },
 }, {

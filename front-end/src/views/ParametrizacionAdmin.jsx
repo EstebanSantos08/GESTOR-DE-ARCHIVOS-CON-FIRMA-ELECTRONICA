@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Check, Building2, BookOpen, GraduationCap, CalendarDays, Microscope, Target, ClipboardList, Pencil, Trash2, X, Save, UserCheck, UserPlus, Search } from 'lucide-react';
+import { Plus, Check, Building2, BookOpen, GraduationCap, CalendarDays, Microscope, Target, ClipboardList, Pencil, Trash2, X, Save, UserCheck, UserPlus, Search, Info } from 'lucide-react';
 import { useApp } from '../context/useApp';
 import { RESPONSABLES_PREDEFINIDOS, CRITERIOS_PREDEFINIDOS, INDICADORES_PREDEFINIDOS } from '../data/parametrosPredefinidos';
 import ModalDocenteForm from '../components/modals/ModalDocenteForm';
@@ -118,10 +118,10 @@ export default function ParametrizacionAdmin() {
   const [fUniv, setFUniv] = useState({ nombre: '', siglas: '' });
   const [fFac,  setFfac]  = useState({ nombre: '', univId: '' });
   const [fCarr, setFCarr] = useState({ nombre: '', descripcion: '', univId: '', facId: '' });
-  const [fPer,  setFPer]  = useState({ nombre: '', univId: '', facId: '', carrId: '' });
-  const [fCrit, setFCrit] = useState({ nombre: '', univId: '', facId: '', carrId: '', perId: '', requiere_firma: true });
-  const [fInd,  setFInd]  = useState({ nombre: '', numero: '', responsablesIds: [], univId: '', facId: '', carrId: '', perId: '', critId: '' });
-  const [fAct,  setFAct]  = useState({ nombre: '', univId: '', facId: '', carrId: '', perId: '', critId: '', indId: '', informacion_ayuda: '', requiere_firma: true, flujo_id: '' });
+  const [fPer,  setFPer]  = useState({ nombre: '', univId: '', facId: '' });
+  const [fCrit, setFCrit] = useState({ nombre: '', univId: '', facId: '', perId: '', carrId: '', requiere_firma: true });
+  const [fInd,  setFInd]  = useState({ nombre: '', numero: '', responsablesIds: [], univId: '', facId: '', perId: '', carrId: '', critId: '' });
+  const [fAct,  setFAct]  = useState({ nombre: '', univId: '', facId: '', perId: '', carrId: '', critId: '', indId: '', informacion_ayuda: '', requiere_firma: true, flujo_id: '' });
   const [fFlujo, setFFlujo] = useState({ nombre: '', es_global: false, pasos: [] });
 
   function mostrarExito(msg) {
@@ -171,40 +171,40 @@ export default function ParametrizacionAdmin() {
 
   async function submitPer(e) {
     e.preventDefault();
-    if (!fPer.nombre || !fPer.univId || !fPer.facId || !fPer.carrId) return;
+    if (!fPer.nombre || !fPer.univId || !fPer.facId) return;
     try {
-      await agregarPeriodo(Number(fPer.univId), Number(fPer.facId), Number(fPer.carrId), { nombre: fPer.nombre });
-      setFPer({ nombre: '', univId: '', facId: '', carrId: '' });
-      mostrarExito('Período creado exitosamente');
+      await agregarPeriodo(Number(fPer.univId), Number(fPer.facId), { nombre: fPer.nombre });
+      setFPer({ nombre: '', univId: '', facId: '' });
+      mostrarExito('Período creado exitosamente con sus carreras y estructura de acreditación');
     } catch (err) { mostrarError(err.message); }
   }
 
   async function submitCrit(e) {
     e.preventDefault();
-    if (!fCrit.nombre || !fCrit.univId || !fCrit.facId || !fCrit.carrId || !fCrit.perId) return;
+    if (!fCrit.nombre || !fCrit.univId || !fCrit.facId || !fCrit.perId || !fCrit.carrId) return;
     try {
       await agregarCriterio(Number(fCrit.univId), Number(fCrit.facId), Number(fCrit.carrId), Number(fCrit.perId), { nombre: fCrit.nombre, requiere_firma: fCrit.requiere_firma, flujo_id: null });
-      setFCrit({ nombre: '', univId: '', facId: '', carrId: '', perId: '', requiere_firma: true });
+      setFCrit({ nombre: '', univId: '', facId: '', perId: '', carrId: '', requiere_firma: true });
       mostrarExito('Criterio creado exitosamente');
     } catch (err) { mostrarError(err.message); }
   }
 
   async function submitInd(e) {
     e.preventDefault();
-    if (!fInd.nombre || !fInd.numero || !fInd.univId || !fInd.facId || !fInd.carrId || !fInd.perId || !fInd.critId) return;
+    if (!fInd.nombre || !fInd.numero || !fInd.univId || !fInd.facId || !fInd.perId || !fInd.carrId || !fInd.critId) return;
     try {
       const nuevoInd = await agregarIndicador(Number(fInd.univId), Number(fInd.facId), Number(fInd.carrId), Number(fInd.perId), Number(fInd.critId), { nombre: fInd.nombre, numero: Number(fInd.numero) });
       if (fInd.responsablesIds && fInd.responsablesIds.length > 0) {
         await asignarResponsablesIndicador(nuevoInd.id, fInd.responsablesIds);
       }
-      setFInd({ nombre: '', numero: '', responsablesIds: [], univId: '', facId: '', carrId: '', perId: '', critId: '' });
-      mostrarExito('Indicador creado exitosamente');
+      setFInd({ nombre: '', numero: '', responsablesIds: [], univId: '', facId: '', perId: '', carrId: '', critId: '' });
+      mostrarExito('Subcriterio creado exitosamente');
     } catch (err) { mostrarError(err.message); }
   }
 
   async function submitAct(e) {
     e.preventDefault();
-    if (!fAct.nombre || !fAct.univId || !fAct.facId || !fAct.carrId || !fAct.perId || !fAct.critId || !fAct.indId) return;
+    if (!fAct.nombre || !fAct.univId || !fAct.facId || !fAct.perId || !fAct.carrId || !fAct.critId || !fAct.indId) return;
     try {
       await agregarActividad(Number(fAct.univId), Number(fAct.facId), Number(fAct.carrId), Number(fAct.perId), Number(fAct.critId), Number(fAct.indId), {
         nombre: fAct.nombre,
@@ -212,7 +212,7 @@ export default function ParametrizacionAdmin() {
         requiere_firma: fAct.requiere_firma,
         flujo_id: fAct.flujo_id || null,
       });
-      setFAct({ nombre: '', univId: '', facId: '', carrId: '', perId: '', critId: '', indId: '', informacion_ayuda: '', requiere_firma: true, flujo_id: '' });
+      setFAct({ nombre: '', univId: '', facId: '', perId: '', carrId: '', critId: '', indId: '', informacion_ayuda: '', requiere_firma: true, flujo_id: '' });
       mostrarExito('Actividad creada exitosamente');
     } catch (err) { mostrarError(err.message); }
   }
@@ -316,10 +316,10 @@ export default function ParametrizacionAdmin() {
   const TABS = [
     { id: 'universidad', label: 'Universidad', icon: Building2 },
     { id: 'facultad',    label: 'Facultad',    icon: BookOpen },
-    { id: 'carrera',     label: 'Carrera',     icon: GraduationCap },
     { id: 'periodo',     label: 'Período',     icon: CalendarDays },
+    { id: 'carrera',     label: 'Carrera',     icon: GraduationCap },
     { id: 'criterio',    label: 'Criterio',    icon: Microscope },
-    { id: 'indicador',   label: 'Indicador',   icon: Target },
+    { id: 'subcriterio', label: 'Subcriterio', icon: Target },
     { id: 'actividad',   label: 'Actividad',   icon: ClipboardList },
     { id: 'docentes',    label: 'Docentes',    icon: UserCheck },
     { id: 'flujos',      label: 'Flujos Firma', icon: Pencil },
@@ -327,24 +327,23 @@ export default function ParametrizacionAdmin() {
 
   // Helper getters for dropdowns
   const univSelFac  = universidades.find(u => u.id === Number(fFac.univId));
-  
-  const univSelCarr = universidades.find(u => u.id === Number(fCarr.univId));
-  const facSelCarr  = univSelCarr?.facultades.find(f => f.id === Number(fCarr.facId));
 
   const univSelPer  = universidades.find(u => u.id === Number(fPer.univId));
   const facSelPer   = univSelPer?.facultades.find(f => f.id === Number(fPer.facId));
-  const carrSelPer  = facSelPer?.carreras.find(c => c.id === Number(fPer.carrId));
+
+  const univSelCarr = universidades.find(u => u.id === Number(fCarr.univId));
+  const facSelCarr  = univSelCarr?.facultades.find(f => f.id === Number(fCarr.facId));
 
   const univSelCrit = universidades.find(u => u.id === Number(fCrit.univId));
   const facSelCrit  = univSelCrit?.facultades.find(f => f.id === Number(fCrit.facId));
-  const carrSelCrit = facSelCrit?.carreras.find(c => c.id === Number(fCrit.carrId));
-  const perSelCrit  = carrSelCrit?.periodos.find(p => p.id === Number(fCrit.perId));
+  const perSelCrit  = facSelCrit?.periodos?.find(p => p.id === Number(fCrit.perId));
+  const carrSelCrit = perSelCrit?.carreras?.find(c => c.id === Number(fCrit.carrId)) || facSelCrit?.carreras?.find(c => c.id === Number(fCrit.carrId));
 
   const univSelInd  = universidades.find(u => u.id === Number(fInd.univId));
   const facSelInd   = univSelInd?.facultades.find(f => f.id === Number(fInd.facId));
-  const carrSelInd  = facSelInd?.carreras.find(c => c.id === Number(fInd.carrId));
-  const perSelInd   = carrSelInd?.periodos.find(p => p.id === Number(fInd.perId));
-  const critSelInd  = perSelInd?.criterios?.find(c => String(c.id) === String(fInd.critId));
+  const perSelInd   = facSelInd?.periodos?.find(p => p.id === Number(fInd.perId));
+  const carrSelInd  = perSelInd?.carreras?.find(c => c.id === Number(fInd.carrId)) || facSelInd?.carreras?.find(c => c.id === Number(fInd.carrId));
+  const critSelInd  = carrSelInd?.criterios?.find(c => String(c.id) === String(fInd.critId));
 
   const indicadoresFiltrados = critSelInd
     ? INDICADORES_PREDEFINIDOS.filter(
@@ -354,10 +353,10 @@ export default function ParametrizacionAdmin() {
 
   const univSelAct  = universidades.find(u => u.id === Number(fAct.univId));
   const facSelAct   = univSelAct?.facultades.find(f => f.id === Number(fAct.facId));
-  const carrSelAct  = facSelAct?.carreras.find(c => c.id === Number(fAct.carrId));
-  const perSelAct   = carrSelAct?.periodos.find(p => p.id === Number(fAct.perId));
-  const critSelAct  = perSelAct?.criterios.find(c => c.id === Number(fAct.critId));
-  const indSelAct   = critSelAct?.indicadores.find(i => i.id === Number(fAct.indId));
+  const perSelAct   = facSelAct?.periodos?.find(p => p.id === Number(fAct.perId));
+  const carrSelAct  = perSelAct?.carreras?.find(c => c.id === Number(fAct.carrId)) || facSelAct?.carreras?.find(c => c.id === Number(fAct.carrId));
+  const critSelAct  = carrSelAct?.criterios?.find(c => c.id === Number(fAct.critId));
+  const indSelAct   = (critSelAct?.subcriterios || critSelAct?.indicadores)?.find(i => i.id === Number(fAct.indId));
 
 
   function ItemRow({ tipo, id, meta, children, editFields }) {
@@ -612,26 +611,32 @@ export default function ParametrizacionAdmin() {
               <div>
                 <h3 className="text-sm font-semibold text-navy-900 mb-4">Nuevo Período</h3>
                 <form onSubmit={submitPer} className="space-y-4">
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-800 flex items-start space-x-2">
+                    <Info size={16} className="text-blue-600 mt-0.5 flex-shrink-0" />
+                    <span>
+                      Al crear el período se generarán automáticamente las carpetas de Criterios, Subcriterios y Actividades por separado para cada carrera de la facultad escogida.
+                    </span>
+                  </div>
                   <FormField label="Universidad">
-                    <select value={fPer.univId} onChange={e => setFPer({...fPer, univId: e.target.value, facId: '', carrId: ''})} className={selectCls}>
+                    <select value={fPer.univId} onChange={e => setFPer({...fPer, univId: e.target.value, facId: ''})} className={selectCls}>
                       <option value="">Seleccionar...</option>
                       {universidades.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
                     </select>
                   </FormField>
                   <FormField label="Facultad">
-                    <select value={fPer.facId} onChange={e => setFPer({...fPer, facId: e.target.value, carrId: ''})} className={selectCls} disabled={!fPer.univId}>
+                    <select value={fPer.facId} onChange={e => setFPer({...fPer, facId: e.target.value})} className={selectCls} disabled={!fPer.univId}>
                       <option value="">Seleccionar...</option>
                       {univSelPer?.facultades.map(f => <option key={f.id} value={f.id}>{f.nombre}</option>)}
                     </select>
                   </FormField>
-                  <FormField label="Carrera">
-                    <select value={fPer.carrId} onChange={e => setFPer({...fPer, carrId: e.target.value})} className={selectCls} disabled={!fPer.facId}>
-                      <option value="">Seleccionar...</option>
-                      {facSelPer?.carreras.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-                    </select>
+                  <FormField label="Nombre del Período">
+                    <input value={fPer.nombre} onChange={e => setFPer({...fPer, nombre: e.target.value})} placeholder="2026-I, 2026-II..." className={inputCls} required />
                   </FormField>
-                  <FormField label="Nombre"><input value={fPer.nombre} onChange={e => setFPer({...fPer, nombre: e.target.value})} placeholder="2026-I, 2026-II..." className={inputCls} /></FormField>
-                  <button type="submit" className="w-full flex items-center justify-center space-x-2 px-4 py-2.5 bg-navy-900 text-white rounded-lg text-sm font-medium hover:bg-navy-800 transition-colors">
+                  <button
+                    type="submit"
+                    disabled={!fPer.nombre || !fPer.univId || !fPer.facId}
+                    className="w-full flex items-center justify-center space-x-2 px-4 py-2.5 bg-navy-900 text-white rounded-lg text-sm font-medium hover:bg-navy-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
                     <Plus size={16} /><span>Crear Período</span>
                   </button>
                 </form>
@@ -639,18 +644,23 @@ export default function ParametrizacionAdmin() {
               <div>
                 <h3 className="text-sm font-semibold text-navy-900 mb-4">Períodos existentes</h3>
                 <div className="space-y-2">
-                  {universidades.flatMap(u => u.facultades.flatMap(f => (f.carreras || []).flatMap(ca => (ca.periodos || []).map(p => (
-                    <ItemRow
-                      key={p.id} tipo="periodo" id={p.id}
-                      meta={{ univId: u.id, facId: f.id, carrId: ca.id, valorEdicion: { nombre: p.nombre } }}
-                      editFields={
-                        <input value={editando?.valor?.nombre || ''} onChange={e => setEditando(prev => ({ ...prev, valor: { ...prev.valor, nombre: e.target.value } }))} placeholder="Nombre" className={inputSmCls} />
-                      }
-                    >
-                      <span className="font-medium text-gray-800">{p.nombre}</span>
-                      <span className="text-gray-400 text-xs ml-2">· {ca.nombre}</span>
-                    </ItemRow>
-                  )))))}
+                  {universidades.flatMap(u => (u.facultades || []).flatMap(f => {
+                    const periodosDirectos = f.periodos || [];
+                    const periodosCarreras = (f.carreras || []).flatMap(ca => ca.periodos || []);
+                    const todosPeriodos = periodosDirectos.length > 0 ? periodosDirectos : periodosCarreras;
+                    return todosPeriodos.map(p => (
+                      <ItemRow
+                        key={p.id} tipo="periodo" id={p.id}
+                        meta={{ univId: u.id, facId: f.id, valorEdicion: { nombre: p.nombre } }}
+                        editFields={
+                          <input value={editando?.valor?.nombre || ''} onChange={e => setEditando(prev => ({ ...prev, valor: { ...prev.valor, nombre: e.target.value } }))} placeholder="Nombre" className={inputSmCls} />
+                        }
+                      >
+                        <span className="font-medium text-gray-800">{p.nombre}</span>
+                        <span className="text-gray-400 text-xs ml-2">· {f.nombre} ({u.siglas || u.nombre})</span>
+                      </ItemRow>
+                    ));
+                  }))}
                 </div>
               </div>
             </div>
@@ -663,27 +673,27 @@ export default function ParametrizacionAdmin() {
                 <h3 className="text-sm font-semibold text-navy-900 mb-4">Nuevo Criterio</h3>
                 <form onSubmit={submitCrit} className="space-y-4">
                   <FormField label="Universidad">
-                    <select value={fCrit.univId} onChange={e => setFCrit({...fCrit, univId: e.target.value, facId: '', carrId: '', perId: ''})} className={selectCls}>
+                    <select value={fCrit.univId} onChange={e => setFCrit({...fCrit, univId: e.target.value, facId: '', perId: '', carrId: ''})} className={selectCls}>
                       <option value="">Seleccionar...</option>
                       {universidades.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
                     </select>
                   </FormField>
                   <FormField label="Facultad">
-                    <select value={fCrit.facId} onChange={e => setFCrit({...fCrit, facId: e.target.value, carrId: '', perId: ''})} className={selectCls} disabled={!fCrit.univId}>
+                    <select value={fCrit.facId} onChange={e => setFCrit({...fCrit, facId: e.target.value, perId: '', carrId: ''})} className={selectCls} disabled={!fCrit.univId}>
                       <option value="">Seleccionar...</option>
                       {univSelCrit?.facultades.map(f => <option key={f.id} value={f.id}>{f.nombre}</option>)}
                     </select>
                   </FormField>
-                  <FormField label="Carrera">
-                    <select value={fCrit.carrId} onChange={e => setFCrit({...fCrit, carrId: e.target.value, perId: ''})} className={selectCls} disabled={!fCrit.facId}>
+                  <FormField label="Período">
+                    <select value={fCrit.perId} onChange={e => setFCrit({...fCrit, perId: e.target.value, carrId: ''})} className={selectCls} disabled={!fCrit.facId}>
                       <option value="">Seleccionar...</option>
-                      {facSelCrit?.carreras.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                      {(facSelCrit?.periodos || []).map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
                     </select>
                   </FormField>
-                  <FormField label="Período">
-                    <select value={fCrit.perId} onChange={e => setFCrit({...fCrit, perId: e.target.value})} className={selectCls} disabled={!fCrit.carrId}>
+                  <FormField label="Carrera">
+                    <select value={fCrit.carrId} onChange={e => setFCrit({...fCrit, carrId: e.target.value})} className={selectCls} disabled={!fCrit.perId}>
                       <option value="">Seleccionar...</option>
-                      {carrSelCrit?.periodos.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                      {(perSelCrit?.carreras || facSelCrit?.carreras || []).map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
                     </select>
                   </FormField>
                   <FormField label="Nombre del Criterio">
@@ -700,7 +710,11 @@ export default function ParametrizacionAdmin() {
                     <input value={fCrit.nombre} onChange={e => setFCrit({...fCrit, nombre: e.target.value})} placeholder="O escribe el nombre del criterio..." className={inputCls} />
                   </FormField>
                   <Toggle value={fCrit.requiere_firma} onChange={v => setFCrit({...fCrit, requiere_firma: v})} label="Requiere firma digital" />
-                  <button type="submit" className="w-full flex items-center justify-center space-x-2 px-4 py-2.5 bg-navy-900 text-white rounded-lg text-sm font-medium hover:bg-navy-800 transition-colors">
+                  <button
+                    type="submit"
+                    disabled={!fCrit.nombre || !fCrit.univId || !fCrit.facId || !fCrit.perId || !fCrit.carrId}
+                    className="w-full flex items-center justify-center space-x-2 px-4 py-2.5 bg-navy-900 text-white rounded-lg text-sm font-medium hover:bg-navy-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
                     <Plus size={16} /><span>Crear Criterio</span>
                   </button>
                 </form>
@@ -708,10 +722,10 @@ export default function ParametrizacionAdmin() {
               <div>
                 <h3 className="text-sm font-semibold text-navy-900 mb-4">Criterios existentes</h3>
                 <div className="space-y-2">
-                  {universidades.flatMap(u => u.facultades.flatMap(f => (f.carreras || []).flatMap(ca => (ca.periodos || []).flatMap(p => (p.criterios || []).map(c => (
+                  {universidades.flatMap(u => (u.facultades || []).flatMap(f => (f.periodos || []).flatMap(p => (p.carreras || []).flatMap(ca => (ca.criterios || []).map(c => (
                     <ItemRow
                       key={c.id} tipo="criterio" id={c.id}
-                      meta={{ univId: u.id, facId: f.id, carrId: ca.id, perId: p.id, valorEdicion: { nombre: c.nombre, requiere_firma: c.requiere_firma } }}
+                      meta={{ univId: u.id, facId: f.id, perId: p.id, carrId: ca.id, valorEdicion: { nombre: c.nombre, requiere_firma: c.requiere_firma } }}
                       editFields={
                         <>
                           <input value={editando?.valor?.nombre || ''} onChange={e => setEditando(prev => ({ ...prev, valor: { ...prev.valor, nombre: e.target.value } }))} placeholder="Nombre" className={inputSmCls} />
@@ -728,7 +742,7 @@ export default function ParametrizacionAdmin() {
                       <div className="flex items-center justify-between">
                         <div>
                           <span className="font-medium text-gray-800">{c.nombre}</span>
-                          <span className="ml-2 text-gray-400 text-xs">· {p.nombre}</span>
+                          <span className="ml-2 text-gray-400 text-xs">· {ca.nombre} ({p.nombre})</span>
                         </div>
                         <div className="flex flex-col items-end space-y-1">
                           <span className={`text-xs px-2 py-0.5 rounded-full ${c.requiere_firma ? 'bg-blue-100 text-blue-700' : 'bg-gray-200 text-gray-500'}`}>
@@ -743,35 +757,35 @@ export default function ParametrizacionAdmin() {
             </div>
           )}
 
-          {/* Indicador */}
-          {tab === 'indicador' && (
+          {/* Subcriterio (Indicador) */}
+          {(tab === 'subcriterio' || tab === 'indicador') && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               <div>
-                <h3 className="text-sm font-semibold text-navy-900 mb-4">Nuevo Indicador</h3>
+                <h3 className="text-sm font-semibold text-navy-900 mb-4">Nuevo Subcriterio</h3>
                 <form onSubmit={submitInd} className="space-y-3">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                     <FormField label="Universidad">
-                      <select value={fInd.univId} onChange={e => setFInd({...fInd, univId: e.target.value, facId: '', carrId: '', perId: '', critId: ''})} className={selectCls}>
+                      <select value={fInd.univId} onChange={e => setFInd({...fInd, univId: e.target.value, facId: '', perId: '', carrId: '', critId: ''})} className={selectCls}>
                         <option value="">Seleccionar...</option>
                         {universidades.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
                       </select>
                     </FormField>
                     <FormField label="Facultad">
-                      <select value={fInd.facId} onChange={e => setFInd({...fInd, facId: e.target.value, carrId: '', perId: '', critId: ''})} className={selectCls} disabled={!fInd.univId}>
+                      <select value={fInd.facId} onChange={e => setFInd({...fInd, facId: e.target.value, perId: '', carrId: '', critId: ''})} className={selectCls} disabled={!fInd.univId}>
                         <option value="">Seleccionar...</option>
                         {univSelInd?.facultades.map(f => <option key={f.id} value={f.id}>{f.nombre}</option>)}
                       </select>
                     </FormField>
-                    <FormField label="Carrera">
-                      <select value={fInd.carrId} onChange={e => setFInd({...fInd, carrId: e.target.value, perId: '', critId: ''})} className={selectCls} disabled={!fInd.facId}>
+                    <FormField label="Período">
+                      <select value={fInd.perId} onChange={e => setFInd({...fInd, perId: e.target.value, carrId: '', critId: ''})} className={selectCls} disabled={!fInd.facId}>
                         <option value="">Seleccionar...</option>
-                        {facSelInd?.carreras.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                        {(facSelInd?.periodos || []).map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
                       </select>
                     </FormField>
-                    <FormField label="Período">
-                      <select value={fInd.perId} onChange={e => setFInd({...fInd, perId: e.target.value, critId: ''})} className={selectCls} disabled={!fInd.carrId}>
+                    <FormField label="Carrera">
+                      <select value={fInd.carrId} onChange={e => setFInd({...fInd, carrId: e.target.value, critId: ''})} className={selectCls} disabled={!fInd.perId}>
                         <option value="">Seleccionar...</option>
-                        {carrSelInd?.periodos.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                        {(perSelInd?.carreras || facSelInd?.carreras || []).map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
                       </select>
                     </FormField>
                   </div>
@@ -787,14 +801,14 @@ export default function ParametrizacionAdmin() {
                         responsable_nombre: '',
                       })}
                       className={selectCls}
-                      disabled={!fInd.perId}
+                      disabled={!fInd.carrId}
                     >
                       <option value="">Seleccionar...</option>
-                      {perSelInd?.criterios?.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                      {(carrSelInd?.criterios || []).map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
                     </select>
                   </FormField>
 
-                  <FormField label="Seleccionar Indicador Predefinido">
+                  <FormField label="Seleccionar Subcriterio Predefinido">
                     <select
                       value={indicadoresFiltrados.some(i => i.nombre === fInd.nombre) ? fInd.nombre : ''}
                       disabled={!fInd.critId}
@@ -820,7 +834,7 @@ export default function ParametrizacionAdmin() {
                     >
                       <option value="">
                         {fInd.critId
-                          ? `-- Seleccionar Indicador (${indicadoresFiltrados.length} disponibles) --`
+                          ? `-- Seleccionar Subcriterio (${indicadoresFiltrados.length} disponibles) --`
                           : '-- Primero seleccione un Criterio --'}
                       </option>
                       {indicadoresFiltrados.map(ind => (
@@ -869,18 +883,22 @@ export default function ParametrizacionAdmin() {
                     </div>
                   </FormField>
 
-                  <button type="submit" className="w-full flex items-center justify-center space-x-2 px-4 py-2.5 bg-navy-900 text-white rounded-lg text-sm font-medium hover:bg-navy-800 transition-colors">
-                    <Plus size={16} /><span>Crear Indicador</span>
+                  <button
+                    type="submit"
+                    disabled={!fInd.nombre || !fInd.numero || !fInd.univId || !fInd.facId || !fInd.perId || !fInd.carrId || !fInd.critId}
+                    className="w-full flex items-center justify-center space-x-2 px-4 py-2.5 bg-navy-900 text-white rounded-lg text-sm font-medium hover:bg-navy-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <Plus size={16} /><span>Crear Subcriterio</span>
                   </button>
                 </form>
               </div>
               <div>
-                <h3 className="text-sm font-semibold text-navy-900 mb-4">Indicadores existentes</h3>
+                <h3 className="text-sm font-semibold text-navy-900 mb-4">Subcriterios existentes</h3>
                 <div className="space-y-2">
-                  {universidades.flatMap(u => u.facultades.flatMap(f => (f.carreras || []).flatMap(ca => (ca.periodos || []).flatMap(p => (p.criterios || []).flatMap(c => (c.indicadores || []).map(i => (
+                  {universidades.flatMap(u => (u.facultades || []).flatMap(f => (f.periodos || []).flatMap(p => (p.carreras || []).flatMap(ca => (ca.criterios || []).flatMap(c => (c.subcriterios || c.indicadores || []).map(i => (
                     <ItemRow
                       key={i.id} tipo="indicador" id={i.id}
-                      meta={{ univId: u.id, facId: f.id, carrId: ca.id, perId: p.id, critId: c.id, valorEdicion: { nombre: i.nombre, numero: i.numero, responsablesIds: i.responsables?.map(u => u.id) || [] } }}
+                      meta={{ univId: u.id, facId: f.id, perId: p.id, carrId: ca.id, critId: c.id, valorEdicion: { nombre: i.nombre, numero: i.numero, responsablesIds: i.responsables?.map(u => u.id) || [] } }}
                       editFields={
                         <>
                           <input type="number" value={editando?.valor?.numero || ''} onChange={e => setEditando(prev => ({ ...prev, valor: { ...prev.valor, numero: e.target.value } }))} placeholder="Número" className={inputSmCls} />
@@ -921,7 +939,7 @@ export default function ParametrizacionAdmin() {
                           </span>
                         )}
                       </span>
-                      <span className="ml-2 text-gray-400 text-xs">· {c.nombre}</span>
+                      <span className="ml-2 text-gray-400 text-xs">· {c.nombre} ({ca.nombre})</span>
                     </ItemRow>
                   )))))))}
                 </div>
@@ -938,39 +956,39 @@ export default function ParametrizacionAdmin() {
                   <div className="p-3 bg-gray-50/70 rounded-lg border border-gray-200">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                       <FormField label="Universidad">
-                        <select value={fAct.univId} onChange={e => setFAct({...fAct, univId: e.target.value, facId: '', carrId: '', perId: '', critId: '', indId: ''})} className={selectCls}>
+                        <select value={fAct.univId} onChange={e => setFAct({...fAct, univId: e.target.value, facId: '', perId: '', carrId: '', critId: '', indId: ''})} className={selectCls}>
                           <option value="">Seleccionar...</option>
                           {universidades.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
                         </select>
                       </FormField>
                       <FormField label="Facultad">
-                        <select value={fAct.facId} onChange={e => setFAct({...fAct, facId: e.target.value, carrId: '', perId: '', critId: '', indId: ''})} className={selectCls} disabled={!fAct.univId}>
+                        <select value={fAct.facId} onChange={e => setFAct({...fAct, facId: e.target.value, perId: '', carrId: '', critId: '', indId: ''})} className={selectCls} disabled={!fAct.univId}>
                           <option value="">Seleccionar...</option>
                           {univSelAct?.facultades.map(f => <option key={f.id} value={f.id}>{f.nombre}</option>)}
                         </select>
                       </FormField>
-                      <FormField label="Carrera">
-                        <select value={fAct.carrId} onChange={e => setFAct({...fAct, carrId: e.target.value, perId: '', critId: '', indId: ''})} className={selectCls} disabled={!fAct.facId}>
+                      <FormField label="Período">
+                        <select value={fAct.perId} onChange={e => setFAct({...fAct, perId: e.target.value, carrId: '', critId: '', indId: ''})} className={selectCls} disabled={!fAct.facId}>
                           <option value="">Seleccionar...</option>
-                          {facSelAct?.carreras.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                          {(facSelAct?.periodos || []).map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
                         </select>
                       </FormField>
-                      <FormField label="Período">
-                        <select value={fAct.perId} onChange={e => setFAct({...fAct, perId: e.target.value, critId: '', indId: ''})} className={selectCls} disabled={!fAct.carrId}>
+                      <FormField label="Carrera">
+                        <select value={fAct.carrId} onChange={e => setFAct({...fAct, carrId: e.target.value, critId: '', indId: ''})} className={selectCls} disabled={!fAct.perId}>
                           <option value="">Seleccionar...</option>
-                          {carrSelAct?.periodos.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                          {(perSelAct?.carreras || facSelAct?.carreras || []).map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
                         </select>
                       </FormField>
                       <FormField label="Criterio">
-                        <select value={fAct.critId} onChange={e => setFAct({...fAct, critId: e.target.value, indId: ''})} className={selectCls} disabled={!fAct.perId}>
+                        <select value={fAct.critId} onChange={e => setFAct({...fAct, critId: e.target.value, indId: ''})} className={selectCls} disabled={!fAct.carrId}>
                           <option value="">Seleccionar...</option>
-                          {perSelAct?.criterios.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                          {(carrSelAct?.criterios || []).map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
                         </select>
                       </FormField>
-                      <FormField label="Indicador">
+                      <FormField label="Subcriterio">
                         <select value={fAct.indId} onChange={e => setFAct({...fAct, indId: e.target.value})} className={selectCls} disabled={!fAct.critId}>
                           <option value="">Seleccionar...</option>
-                          {critSelAct?.indicadores.map(i => <option key={i.id} value={i.id}>{i.nombre}</option>)}
+                          {((critSelAct?.subcriterios || critSelAct?.indicadores) || []).map(i => <option key={i.id} value={i.id}>[{i.numero}] {i.nombre}</option>)}
                         </select>
                       </FormField>
                     </div>
@@ -993,7 +1011,11 @@ export default function ParametrizacionAdmin() {
                   </FormField>
 
                   <Toggle value={fAct.requiere_firma} onChange={v => setFAct({...fAct, requiere_firma: v})} label="Requiere firma digital" />
-                  <button type="submit" className="w-full flex items-center justify-center space-x-2 px-4 py-2.5 bg-navy-900 text-white rounded-lg text-sm font-medium hover:bg-navy-800 transition-colors">
+                  <button
+                    type="submit"
+                    disabled={!fAct.nombre || !fAct.univId || !fAct.facId || !fAct.perId || !fAct.carrId || !fAct.critId || !fAct.indId}
+                    className="w-full flex items-center justify-center space-x-2 px-4 py-2.5 bg-navy-900 text-white rounded-lg text-sm font-medium hover:bg-navy-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
                     <Plus size={16} /><span>Crear Actividad</span>
                   </button>
                 </form>
@@ -1001,10 +1023,10 @@ export default function ParametrizacionAdmin() {
               <div>
                 <h3 className="text-sm font-semibold text-navy-900 mb-4">Actividades existentes</h3>
                 <div className="space-y-2">
-                  {universidades.flatMap(u => u.facultades.flatMap(f => (f.carreras || []).flatMap(ca => (ca.periodos || []).flatMap(p => (p.criterios || []).flatMap(c => (c.indicadores || []).flatMap(i => (i.actividades || []).map(a => (
+                  {universidades.flatMap(u => (u.facultades || []).flatMap(f => (f.periodos || []).flatMap(p => (p.carreras || []).flatMap(ca => (ca.criterios || []).flatMap(c => (c.subcriterios || c.indicadores || []).flatMap(i => (i.actividades || []).map(a => (
                     <ItemRow
                       key={a.id} tipo="actividad" id={a.id}
-                      meta={{ univId: u.id, facId: f.id, carrId: ca.id, perId: p.id, critId: c.id, indId: i.id, valorEdicion: { nombre: a.nombre, informacion_ayuda: a.informacion_ayuda || '', requiere_firma: a.requiere_firma, flujo_id: a.flujo_id || '', usuariosAsignadosIds: a.usuariosAsignados?.map(u => u.id) || [] } }}
+                      meta={{ univId: u.id, facId: f.id, perId: p.id, carrId: ca.id, critId: c.id, indId: i.id, valorEdicion: { nombre: a.nombre, informacion_ayuda: a.informacion_ayuda || '', requiere_firma: a.requiere_firma, flujo_id: a.flujo_id || '', usuariosAsignadosIds: a.usuariosAsignados?.map(u => u.id) || [] } }}
                       editFields={
                         <>
                           <input value={editando?.valor?.nombre || ''} onChange={e => setEditando(prev => ({ ...prev, valor: { ...prev.valor, nombre: e.target.value } }))} placeholder="Nombre" className={inputSmCls} />
@@ -1051,7 +1073,7 @@ export default function ParametrizacionAdmin() {
                       }
                     >
                       <span className="font-medium text-gray-800">{a.nombre}</span>
-                      <span className="ml-2 text-gray-400 text-xs">· {i.nombre}</span>
+                      <span className="ml-2 text-gray-400 text-xs">· {i.nombre} ({ca.nombre})</span>
                     </ItemRow>
                   ))))))))}
                 </div>

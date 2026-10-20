@@ -1,4 +1,4 @@
-const { Documento, Usuario, Rol, FlujoFirma, PasoFirma, Criterio, Indicador, Actividad, Facultad } = require('../Model');
+const { Documento, Usuario, Rol, FlujoFirma, PasoFirma, Criterio, Indicador, Subcriterio, Actividad, Facultad } = require('../Model');
 
 class WorkflowService {
   /**
@@ -141,19 +141,28 @@ class WorkflowService {
 
     // Si el documento aún no tiene flujo (ej: recién creado), se determina:
     if (!flujoId) {
-      // Buscar Criterio -> Indicador -> Actividad
+      // Buscar Criterio -> Subcriterio / Indicador -> Actividad
       const actividad = await Actividad.findByPk(documento.actividad_id, {
-        include: [{
-          model: Indicador, as: 'indicador', include: [{
-            model: Criterio, as: 'criterio'
-          }]
-        }],
+        include: [
+          {
+            model: Subcriterio, as: 'subcriterio', required: false, include: [{
+              model: Criterio, as: 'criterio'
+            }]
+          },
+          {
+            model: Indicador, as: 'indicador', required: false, include: [{
+              model: Criterio, as: 'criterio'
+            }]
+          }
+        ],
         ...queryOpts,
       });
 
       if (actividad) {
         if (actividad.flujo_id) {
           flujoId = actividad.flujo_id;
+        } else if (actividad.subcriterio && actividad.subcriterio.criterio) {
+          flujoId = actividad.subcriterio.criterio.flujo_id;
         } else if (actividad.indicador && actividad.indicador.criterio) {
           flujoId = actividad.indicador.criterio.flujo_id;
         }

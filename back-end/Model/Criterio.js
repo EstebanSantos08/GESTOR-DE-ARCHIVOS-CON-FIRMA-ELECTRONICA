@@ -7,6 +7,7 @@ const Criterio = sequelize.define('Criterio', {
   nombre: { type: DataTypes.STRING(200), allowNull: false },
   descripcion: { type: DataTypes.TEXT },
   periodo_id: { type: DataTypes.INTEGER, allowNull: true },
+  carrera_id: { type: DataTypes.INTEGER, allowNull: true },
   requiere_firma: { type: DataTypes.BOOLEAN, defaultValue: true },
   flujo_id: { type: DataTypes.INTEGER, allowNull: true },
   activo: { type: DataTypes.BOOLEAN, defaultValue: true },

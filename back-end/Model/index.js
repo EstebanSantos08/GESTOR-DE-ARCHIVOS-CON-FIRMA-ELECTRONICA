@@ -7,6 +7,7 @@ const Carrera = require('./Carrera');
 const Periodo = require('./Periodo');
 const Criterio = require('./Criterio');
 const Indicador = require('./Indicador');
+const Subcriterio = require('./Subcriterio');
 const Actividad = require('./Actividad');
 const Documento = require('./Documento');
 const UsuarioRol = require('./UsuarioRol');
@@ -46,12 +47,33 @@ Universidad.hasMany(Facultad, { foreignKey: 'universidad_id', as: 'facultades' }
 Carrera.belongsTo(Facultad, { foreignKey: 'facultad_id', as: 'facultad' });
 Facultad.hasMany(Carrera, { foreignKey: 'facultad_id', as: 'carreras' });
 
+// Período pertenece a Facultad (nueva estructura principal) y a Carrera (compatibilidad)
+Facultad.hasMany(Periodo, { foreignKey: 'facultad_id', as: 'periodos' });
+Periodo.belongsTo(Facultad, { foreignKey: 'facultad_id', as: 'facultad' });
+
 Periodo.belongsTo(Carrera, { foreignKey: 'carrera_id', as: 'carrera' });
 Carrera.hasMany(Periodo, { foreignKey: 'carrera_id', as: 'periodos' });
 
+// Criterio pertenece a Período y a Carrera (para aislar Criterios por carrera dentro de un período)
 Criterio.belongsTo(Periodo, { foreignKey: 'periodo_id', as: 'periodo' });
 Periodo.hasMany(Criterio, { foreignKey: 'periodo_id', as: 'criterios' });
 
+Criterio.belongsTo(Carrera, { foreignKey: 'carrera_id', as: 'carrera' });
+Carrera.hasMany(Criterio, { foreignKey: 'carrera_id', as: 'criterios' });
+
+// ─── Criterio ↔ Subcriterio (31 Subcriterios por Criterio) ───────────────────
+Criterio.hasMany(Subcriterio, { foreignKey: 'criterio_id', as: 'subcriterios' });
+Subcriterio.belongsTo(Criterio, { foreignKey: 'criterio_id', as: 'criterio' });
+
+// ─── Subcriterio ↔ Responsable (Usuario) ────────────────────────────────────
+Subcriterio.belongsToMany(Usuario, { through: 'subcriterios_responsables', as: 'responsables', foreignKey: 'subcriterio_id' });
+Usuario.belongsToMany(Subcriterio, { through: 'subcriterios_responsables', as: 'subcriteriosAsignados', foreignKey: 'usuario_id' });
+
+// ─── Subcriterio ↔ Actividad ────────────────────────────────────────────────
+Subcriterio.hasMany(Actividad, { foreignKey: 'subcriterio_id', as: 'actividades' });
+Actividad.belongsTo(Subcriterio, { foreignKey: 'subcriterio_id', as: 'subcriterio' });
+
+// ─── Indicador (Modelo legacy/equivalente conservado para compatibilidad) ───
 Indicador.belongsTo(Criterio, { foreignKey: 'criterio_id', as: 'criterio' });
 Criterio.hasMany(Indicador, { foreignKey: 'criterio_id', as: 'indicadores' });
 
@@ -59,7 +81,7 @@ Criterio.hasMany(Indicador, { foreignKey: 'criterio_id', as: 'indicadores' });
 Indicador.belongsToMany(Usuario, { through: 'indicadores_responsables', as: 'responsables', foreignKey: 'indicador_id' });
 Usuario.belongsToMany(Indicador, { through: 'indicadores_responsables', as: 'indicadoresAsignados', foreignKey: 'usuario_id' });
 
-// ─── Actividad ahora cuelga de Indicador (antes de Criterio) ────────────────
+// ─── Actividad ↔ Indicador (Legacy) ─────────────────────────────────────────
 Actividad.belongsTo(Indicador, { foreignKey: 'indicador_id', as: 'indicador' });
 Indicador.hasMany(Actividad, { foreignKey: 'indicador_id', as: 'actividades' });
 
@@ -102,6 +124,7 @@ module.exports = {
   Periodo,
   Criterio,
   Indicador,
+  Subcriterio,
   Actividad,
   Documento,
   FlujoFirma,

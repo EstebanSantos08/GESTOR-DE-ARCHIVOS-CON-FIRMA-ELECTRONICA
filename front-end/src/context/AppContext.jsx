@@ -920,16 +920,7 @@ export function AppProvider({ children }) {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Error al actualizar período');
-    setUniversidades(prev => prev.map(u => u.id === univId
-      ? { ...u, facultades: u.facultades.map(f => f.id === facultadId
-          ? { ...f, carreras: f.carreras.map(ca => ca.id === carreraId
-              ? { ...ca, periodos: ca.periodos.map(p => p.id === id ? { ...p, ...data } : p) }
-              : ca
-            ) }
-          : f
-        ) }
-      : u
-    ));
+    await cargarEstructura();
     return data;
   }
 
@@ -940,43 +931,31 @@ export function AppProvider({ children }) {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Error al eliminar período');
-    setUniversidades(prev => prev.map(u => u.id === univId
-      ? { ...u, facultades: u.facultades.map(f => f.id === facultadId
-          ? { ...f, carreras: f.carreras.map(ca => ca.id === carreraId
-              ? { ...ca, periodos: ca.periodos.filter(p => p.id !== id) }
-              : ca
-            ) }
-          : f
-        ) }
-      : u
-    ));
+    await cargarEstructura();
     return data;
   }
 
   async function agregarPeriodo(univId, facultadId, carreraId, datos) {
+    let finalDatos = datos;
+    let finalCarreraId = carreraId;
+    if (typeof carreraId === 'object' && carreraId !== null && datos === undefined) {
+      finalDatos = carreraId;
+      finalCarreraId = null;
+    }
+    const payload = {
+      ...finalDatos,
+      facultad_id: facultadId,
+      carrera_id: finalCarreraId || undefined,
+      generar_estructura: true,
+    };
     const res = await fetch(`${API_URL}/parametrizacion/periodos`, {
       method: 'POST',
       headers: authHeaders(),
-      body: JSON.stringify({ ...datos, carrera_id: carreraId }),
+      body: JSON.stringify(payload),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || data.errores?.[0]?.msg || 'Error al crear periodo');
-    setUniversidades(prev =>
-      prev.map(u => u.id === univId
-        ? {
-          ...u, facultades: u.facultades.map(f => f.id === facultadId
-            ? {
-              ...f, carreras: f.carreras.map(ca => ca.id === carreraId
-                ? { ...ca, periodos: [...ca.periodos, { ...data, criterios: [] }] }
-                : ca
-              )
-            }
-            : f
-          )
-        }
-        : u
-      )
-    );
+    await cargarEstructura();
     return data;
   }
 
@@ -989,19 +968,7 @@ export function AppProvider({ children }) {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Error al actualizar criterio');
-    setUniversidades(prev => prev.map(u => u.id === univId
-      ? { ...u, facultades: u.facultades.map(f => f.id === facultadId
-          ? { ...f, carreras: f.carreras.map(ca => ca.id === carreraId
-              ? { ...ca, periodos: ca.periodos.map(p => p.id === periodoId
-                  ? { ...p, criterios: p.criterios.map(c => c.id === id ? { ...c, ...data } : c) }
-                  : p
-                ) }
-              : ca
-            ) }
-          : f
-        ) }
-      : u
-    ));
+    await cargarEstructura();
     return data;
   }
 
@@ -1012,19 +979,7 @@ export function AppProvider({ children }) {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Error al eliminar criterio');
-    setUniversidades(prev => prev.map(u => u.id === univId
-      ? { ...u, facultades: u.facultades.map(f => f.id === facultadId
-          ? { ...f, carreras: f.carreras.map(ca => ca.id === carreraId
-              ? { ...ca, periodos: ca.periodos.map(p => p.id === periodoId
-                  ? { ...p, criterios: p.criterios.filter(c => c.id !== id) }
-                  : p
-                ) }
-              : ca
-            ) }
-          : f
-        ) }
-      : u
-    ));
+    await cargarEstructura();
     return data;
   }
 
@@ -1032,35 +987,15 @@ export function AppProvider({ children }) {
     const res = await fetch(`${API_URL}/parametrizacion/criterios`, {
       method: 'POST',
       headers: authHeaders(),
-      body: JSON.stringify({ ...datos, periodo_id: periodoId }),
+      body: JSON.stringify({ ...datos, periodo_id: periodoId, carrera_id: carreraId }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || data.errores?.[0]?.msg || 'Error al crear criterio');
-    setUniversidades(prev =>
-      prev.map(u => u.id === univId
-        ? {
-          ...u, facultades: u.facultades.map(f => f.id === facultadId
-            ? {
-              ...f, carreras: f.carreras.map(ca => ca.id === carreraId
-                ? {
-                  ...ca, periodos: ca.periodos.map(p => p.id === periodoId
-                    ? { ...p, criterios: [...p.criterios, { ...data, indicadores: [] }] }
-                    : p
-                  )
-                }
-                : ca
-              )
-            }
-            : f
-          )
-        }
-        : u
-      )
-    );
+    await cargarEstructura();
     return data;
   }
 
-  // CRUD Indicadores
+  // CRUD Indicadores / Subcriterios
   async function actualizarIndicador(id, univId, facultadId, carreraId, periodoId, criterioId, datos) {
     const res = await fetch(`${API_URL}/parametrizacion/indicadores/${id}`, {
       method: 'PUT',
@@ -1069,22 +1004,7 @@ export function AppProvider({ children }) {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Error al actualizar indicador');
-    setUniversidades(prev => prev.map(u => u.id === univId
-      ? { ...u, facultades: u.facultades.map(f => f.id === facultadId
-          ? { ...f, carreras: f.carreras.map(ca => ca.id === carreraId
-              ? { ...ca, periodos: ca.periodos.map(p => p.id === periodoId
-                  ? { ...p, criterios: p.criterios.map(c => c.id === criterioId
-                      ? { ...c, indicadores: c.indicadores.map(i => i.id === id ? { ...i, ...data } : i) }
-                      : c
-                    ) }
-                  : p
-                ) }
-              : ca
-            ) }
-          : f
-        ) }
-      : u
-    ));
+    await cargarEstructura();
     return data;
   }
 
@@ -1095,22 +1015,7 @@ export function AppProvider({ children }) {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Error al eliminar indicador');
-    setUniversidades(prev => prev.map(u => u.id === univId
-      ? { ...u, facultades: u.facultades.map(f => f.id === facultadId
-          ? { ...f, carreras: f.carreras.map(ca => ca.id === carreraId
-              ? { ...ca, periodos: ca.periodos.map(p => p.id === periodoId
-                  ? { ...p, criterios: p.criterios.map(c => c.id === criterioId
-                      ? { ...c, indicadores: c.indicadores.filter(i => i.id !== id) }
-                      : c
-                    ) }
-                  : p
-                ) }
-              : ca
-            ) }
-          : f
-        ) }
-      : u
-    ));
+    await cargarEstructura();
     return data;
   }
 
@@ -1122,32 +1027,7 @@ export function AppProvider({ children }) {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || data.errores?.[0]?.msg || 'Error al crear indicador');
-    setUniversidades(prev =>
-      prev.map(u => u.id === univId
-        ? {
-          ...u, facultades: u.facultades.map(f => f.id === facultadId
-            ? {
-              ...f, carreras: f.carreras.map(ca => ca.id === carreraId
-                ? {
-                  ...ca, periodos: ca.periodos.map(p => p.id === periodoId
-                    ? {
-                      ...p, criterios: p.criterios.map(c => c.id === criterioId
-                        ? { ...c, indicadores: [...c.indicadores, { ...data, actividades: [] }] }
-                        : c
-                      )
-                    }
-                    : p
-                  )
-                }
-                : ca
-              )
-            }
-            : f
-          )
-        }
-        : u
-      )
-    );
+    await cargarEstructura();
     return data;
   }
 
@@ -1159,8 +1039,6 @@ export function AppProvider({ children }) {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Error al asignar responsables al indicador');
-    
-    // Recargar toda la estructura para reflejar cambios, ya que la estructura es anidada
     await cargarEstructura();
     return data;
   }
@@ -1174,25 +1052,7 @@ export function AppProvider({ children }) {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Error al actualizar actividad');
-    setUniversidades(prev => prev.map(u => u.id === univId
-      ? { ...u, facultades: u.facultades.map(f => f.id === facultadId
-          ? { ...f, carreras: f.carreras.map(ca => ca.id === carreraId
-              ? { ...ca, periodos: ca.periodos.map(p => p.id === periodoId
-                  ? { ...p, criterios: p.criterios.map(c => c.id === criterioId
-                      ? { ...c, indicadores: c.indicadores.map(i => i.id === indicadorId
-                          ? { ...i, actividades: i.actividades.map(a => a.id === id ? { ...a, ...data } : a) }
-                          : i
-                        ) }
-                      : c
-                    ) }
-                  : p
-                ) }
-              : ca
-            ) }
-          : f
-        ) }
-      : u
-    ));
+    await cargarEstructura();
     return data;
   }
 
@@ -1203,25 +1063,7 @@ export function AppProvider({ children }) {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Error al eliminar actividad');
-    setUniversidades(prev => prev.map(u => u.id === univId
-      ? { ...u, facultades: u.facultades.map(f => f.id === facultadId
-          ? { ...f, carreras: f.carreras.map(ca => ca.id === carreraId
-              ? { ...ca, periodos: ca.periodos.map(p => p.id === periodoId
-                  ? { ...p, criterios: p.criterios.map(c => c.id === criterioId
-                      ? { ...c, indicadores: c.indicadores.map(i => i.id === indicadorId
-                          ? { ...i, actividades: i.actividades.filter(a => a.id !== id) }
-                          : i
-                        ) }
-                      : c
-                    ) }
-                  : p
-                ) }
-              : ca
-            ) }
-          : f
-        ) }
-      : u
-    ));
+    await cargarEstructura();
     return data;
   }
 
@@ -1229,41 +1071,15 @@ export function AppProvider({ children }) {
     const res = await fetch(`${API_URL}/parametrizacion/actividades`, {
       method: 'POST',
       headers: authHeaders(),
-      body: JSON.stringify({ ...datos, indicador_id: indicadorId }),
+      body: JSON.stringify({
+        ...datos,
+        indicador_id: indicadorId,
+        subcriterio_id: indicadorId,
+      }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || data.errores?.[0]?.msg || 'Error al crear actividad');
-    setUniversidades(prev =>
-      prev.map(u => u.id === univId
-        ? {
-          ...u, facultades: u.facultades.map(f => f.id === facultadId
-            ? {
-              ...f, carreras: f.carreras.map(ca => ca.id === carreraId
-                ? {
-                  ...ca, periodos: ca.periodos.map(p => p.id === periodoId
-                    ? {
-                      ...p, criterios: p.criterios.map(c => c.id === criterioId
-                        ? {
-                          ...c, indicadores: c.indicadores.map(i => i.id === indicadorId
-                            ? { ...i, actividades: [...i.actividades, { ...data, documentos: [] }] }
-                            : i
-                          )
-                        }
-                        : c
-                      )
-                    }
-                    : p
-                  )
-                }
-                : ca
-              )
-            }
-            : f
-          )
-        }
-        : u
-      )
-    );
+    await cargarEstructura();
     return data;
   }
 
@@ -1332,6 +1148,10 @@ export function AppProvider({ children }) {
       actualizarIndicador,
       eliminarIndicador,
       asignarResponsablesIndicador,
+      agregarSubcriterio: agregarIndicador,
+      actualizarSubcriterio: actualizarIndicador,
+      eliminarSubcriterio: eliminarIndicador,
+      asignarResponsablesSubcriterio: asignarResponsablesIndicador,
       agregarActividad, actualizarActividad, eliminarActividad, asignarUsuariosActividad,
       flujosFirma, crearFlujo, actualizarFlujo, eliminarFlujo,
       metricas, todosLosDocs,

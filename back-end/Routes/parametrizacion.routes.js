@@ -9,10 +9,13 @@ const {
   periodoCtrl,
   criterioCtrl,
   indicadorCtrl,
+  subcriterioCtrl,
   actividadCtrl,
   estructura,
   asignarUsuariosActividad,
   asignarResponsablesIndicador,
+  asignarResponsablesSubcriterio,
+  generarEstructuraCarrera,
   docenteCtrl,
 } = require('../Controller/parametrizacion.controller');
 
@@ -53,13 +56,19 @@ router.post('/carreras', ...soloAdmin,
 );
 router.put('/carreras/:id', ...soloAdmin, carreraCtrl.actualizar);
 router.delete('/carreras/:id', ...soloAdmin, carreraCtrl.eliminar);
+router.post('/carreras/:id/generar-estructura', ...soloAdmin, generarEstructuraCarrera);
 
 // ─── Periodo ───────────────────────────────────────────────────────────────
 router.get('/periodos', autenticar, periodoCtrl.listar);
 router.get('/periodos/:id', autenticar, periodoCtrl.obtener);
 router.post('/periodos', ...soloAdmin,
   body('nombre').notEmpty().withMessage('Nombre requerido'),
-  body('carrera_id').isInt().withMessage('Carrera requerida'),
+  body().custom(b => {
+    if (!b.facultad_id && !b.carrera_id) {
+      throw new Error('Debe especificar facultad_id o carrera_id');
+    }
+    return true;
+  }),
   periodoCtrl.crear
 );
 router.put('/periodos/:id', ...soloAdmin, periodoCtrl.actualizar);
@@ -75,7 +84,23 @@ router.post('/criterios', ...soloAdmin,
 router.put('/criterios/:id', ...soloAdmin, criterioCtrl.actualizar);
 router.delete('/criterios/:id', ...soloAdmin, criterioCtrl.eliminar);
 
-// ─── Indicador ─────────────────────────────────────────────────────────────
+// ─── Subcriterio ───────────────────────────────────────────────────────────
+router.get('/subcriterios', autenticar, subcriterioCtrl.listar);
+router.get('/subcriterios/:id', autenticar, subcriterioCtrl.obtener);
+router.post('/subcriterios', ...soloAdmin,
+  body('nombre').notEmpty().withMessage('Nombre requerido'),
+  body('numero').isInt().withMessage('Número de subcriterio requerido'),
+  body('criterio_id').isInt().withMessage('Criterio requerido'),
+  subcriterioCtrl.crear
+);
+router.put('/subcriterios/:id', ...soloAdmin, subcriterioCtrl.actualizar);
+router.delete('/subcriterios/:id', ...soloAdmin, subcriterioCtrl.eliminar);
+router.post('/subcriterios/:id/responsables', ...soloAdmin,
+  body('responsablesIds').isArray().withMessage('responsablesIds debe ser un arreglo'),
+  asignarResponsablesSubcriterio
+);
+
+// ─── Indicador (Legacy) ────────────────────────────────────────────────────
 router.get('/indicadores', autenticar, indicadorCtrl.listar);
 router.get('/indicadores/:id', autenticar, indicadorCtrl.obtener);
 router.post('/indicadores', ...soloAdmin,
@@ -96,7 +121,12 @@ router.get('/actividades', autenticar, actividadCtrl.listar);
 router.get('/actividades/:id', autenticar, actividadCtrl.obtener);
 router.post('/actividades', ...soloAdmin,
   body('nombre').notEmpty().withMessage('Nombre requerido'),
-  body('indicador_id').isInt().withMessage('Indicador requerido'),
+  body().custom(b => {
+    if (!b.subcriterio_id && !b.indicador_id) {
+      throw new Error('Debe especificar subcriterio_id o indicador_id');
+    }
+    return true;
+  }),
   actividadCtrl.crear
 );
 router.put('/actividades/:id', ...soloAdmin, actividadCtrl.actualizar);

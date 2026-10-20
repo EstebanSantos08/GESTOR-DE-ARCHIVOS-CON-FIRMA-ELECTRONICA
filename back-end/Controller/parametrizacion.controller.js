@@ -2,8 +2,9 @@ const { validationResult } = require('express-validator');
 const {
   sequelize,
   Universidad, Facultad, Carrera, Periodo,
-  Criterio, Indicador, Actividad, Usuario, Rol,
+  Criterio, Indicador, Subcriterio, Actividad, Usuario, Rol,
 } = require('../Model');
+const { generarEstructuraParaCarreraYPeriodo } = require('../Utils/catalogoAcreditacion');
 
 // ─── Fábrica de CRUD genérico ──────────────────────────────────────────────
 function crearCRUD(Modelo, includeOpts = []) {
@@ -105,11 +106,87 @@ const carreraCtrl = {
   },
 };
 
-const periodoCtrl = crearCRUD(Periodo, [
+const _periodoBase = crearCRUD(Periodo, [
+  { model: Facultad, as: 'facultad', attributes: ['id', 'nombre'] },
   { model: Carrera, as: 'carrera', attributes: ['id', 'nombre'] },
 ]);
 
-const criterioCtrl = crearCRUD(Criterio);
+const periodoCtrl = {
+  ..._periodoBase,
+
+  async crear(req, res) {
+    const errores = validationResult(req);
+    if (!errores.isEmpty()) return res.status(400).json({ errores: errores.array() });
+
+    const t = await sequelize.transaction();
+    try {
+      const { nombre, facultad_id, carrera_id, generar_estructura = true } = req.body;
+
+      let finalFacultadId = facultad_id;
+      if (!finalFacultadId && carrera_id) {
+        const carrera = await Carrera.findByPk(carrera_id, { transaction: t });
+        if (carrera) finalFacultadId = carrera.facultad_id;
+      }
+
+      const periodo = await Periodo.create(
+        {
+          nombre,
+          facultad_id: finalFacultadId || null,
+          carrera_id: carrera_id || null,
+        },
+        { transaction: t }
+      );
+
+      // Auto-generación de carpetas por carrera si generar_estructura es true
+      if (generar_estructura && finalFacultadId) {
+        const carreras = await Carrera.findAll({
+          where: { facultad_id: finalFacultadId, activo: true },
+          transaction: t,
+        });
+
+        for (const carr of carreras) {
+          await generarEstructuraParaCarreraYPeriodo({
+            carreraId: carr.id,
+            periodoId: periodo.id,
+            models: { Criterio, Subcriterio, Indicador, Actividad },
+            transaction: t,
+          });
+        }
+      } else if (generar_estructura && carrera_id) {
+        await generarEstructuraParaCarreraYPeriodo({
+          carreraId: carrera_id,
+          periodoId: periodo.id,
+          models: { Criterio, Subcriterio, Indicador, Actividad },
+          transaction: t,
+        });
+      }
+
+      await t.commit();
+
+      const periodoCompleto = await Periodo.findByPk(periodo.id, {
+        include: [
+          { model: Facultad, as: 'facultad', attributes: ['id', 'nombre'] },
+          { model: Carrera, as: 'carrera', attributes: ['id', 'nombre'] },
+        ],
+      });
+
+      res.status(201).json(periodoCompleto);
+    } catch (err) {
+      await t.rollback();
+      res.status(400).json({ error: err.message });
+    }
+  },
+};
+
+const criterioCtrl = crearCRUD(Criterio, [
+  { model: Carrera, as: 'carrera', attributes: ['id', 'nombre'] },
+  { model: Periodo, as: 'periodo', attributes: ['id', 'nombre'] },
+]);
+
+const subcriterioCtrl = crearCRUD(Subcriterio, [
+  { model: Criterio, as: 'criterio', attributes: ['id', 'nombre'] },
+  { model: Usuario, as: 'responsables', attributes: ['id', 'nombre', 'email'] },
+]);
 
 const indicadorCtrl = crearCRUD(Indicador, [
   { model: Criterio, as: 'criterio', attributes: ['id', 'nombre'] },
@@ -117,12 +194,53 @@ const indicadorCtrl = crearCRUD(Indicador, [
 ]);
 
 const actividadCtrl = crearCRUD(Actividad, [
+  { model: Subcriterio, as: 'subcriterio', attributes: ['id', 'numero', 'nombre'] },
   { model: Indicador, as: 'indicador', attributes: ['id', 'numero', 'nombre'] },
   { model: Usuario, as: 'usuariosAsignados', attributes: ['id', 'nombre', 'email'], through: { attributes: [] } },
 ]);
 
-// ─── Estructura jerárquica completa ────────────────────────────────────────
-// Universidad → Facultad → Carrera → Período → Criterio → Indicador → Actividad
+// ─── Generación de estructura para una Carrera específica ─────────────────
+async function generarEstructuraCarrera(req, res) {
+  const { id } = req.params; // carrera_id
+  const { periodo_id } = req.body;
+  const t = await sequelize.transaction();
+  try {
+    const carrera = await Carrera.findByPk(id, { transaction: t });
+    if (!carrera) {
+      await t.rollback();
+      return res.status(404).json({ error: 'Carrera no encontrada' });
+    }
+
+    let periodos = [];
+    if (periodo_id) {
+      const per = await Periodo.findByPk(periodo_id, { transaction: t });
+      if (per) periodos.push(per);
+    } else {
+      periodos = await Periodo.findAll({
+        where: { facultad_id: carrera.facultad_id, activo: true },
+        transaction: t,
+      });
+    }
+
+    for (const per of periodos) {
+      await generarEstructuraParaCarreraYPeriodo({
+        carreraId: carrera.id,
+        periodoId: per.id,
+        models: { Criterio, Subcriterio, Indicador, Actividad },
+        transaction: t,
+      });
+    }
+
+    await t.commit();
+    res.json({ mensaje: 'Estructura generada exitosamente para la carrera' });
+  } catch (err) {
+    await t.rollback();
+    res.status(500).json({ error: err.message });
+  }
+}
+
+// ─── Estructura jerárquica completa (7 niveles) ───────────────────────────
+// Universidad → Facultad → Período → Carrera → Criterio → Subcriterio → Actividad
 async function estructura(req, res) {
   try {
     const universidades = await Universidad.findAll({ where: { activo: true }, order: [['id', 'ASC']] });
@@ -130,6 +248,11 @@ async function estructura(req, res) {
     const carreras      = await Carrera.findAll({ where: { activo: true }, order: [['id', 'ASC']] });
     const periodos      = await Periodo.findAll({ where: { activo: true }, order: [['id', 'ASC']] });
     const criterios     = await Criterio.findAll({ where: { activo: true }, order: [['id', 'ASC']] });
+    const subcriterios  = await Subcriterio.findAll({
+      where: { activo: true },
+      include: [{ model: Usuario, as: 'responsables', attributes: ['id', 'nombre'] }],
+      order: [['numero', 'ASC']],
+    });
     const indicadores   = await Indicador.findAll({
       where: { activo: true },
       include: [{ model: Usuario, as: 'responsables', attributes: ['id', 'nombre'] }],
@@ -158,56 +281,88 @@ async function estructura(req, res) {
       siglas: u.siglas,
       facultades: facultades
         .filter(f => f.universidad_id === u.id)
-        .map(f => ({
-          id: f.id,
-          nombre: f.nombre,
-          descripcion: f.descripcion,
-          carreras: carreras
-            .filter(ca => ca.facultad_id === f.id)
-            .map(ca => ({
+        .map(f => {
+          const facCarreras = carreras.filter(ca => ca.facultad_id === f.id);
+          const facCarreraIds = facCarreras.map(ca => ca.id);
+
+          // Períodos de la facultad (o asociados a carreras de la facultad por compatibilidad)
+          const facPeriodos = periodos.filter(p =>
+            p.facultad_id === f.id || (p.carrera_id && facCarreraIds.includes(p.carrera_id))
+          );
+
+          return {
+            id: f.id,
+            nombre: f.nombre,
+            descripcion: f.descripcion,
+            // Lista de carreras a nivel facultad por retrocompatibilidad
+            carreras: facCarreras.map(ca => ({
               id: ca.id,
               nombre: ca.nombre,
               descripcion: ca.descripcion,
-              periodos: periodos
-                .filter(p => p.carrera_id === ca.id)
-                .map(p => ({
-                  id: p.id,
-                  nombre: p.nombre,
-                  criterios: criterios
-                    .filter(c => c.periodo_id === p.id)
-                    .map(c => ({
+            })),
+            periodos: facPeriodos.map(p => ({
+              id: p.id,
+              nombre: p.nombre,
+              facultad_id: f.id,
+              carreras: facCarreras.map(ca => {
+                // Criterios aislados de esta carrera en este período
+                const carrCriterios = criterios.filter(c =>
+                  c.periodo_id === p.id && (c.carrera_id === ca.id || (!c.carrera_id && p.carrera_id === ca.id))
+                );
+
+                return {
+                  id: ca.id,
+                  nombre: ca.nombre,
+                  descripcion: ca.descripcion,
+                  criterios: carrCriterios.map(c => {
+                    const critSubcriteriosDB = subcriterios.filter(s => s.criterio_id === c.id);
+                    const critIndicadoresDB  = indicadores.filter(i => i.criterio_id === c.id);
+                    const listaBase = critSubcriteriosDB.length > 0 ? critSubcriteriosDB : critIndicadoresDB;
+
+                    const itemsMapeados = listaBase.map(item => {
+                      const subActs = actividades.filter(a =>
+                        a.subcriterio_id === item.id || a.indicador_id === item.id
+                      );
+
+                      return {
+                        id: item.id,
+                        numero: item.numero,
+                        nombre: item.nombre,
+                        responsables: item.responsables || [],
+                        actividades: subActs.map(a => {
+                          const cantDocs = parseInt(
+                            a.get?.('cantidadDocumentos') ?? a.dataValues?.cantidadDocumentos ?? a.cantidadDocumentos ?? 0,
+                            10
+                          );
+                          return {
+                            id: a.id,
+                            nombre: a.nombre,
+                            informacion_ayuda: a.descripcion || '',
+                            requiere_firma: a.requiere_firma,
+                            flujo_id: a.flujo_id || null,
+                            usuariosAsignados: a.usuariosAsignados || [],
+                            cantidadDocumentos: isNaN(cantDocs) ? 0 : cantDocs,
+                            documentos: [],
+                          };
+                        }),
+                      };
+                    });
+
+                    return {
                       id: c.id,
                       nombre: c.nombre,
                       descripcion: c.descripcion,
                       requiere_firma: c.requiere_firma,
                       flujo_id: c.flujo_id || null,
-                      indicadores: indicadores
-                        .filter(ind => ind.criterio_id === c.id)
-                        .map(ind => ({
-                          id: ind.id,
-                          numero: ind.numero,
-                          nombre: ind.nombre,
-                          responsables: ind.responsables || [],
-                          actividades: actividades
-                            .filter(a => a.indicador_id === ind.id)
-                            .map(a => {
-                              const cantDocs = parseInt(a.get('cantidadDocumentos') ?? a.dataValues?.cantidadDocumentos ?? a.cantidadDocumentos ?? 0, 10);
-                              return {
-                                id: a.id,
-                                nombre: a.nombre,
-                                informacion_ayuda: a.descripcion || '',
-                                requiere_firma: a.requiere_firma,
-                                flujo_id: a.flujo_id || null,
-                                usuariosAsignados: a.usuariosAsignados || [],
-                                cantidadDocumentos: isNaN(cantDocs) ? 0 : cantDocs,
-                                documentos: [],
-                              };
-                            }),
-                        })),
-                    })),
-                })),
+                      subcriterios: itemsMapeados,
+                      indicadores: itemsMapeados, // Alias idéntico para retrocompatibilidad
+                    };
+                  }),
+                };
+              }),
             })),
-        })),
+          };
+        }),
     }));
 
     res.json(resultado);
@@ -239,6 +394,36 @@ const asignarResponsablesIndicador = async (req, res) => {
     if (!indicador) return res.status(404).json({ error: 'Indicador no encontrado' });
 
     await indicador.setResponsables(responsablesIds || []);
+
+    const subcriterio = await Subcriterio.findOne({
+      where: { criterio_id: indicador.criterio_id, numero: indicador.numero },
+    });
+    if (subcriterio) {
+      await subcriterio.setResponsables(responsablesIds || []);
+    }
+
+    res.json({ mensaje: 'Responsables asignados correctamente' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+const asignarResponsablesSubcriterio = async (req, res) => {
+  const { id } = req.params;
+  const { responsablesIds } = req.body;
+  try {
+    const subcriterio = await Subcriterio.findByPk(id);
+    if (!subcriterio) return res.status(404).json({ error: 'Subcriterio no encontrado' });
+
+    await subcriterio.setResponsables(responsablesIds || []);
+
+    const indicador = await Indicador.findOne({
+      where: { criterio_id: subcriterio.criterio_id, numero: subcriterio.numero },
+    });
+    if (indicador) {
+      await indicador.setResponsables(responsablesIds || []);
+    }
+
     res.json({ mensaje: 'Responsables asignados correctamente' });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -483,10 +668,12 @@ const docenteCtrl = {
 
 module.exports = {
   universidadCtrl, facultadCtrl, carreraCtrl,
-  periodoCtrl, criterioCtrl, indicadorCtrl,
+  periodoCtrl, criterioCtrl, indicadorCtrl, subcriterioCtrl,
   actividadCtrl,
   estructura,
   asignarUsuariosActividad,
   asignarResponsablesIndicador,
+  asignarResponsablesSubcriterio,
+  generarEstructuraCarrera,
   docenteCtrl,
 };

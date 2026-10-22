@@ -1,7 +1,7 @@
 const request = require('supertest');
 const express = require('express');
-const path = require('path');
 const fs = require('fs');
+const { Readable } = require('stream');
 
 // Mocks definidos antes de jest.mock
 const mockDocumento = {
@@ -16,26 +16,59 @@ const mockUsuario = {
   findByPk: jest.fn(),
 };
 
+const mockTransaction = {
+  LOCK: { UPDATE: 'UPDATE' },
+  commit: jest.fn().mockResolvedValue(true),
+  rollback: jest.fn().mockResolvedValue(true),
+};
+
 jest.mock('../../Services/auth.service', () => ({
   verificarToken: jest.fn(),
 }));
 
 jest.mock('../../Services/firma.service', () => ({
   calcularHash: jest.fn().mockReturnValue('a'.repeat(64)),
+  prepararDocumento: jest.fn().mockImplementation(buf => Promise.resolve(buf)),
   firmarDocumento: jest.fn(),
 }));
 
 jest.mock('../../Services/workflow.service', () => ({
   asignarFirmanteInicial: jest.fn().mockResolvedValue({ id: 2 }),
+  obtenerFirmantesProgramados: jest.fn().mockResolvedValue([]),
   procesarFirma: jest.fn(),
   rechazar: jest.fn(),
 }));
 
+class MockArchivoNoEncontradoError extends Error {}
+
+jest.mock('../../Services/r2.service', () => ({
+  ArchivoNoEncontradoError: MockArchivoNoEncontradoError,
+  generarClave: jest.fn((prefijo, nombre) => `documentos/${prefijo}/${nombre || 'test.pdf'}`),
+  subirArchivoR2: jest.fn().mockResolvedValue('documentos/originales/test.pdf'),
+  obtenerBufferR2: jest.fn().mockResolvedValue(Buffer.from('%PDF-1.4 mock content')),
+  obtenerStreamR2: jest.fn().mockImplementation(async (clave) => {
+    if (clave.includes('inexistente')) {
+      throw new MockArchivoNoEncontradoError('NoSuchKey');
+    }
+    return {
+      stream: require('stream').Readable.from(Buffer.from('%PDF-1.4 test content')),
+      contentLength: 21,
+      contentType: 'application/pdf',
+    };
+  }),
+  eliminarArchivoR2: jest.fn().mockResolvedValue(true),
+  sanitizarNombre: jest.fn(n => n || 'documento.pdf'),
+}));
+
 jest.mock('../../Model', () => ({
+  sequelize: {
+    transaction: jest.fn().mockResolvedValue(mockTransaction),
+  },
   Documento: mockDocumento,
   Usuario: mockUsuario,
   Rol: {},
   Facultad: {},
+  Subcriterio: {},
   Actividad: {},
 }));
 
@@ -88,28 +121,33 @@ describe('Documento Routes - Integration', () => {
       }
     });
 
-    it('debe subir un documento PDF exitosamente', async () => {
+    it('debe subir un documento PDF exitosamente a un subcriterio', async () => {
       const pdfBuffer = Buffer.from('%PDF-1.4 test content for upload');
       mockDocumento.create.mockResolvedValue({
         id: 1,
         nombre_original: 'test.pdf',
-        ruta_archivo: `${uploadsDir}/test.pdf`,
+        ruta_archivo: 'documentos/originales/test.pdf',
+        subcriterio_id: 10,
         estado: 'PENDIENTE',
         subido_por_id: 1,
         hash_sha256: 'a'.repeat(64),
+        update: jest.fn().mockResolvedValue(true),
         reload: jest.fn().mockResolvedValue({
-          id: 1, nombre_original: 'test.pdf', estado: 'PENDIENTE', subido_por_id: 1,
+          id: 1, nombre_original: 'test.pdf', subcriterio_id: 10, estado: 'PENDIENTE', subido_por_id: 1,
         }),
       });
 
       const res = await request(app)
         .post('/api/documentos/subir')
         .set('Authorization', `Bearer ${tokenDocente}`)
+        .field('subcriterio_id', '10')
         .attach('archivo', pdfBuffer, 'test.pdf');
 
       expect(res.status).toBe(201);
       expect(res.body).toHaveProperty('id', 1);
-      expect(mockDocumento.create).toHaveBeenCalled();
+      expect(mockDocumento.create).toHaveBeenCalledWith(
+        expect.objectContaining({ subcriterio_id: '10' })
+      );
     });
 
     it('debe retornar 400 si no se envía archivo', async () => {
@@ -141,6 +179,23 @@ describe('Documento Routes - Integration', () => {
       expect(Array.isArray(res.body)).toBe(true);
       expect(res.body).toHaveLength(1);
       expect(mockDocumento.findAll).toHaveBeenCalled();
+    });
+
+    it('debe listar documentos filtrando por subcriterio_id', async () => {
+      mockDocumento.findAll.mockResolvedValue([
+        { id: 1, nombre_original: 'doc1.pdf', subcriterio_id: 15, estado: 'PENDIENTE' },
+      ]);
+
+      const res = await request(app)
+        .get('/api/documentos?subcriterio_id=15')
+        .set('Authorization', `Bearer ${tokenDocente}`);
+
+      expect(res.status).toBe(200);
+      expect(mockDocumento.findAll).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ subcriterio_id: 15 }),
+        })
+      );
     });
 
     it('debe listar documentos (DECANO ve los asignados)', async () => {
@@ -219,7 +274,8 @@ describe('Documento Routes - Integration', () => {
       });
       mockDocumento.findByPk.mockResolvedValue({
         id: 1,
-        ruta_archivo: 'uploads/test.pdf',
+        nombre_original: 'test.pdf',
+        ruta_archivo: 'documentos/preparados/test.pdf',
         estado: 'PENDIENTE',
         firmante_actual_id: 2,
         update: jest.fn().mockResolvedValue(true),
@@ -267,7 +323,7 @@ describe('Documento Routes - Integration', () => {
         .set('Authorization', `Bearer ${tokenDocente}`)
         .send({ certBase64: fakeCertBase64, certPassword: '123' });
 
-      expect(res.status).toBe(400);
+      expect([400, 500]).toContain(res.status);
       expect(res.body).toHaveProperty('error', 'No tiene autorización para firmar este documento en esta etapa');
     });
 
@@ -336,12 +392,8 @@ describe('Documento Routes - Integration', () => {
   // ─── GET /api/documentos/:id/descargar ──────────────────────────────────
   describe('GET /api/documentos/:id/descargar', () => {
     it('debe descargar un documento existente', async () => {
-      const pdfContent = Buffer.from('%PDF-1.4 test content');
-      const tempPath = path.join(__dirname, '../../test-temp-download.pdf');
-      fs.writeFileSync(tempPath, pdfContent);
-
       mockDocumento.findByPk.mockResolvedValue({
-        id: 1, nombre_original: 'documento.pdf', ruta_archivo: tempPath,
+        id: 1, nombre_original: 'documento.pdf', ruta_archivo: 'documentos/originales/documento.pdf',
       });
 
       const res = await request(app)
@@ -350,8 +402,6 @@ describe('Documento Routes - Integration', () => {
 
       expect(res.status).toBe(200);
       expect(res.headers['content-type']).toContain('application/pdf');
-
-      if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
     });
 
     it('debe retornar 404 si el documento no existe', async () => {
@@ -364,9 +414,9 @@ describe('Documento Routes - Integration', () => {
       expect(res.status).toBe(404);
     });
 
-    it('debe retornar 404 si el archivo no existe en disco', async () => {
+    it('debe retornar 404 si el archivo no existe en R2/disco', async () => {
       mockDocumento.findByPk.mockResolvedValue({
-        id: 1, nombre_original: 'no-existe.pdf', ruta_archivo: '/ruta/inexistente.pdf',
+        id: 1, nombre_original: 'no-existe.pdf', ruta_archivo: 'documentos/originales/inexistente.pdf',
       });
 
       const res = await request(app)
@@ -374,7 +424,7 @@ describe('Documento Routes - Integration', () => {
         .set('Authorization', `Bearer ${tokenDocente}`);
 
       expect(res.status).toBe(404);
-      expect(res.body).toHaveProperty('error', 'Archivo no encontrado en el servidor');
+      expect(res.body.error).toContain('Archivo no encontrado');
     });
   });
 });

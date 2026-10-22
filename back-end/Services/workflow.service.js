@@ -67,20 +67,17 @@ class WorkflowService {
     if (documento.estado === 'COMPLETADO') throw new Error('El documento ya está completado');
     if (documento.estado === 'RECHAZADO') throw new Error('El documento fue rechazado');
 
-    // Verifica que quien firma es el firmante asignado (comparación laxa por posibles diferencias int/string)
     // eslint-disable-next-line eqeqeq
     if (documento.firmante_actual_id != usuarioFirmante.id) {
       throw new Error(`No tiene autorización para firmar este documento en esta etapa. Firmante esperado ID=${documento.firmante_actual_id}, firmante actual ID=${usuarioFirmante.id}`);
     }
 
-    // Avanza el paso
     const nuevoPaso = documento.paso_actual + 1;
     const actualizacion = {
       paso_actual: nuevoPaso,
-      observaciones, // Opcional: concatenar o sobrescribir observaciones
+      observaciones,
     };
 
-    // Determinar siguiente enrutamiento
     const siguiente = await this.enrutar({ ...documento.toJSON(), paso_actual: nuevoPaso });
 
     if (siguiente.estadoSiguiente === 'COMPLETADO') {
@@ -132,43 +129,59 @@ class WorkflowService {
   }
 
   /**
-   * Asigna el primer firmante del documento basado en su flujo.
+   * Asigna el primer firmante del documento basado en su flujo (Subcriterio -> Criterio -> Global).
    */
   async asignarFirmanteInicial(documento, options = {}) {
     const tx = options.transaction;
     const queryOpts = tx ? { transaction: tx } : {};
     let flujoId = documento.flujo_id;
 
-    // Si el documento aún no tiene flujo (ej: recién creado), se determina:
     if (!flujoId) {
-      // Buscar Criterio -> Subcriterio / Indicador -> Actividad
-      const actividad = await Actividad.findByPk(documento.actividad_id, {
-        include: [
-          {
-            model: Subcriterio, as: 'subcriterio', required: false, include: [{
-              model: Criterio, as: 'criterio'
-            }]
-          },
-          {
-            model: Indicador, as: 'indicador', required: false, include: [{
-              model: Criterio, as: 'criterio'
-            }]
+      // 1. Buscar directamente en el Subcriterio (nuevo modelo principal de 6 niveles)
+      if (documento.subcriterio_id && Subcriterio?.findByPk) {
+        const subcriterio = await Subcriterio.findByPk(documento.subcriterio_id, {
+          include: [{ model: Criterio, as: 'criterio' }],
+          ...queryOpts,
+        });
+        if (subcriterio) {
+          if (subcriterio.flujo_id) {
+            flujoId = subcriterio.flujo_id;
+          } else if (subcriterio.criterio && subcriterio.criterio.flujo_id) {
+            flujoId = subcriterio.criterio.flujo_id;
           }
-        ],
-        ...queryOpts,
-      });
-
-      if (actividad) {
-        if (actividad.flujo_id) {
-          flujoId = actividad.flujo_id;
-        } else if (actividad.subcriterio && actividad.subcriterio.criterio) {
-          flujoId = actividad.subcriterio.criterio.flujo_id;
-        } else if (actividad.indicador && actividad.indicador.criterio) {
-          flujoId = actividad.indicador.criterio.flujo_id;
         }
       }
 
-      // Si no hay flujo en el Criterio ni Actividad, usar el global
+      // 2. Fallback por compatibilidad si viene actividad_id
+      if (!flujoId && documento.actividad_id && Actividad?.findByPk) {
+        const actividad = await Actividad.findByPk(documento.actividad_id, {
+          include: [
+            {
+              model: Subcriterio, as: 'subcriterio', required: false, include: [{
+                model: Criterio, as: 'criterio'
+              }]
+            },
+            {
+              model: Indicador, as: 'indicador', required: false, include: [{
+                model: Criterio, as: 'criterio'
+              }]
+            }
+          ],
+          ...queryOpts,
+        });
+
+        if (actividad) {
+          if (actividad.flujo_id) {
+            flujoId = actividad.flujo_id;
+          } else if (actividad.subcriterio && actividad.subcriterio.criterio) {
+            flujoId = actividad.subcriterio.criterio.flujo_id;
+          } else if (actividad.indicador && actividad.indicador.criterio) {
+            flujoId = actividad.indicador.criterio.flujo_id;
+          }
+        }
+      }
+
+      // 3. Si no hay flujo específico en Subcriterio ni Criterio, usar el flujo global
       if (!flujoId) {
         const global = await FlujoFirma.findOne({ where: { es_global: true }, ...queryOpts });
         if (!global) throw new Error('No existe flujo global de firmas configurado');
@@ -199,7 +212,6 @@ class WorkflowService {
 
   /**
    * Obtiene la lista completa de firmantes planificados en el flujo asignado al documento.
-   * Útil para generar los sellos visuales antes de la primera firma en prepararDocumento.
    */
   async obtenerFirmantesProgramados(documento) {
     if (!documento.flujo_id) return [];
@@ -245,7 +257,6 @@ class WorkflowService {
    */
   async _buscarFirmante(rol_id, facultad_id) {
     if (facultad_id) {
-      // 1. Mismo rol + misma facultad (relación M:N)
       const conFacultadMN = await Usuario.findOne({
         where: { activo: true },
         include: [
@@ -263,7 +274,6 @@ class WorkflowService {
       });
       if (conFacultadMN) return conFacultadMN;
 
-      // 2. Mismo rol + misma facultad (campo escalar legacy)
       const conFacultad = await Usuario.findOne({
         where: { facultad_id, activo: true },
         include: [{

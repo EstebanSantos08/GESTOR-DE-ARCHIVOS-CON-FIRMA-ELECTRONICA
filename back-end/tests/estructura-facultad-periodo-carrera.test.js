@@ -9,8 +9,7 @@ const {
   Periodo,
   Criterio,
   Subcriterio,
-  Indicador,
-  Actividad,
+  Documento,
   Usuario,
   Rol,
 } = require('../Model');
@@ -32,7 +31,7 @@ const app = createApp();
 
 jest.setTimeout(30000);
 
-describe('Estructura Jerárquica: Universidad -> Facultad -> Período -> Carrera -> Criterio -> Subcriterio -> Actividad', () => {
+describe('Estructura Jerárquica (6 Niveles): Universidad -> Facultad -> Período -> Carrera -> Criterio -> Subcriterio -> Documentos', () => {
   let tokenAdmin;
   let adminUser;
   let universidadTest;
@@ -103,7 +102,7 @@ describe('Estructura Jerárquica: Universidad -> Facultad -> Período -> Carrera
     await sequelize.close();
   });
 
-  test('POST /api/parametrizacion/periodos con facultad_id debe crear el período y autogenerar la estructura para Software y RVV', async () => {
+  test('POST /api/parametrizacion/periodos con facultad_id debe crear el período y autogenerar Criterios y Subcriterios para Software y RVV', async () => {
     const res = await request(app)
       .post('/api/parametrizacion/periodos')
       .set('Authorization', `Bearer ${tokenAdmin}`)
@@ -133,7 +132,6 @@ describe('Estructura Jerárquica: Universidad -> Facultad -> Período -> Carrera
     expect(criteriosSoftware.length).toBe(5);
     expect(criteriosRVV.length).toBe(5);
 
-    // Los IDs de los criterios de Software deben ser distintos de los de RVV
     const idsSoftware = criteriosSoftware.map(c => c.id);
     const idsRVV = criteriosRVV.map(c => c.id);
     expect(idsSoftware.some(id => idsRVV.includes(id))).toBe(false);
@@ -149,15 +147,19 @@ describe('Estructura Jerárquica: Universidad -> Facultad -> Período -> Carrera
     expect(subcriteriosSoftware.length).toBe(31);
     expect(subcriteriosRVV.length).toBe(31);
 
-    // Verificar que también se crearon actividades para los subcriterios
-    const subcriterioIdsSoft = subcriteriosSoftware.map(s => s.id);
-    const actividadesSoft = await Actividad.findAll({
-      where: { subcriterio_id: subcriterioIdsSoft },
+    // Verificar que un documento se puede vincular directamente al subcriterio
+    const docTest = await Documento.create({
+      nombre_original: 'evidencia-subcriterio-1.pdf',
+      ruta_archivo: 'documentos/originales/test.pdf',
+      estado: 'PENDIENTE',
+      subido_por_id: adminUser.id,
+      facultad_id: facultadTest.id,
+      subcriterio_id: subcriteriosSoftware[0].id,
     });
-    expect(actividadesSoft.length).toBeGreaterThanOrEqual(31);
+    expect(docTest.subcriterio_id).toBe(subcriteriosSoftware[0].id);
   });
 
-  test('GET /api/parametrizacion/estructura debe retornar la jerarquía Universidad -> Facultades -> Periodos -> Carreras -> Criterios -> Subcriterios -> Actividades', async () => {
+  test('GET /api/parametrizacion/estructura debe retornar la jerarquía Universidad -> Facultades -> Periodos -> Carreras -> Criterios -> Subcriterios (con cantidadDocumentos y documentos)', async () => {
     const res = await request(app)
       .get('/api/parametrizacion/estructura')
       .set('Authorization', `Bearer ${tokenAdmin}`);
@@ -172,14 +174,10 @@ describe('Estructura Jerárquica: Universidad -> Facultad -> Período -> Carrera
     const fac = uni.facultades.find(f => f.id === facultadTest.id);
     expect(fac).toBeDefined();
 
-    // Nivel Períodos cuelga de Facultad
     expect(Array.isArray(fac.periodos)).toBe(true);
-    expect(fac.periodos.length).toBeGreaterThanOrEqual(1);
-
     const per = fac.periodos.find(p => p.nombre === '2026-I Test');
     expect(per).toBeDefined();
 
-    // Dentro del período cuelgan las Carreras
     expect(Array.isArray(per.carreras)).toBe(true);
     const carrSoft = per.carreras.find(c => c.id === carreraSoftware.id);
     const carrRvv = per.carreras.find(c => c.id === carreraRVV.id);
@@ -187,25 +185,21 @@ describe('Estructura Jerárquica: Universidad -> Facultad -> Período -> Carrera
     expect(carrSoft).toBeDefined();
     expect(carrRvv).toBeDefined();
 
-    // Dentro de cada Carrera cuelgan sus Criterios
     expect(Array.isArray(carrSoft.criterios)).toBe(true);
     expect(carrSoft.criterios.length).toBe(5);
 
-    // Dentro de cada Criterio cuelgan los Subcriterios (y su alias indicadores)
     const crit1 = carrSoft.criterios[0];
     expect(Array.isArray(crit1.subcriterios)).toBe(true);
-    expect(Array.isArray(crit1.indicadores)).toBe(true);
     expect(crit1.subcriterios.length).toBeGreaterThan(0);
 
-    // Dentro de cada Subcriterio cuelgan las Actividades
+    // Dentro de cada Subcriterio se recibe directamente cantidadDocumentos y documentos[]
     const sub1 = crit1.subcriterios[0];
-    expect(Array.isArray(sub1.actividades)).toBe(true);
-    expect(sub1.actividades.length).toBeGreaterThan(0);
-    expect(sub1.actividades[0]).toHaveProperty('nombre');
+    expect(sub1).toHaveProperty('cantidadDocumentos');
+    expect(sub1.cantidadDocumentos).toBeGreaterThanOrEqual(1);
+    expect(Array.isArray(sub1.documentos)).toBe(true);
   });
 
   test('CRUD /api/parametrizacion/subcriterios permite listar, crear y asignar responsables', async () => {
-    // 1. Listar subcriterios
     const resList = await request(app)
       .get('/api/parametrizacion/subcriterios')
       .set('Authorization', `Bearer ${tokenAdmin}`);
@@ -217,7 +211,6 @@ describe('Estructura Jerárquica: Universidad -> Facultad -> Período -> Carrera
     expect(sub).toHaveProperty('numero');
     expect(sub).toHaveProperty('nombre');
 
-    // 2. Asignar responsables
     const resResp = await request(app)
       .post(`/api/parametrizacion/subcriterios/${sub.id}/responsables`)
       .set('Authorization', `Bearer ${tokenAdmin}`)

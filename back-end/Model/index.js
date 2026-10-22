@@ -34,13 +34,10 @@ Usuario.belongsToMany(Actividad, { through: UsuarioActividad, as: 'actividades',
 Actividad.belongsToMany(Usuario, { through: UsuarioActividad, as: 'usuarios', foreignKey: 'actividad_id', otherKey: 'usuario_id' });
 
 // ─── Usuario ↔ Carrera (M:N) ────────────────────────────────────────────────
-// Un usuario puede estar asignado a múltiples carreras y una carrera tiene
-// múltiples usuarios (docentes, directores, responsables). La FK directa
-// carrera_id fue eliminada del modelo Usuario en favor de esta tabla pivote.
 Usuario.belongsToMany(Carrera, { through: UsuarioCarrera, as: 'carreras', foreignKey: 'usuario_id' });
 Carrera.belongsToMany(Usuario, { through: UsuarioCarrera, as: 'usuarios', foreignKey: 'carrera_id' });
 
-// ─── Jerarquía: Universidad → Facultad → Carrera → Período → Criterio → Indicador → Actividad
+// ─── Jerarquía: Universidad → Facultad → Período → Carrera → Criterio → Subcriterio → Documento
 Facultad.belongsTo(Universidad, { foreignKey: 'universidad_id', as: 'universidad' });
 Universidad.hasMany(Facultad, { foreignKey: 'universidad_id', as: 'facultades' });
 
@@ -61,7 +58,7 @@ Periodo.hasMany(Criterio, { foreignKey: 'periodo_id', as: 'criterios' });
 Criterio.belongsTo(Carrera, { foreignKey: 'carrera_id', as: 'carrera' });
 Carrera.hasMany(Criterio, { foreignKey: 'carrera_id', as: 'criterios' });
 
-// ─── Criterio ↔ Subcriterio (31 Subcriterios por Criterio) ───────────────────
+// ─── Criterio ↔ Subcriterio (31 Subcriterios en los 5 Criterios) ─────────────
 Criterio.hasMany(Subcriterio, { foreignKey: 'criterio_id', as: 'subcriterios' });
 Subcriterio.belongsTo(Criterio, { foreignKey: 'criterio_id', as: 'criterio' });
 
@@ -69,7 +66,7 @@ Subcriterio.belongsTo(Criterio, { foreignKey: 'criterio_id', as: 'criterio' });
 Subcriterio.belongsToMany(Usuario, { through: 'subcriterios_responsables', as: 'responsables', foreignKey: 'subcriterio_id' });
 Usuario.belongsToMany(Subcriterio, { through: 'subcriterios_responsables', as: 'subcriteriosAsignados', foreignKey: 'usuario_id' });
 
-// ─── Subcriterio ↔ Actividad ────────────────────────────────────────────────
+// ─── Subcriterio ↔ Actividad (compatibilidad legacy) ────────────────────────
 Subcriterio.hasMany(Actividad, { foreignKey: 'subcriterio_id', as: 'actividades' });
 Actividad.belongsTo(Subcriterio, { foreignKey: 'subcriterio_id', as: 'subcriterio' });
 
@@ -89,10 +86,12 @@ Indicador.hasMany(Actividad, { foreignKey: 'indicador_id', as: 'actividades' });
 Actividad.belongsToMany(Usuario, { through: 'actividades_usuarios', as: 'usuariosAsignados', foreignKey: 'actividad_id' });
 Usuario.belongsToMany(Actividad, { through: 'actividades_usuarios', as: 'actividadesAsignadas', foreignKey: 'usuario_id' });
 
-// ─── Documento ──────────────────────────────────────────────────────────────
+// ─── Documento (vinculado directamente a Subcriterio) ───────────────────────
 Documento.belongsTo(Usuario, { foreignKey: 'subido_por_id', as: 'subidoPor' });
 Documento.belongsTo(Usuario, { foreignKey: 'firmante_actual_id', as: 'firmanteActual' });
 Documento.belongsTo(Facultad, { foreignKey: 'facultad_id', as: 'facultad' });
+Documento.belongsTo(Subcriterio, { foreignKey: 'subcriterio_id', as: 'subcriterio' });
+Subcriterio.hasMany(Documento, { foreignKey: 'subcriterio_id', as: 'documentos' });
 Documento.belongsTo(Actividad, { foreignKey: 'actividad_id', as: 'actividad' });
 Actividad.hasMany(Documento, { foreignKey: 'actividad_id', as: 'documentos' });
 
@@ -108,6 +107,9 @@ Usuario.hasMany(PasoFirma, { foreignKey: 'usuario_id', as: 'pasosFirma' });
 
 Criterio.belongsTo(FlujoFirma, { foreignKey: 'flujo_id', as: 'flujoFirma' });
 FlujoFirma.hasMany(Criterio, { foreignKey: 'flujo_id', as: 'criterios' });
+
+Subcriterio.belongsTo(FlujoFirma, { foreignKey: 'flujo_id', as: 'flujoFirma' });
+FlujoFirma.hasMany(Subcriterio, { foreignKey: 'flujo_id', as: 'subcriterios' });
 
 Documento.belongsTo(FlujoFirma, { foreignKey: 'flujo_id', as: 'flujoFirma' });
 FlujoFirma.hasMany(Documento, { foreignKey: 'flujo_id', as: 'documentos' });
@@ -132,4 +134,3 @@ module.exports = {
   UsuarioFacultad,
   UsuarioActividad,
 };
-

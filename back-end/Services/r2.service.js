@@ -1,5 +1,8 @@
 'use strict';
 
+const fs = require('fs');
+const path = require('path');
+const { Readable } = require('stream');
 const {
   S3Client,
   HeadBucketCommand,
@@ -21,8 +24,6 @@ class ArchivoNoEncontradoError extends Error {
   }
 }
 
-// ─── Reglas de nombrado de Bucket R2 ─────────────────────────────────────
-// 3 a 63 caracteres, minúsculas, números y guiones, sin empezar ni terminar con guion.
 const REGEX_BUCKET_R2 = /^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/;
 
 function obtenerConfigR2() {
@@ -32,6 +33,17 @@ function obtenerConfigR2() {
   const bucketName = process.env.CLOUDFLARE_R2_BUCKET_NAME;
 
   return { accountId, accessKeyId, secretAccessKey, bucketName };
+}
+
+function usarAlmacenamientoLocal() {
+  const { accountId, accessKeyId, secretAccessKey, bucketName } = obtenerConfigR2();
+  const faltaR2 = !accountId || !accessKeyId || !secretAccessKey || !bucketName;
+  return faltaR2 && process.env.NODE_ENV !== 'production';
+}
+
+function rutaLocalParaClave(key) {
+  const baseDir = path.resolve(__dirname, '..', process.env.UPLOADS_DIR || './uploads');
+  return path.join(baseDir, key);
 }
 
 // ─── S3Client Singleton para Cloudflare R2 ────────────────────────────────
@@ -88,13 +100,13 @@ function _esErrorBucketYaExiste(err) {
   );
 }
 
-/**
- * Valida el nombre del bucket y asegura su existencia en Cloudflare R2.
- * Si no existe, lo crea automáticamente y valida su disponibilidad con reintentos exponenciales.
- *
- * @returns {Promise<string>} Nombre del bucket verificado
- */
 async function _asegurarBucketExisteInterno() {
+  if (usarAlmacenamientoLocal()) {
+    const baseDir = path.resolve(__dirname, '..', process.env.UPLOADS_DIR || './uploads');
+    fs.mkdirSync(baseDir, { recursive: true });
+    return 'local-dev-uploads';
+  }
+
   const { bucketName } = obtenerConfigR2();
 
   if (!bucketName || !REGEX_BUCKET_R2.test(bucketName)) {
@@ -105,7 +117,6 @@ async function _asegurarBucketExisteInterno() {
 
   const client = getS3Client();
 
-  // 1. Verificar si el bucket ya existe
   try {
     await client.send(new HeadBucketCommand({ Bucket: bucketName }));
     return bucketName;
@@ -120,7 +131,6 @@ async function _asegurarBucketExisteInterno() {
       throw new Error(`Error inesperado al consultar el bucket R2: ${err.message}`);
     }
 
-    // 2. Si es 404, crear el bucket
     console.log(`[R2] Bucket "${bucketName}" no encontrado. Creando automáticamente...`);
     try {
       await client.send(new CreateBucketCommand({ Bucket: bucketName }));
@@ -134,10 +144,8 @@ async function _asegurarBucketExisteInterno() {
       if (!_esErrorBucketYaExiste(createErr)) {
         throw new Error(`Error al crear el bucket en Cloudflare R2: ${createErr.message}`);
       }
-      // Si ya existe (concurrencia de múltiples réplicas), continuar
     }
 
-    // 3. Confirmar disponibilidad con hasta 3 reintentos y espera exponencial (500 ms, 1 s, 2 s)
     const esperas = [500, 1000, 2000];
     let disponible = false;
 
@@ -157,7 +165,6 @@ async function _asegurarBucketExisteInterno() {
     }
 
     if (!disponible) {
-      // Intento final directo
       await client.send(new HeadBucketCommand({ Bucket: bucketName }));
     }
 
@@ -165,29 +172,24 @@ async function _asegurarBucketExisteInterno() {
   }
 }
 
-/**
- * Función pública que cachea la promesa para evitar verificaciones concurrentes o duplicadas.
- * Si falla, limpia la caché para permitir un nuevo intento posterior.
- */
 function asegurarBucketExiste() {
   if (!bucketPromise) {
     bucketPromise = _asegurarBucketExisteInterno().catch((err) => {
-      bucketPromise = null; // Limpiar caché si falla
+      bucketPromise = null;
       throw err;
     });
   }
   return bucketPromise;
 }
 
-/**
- * Sube un buffer a Cloudflare R2.
- *
- * @param {string} key
- * @param {Buffer} buffer
- * @param {string} contentType
- * @returns {Promise<{ key: string, bucket: string, contentLength: number }>}
- */
 async function subirArchivoR2(key, buffer, contentType = 'application/pdf') {
+  if (usarAlmacenamientoLocal()) {
+    const filePath = rutaLocalParaClave(key);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, buffer);
+    return { key, bucket: 'local-dev-uploads', contentLength: buffer.length };
+  }
+
   const bucket = await asegurarBucketExiste();
   const client = getS3Client();
 
@@ -204,13 +206,15 @@ async function subirArchivoR2(key, buffer, contentType = 'application/pdf') {
   return { key, bucket, contentLength: buffer.length };
 }
 
-/**
- * Obtiene el contenido completo de un objeto en Cloudflare R2 como Buffer.
- *
- * @param {string} key
- * @returns {Promise<Buffer>}
- */
 async function obtenerBufferR2(key) {
+  if (usarAlmacenamientoLocal()) {
+    const filePath = rutaLocalParaClave(key);
+    if (!fs.existsSync(filePath)) {
+      throw new ArchivoNoEncontradoError(`Archivo "${key}" no encontrado en almacenamiento local`, key);
+    }
+    return fs.readFileSync(filePath);
+  }
+
   const bucket = await asegurarBucketExiste();
   const client = getS3Client();
 
@@ -232,13 +236,20 @@ async function obtenerBufferR2(key) {
   }
 }
 
-/**
- * Obtiene el flujo de lectura (Stream) y metadatos de un objeto en Cloudflare R2.
- *
- * @param {string} key
- * @returns {Promise<{ stream: import('stream').Readable, contentLength: number, contentType: string }>}
- */
 async function obtenerStreamR2(key) {
+  if (usarAlmacenamientoLocal()) {
+    const filePath = rutaLocalParaClave(key);
+    if (!fs.existsSync(filePath)) {
+      throw new ArchivoNoEncontradoError(`Archivo "${key}" no encontrado en almacenamiento local`, key);
+    }
+    const stat = fs.statSync(filePath);
+    return {
+      stream: fs.createReadStream(filePath),
+      contentLength: stat.size,
+      contentType: 'application/pdf',
+    };
+  }
+
   const bucket = await asegurarBucketExiste();
   const client = getS3Client();
 
@@ -263,14 +274,16 @@ async function obtenerStreamR2(key) {
   }
 }
 
-/**
- * Elimina un objeto de Cloudflare R2. Ignora si el objeto no existe.
- *
- * @param {string} key
- * @returns {Promise<void>}
- */
 async function eliminarArchivoR2(key) {
   if (!key) return;
+  if (usarAlmacenamientoLocal()) {
+    const filePath = rutaLocalParaClave(key);
+    if (fs.existsSync(filePath)) {
+      try { fs.unlinkSync(filePath); } catch {}
+    }
+    return;
+  }
+
   const bucket = await asegurarBucketExiste();
   const client = getS3Client();
 
@@ -288,13 +301,15 @@ async function eliminarArchivoR2(key) {
   }
 }
 
-/**
- * Elimina todos los objetos con el prefijo indicado de manera paginada en lotes de hasta 1000.
- *
- * @param {string} prefix
- * @returns {Promise<number>} Cantidad de objetos eliminados
- */
 async function eliminarPorPrefijoR2(prefix) {
+  if (usarAlmacenamientoLocal()) {
+    const dirPath = rutaLocalParaClave(prefix);
+    if (fs.existsSync(dirPath)) {
+      fs.rmSync(dirPath, { recursive: true, force: true });
+    }
+    return 0;
+  }
+
   const bucket = await asegurarBucketExiste();
   const client = getS3Client();
   let totalEliminados = 0;
@@ -311,7 +326,6 @@ async function eliminarPorPrefijoR2(prefix) {
 
     if (listado.Contents && listado.Contents.length > 0) {
       const objetosParaBorrar = listado.Contents.map((obj) => ({ Key: obj.Key }));
-      // Cloudflare R2 / S3 admite hasta 1000 claves por DeleteObjectsCommand
       await client.send(
         new DeleteObjectsCommand({
           Bucket: bucket,

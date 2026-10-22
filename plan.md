@@ -1,160 +1,79 @@
-El plan de arquitectura y ejecución para el entorno de pruebas queda definido con los dos cambios estructurales confirmados:
+# 📋 Plan de Arquitectura, Reorganización y Mejora de Usabilidad (Entorno de Pruebas `test`)
 
-1. **Renombrado / Equivalencia (`Indicador` → `Subcriterio`):** Los 5 Criterios oficiales agruparán los **31 Subcriterios** (antes llamados Indicadores), y de cada Subcriterio colgarán sus **Actividades**.
+## 🎯 Estado Actual (Fases 1 a 4 — Completadas)
 
-
-2. **Nuevo Orden Jerárquico y Auto-Generación por Carrera (`Universidad → Facultad → Período → Carrera → Criterio → Subcriterio → Actividad`):** Al seleccionar **Universidad + Facultad** y crear un **Período** (ej. `2026-I`), el sistema generará automáticamente dentro de ese período las carpetas separadas para **cada carrera activa de esa facultad** (ej. *Software*, *RVV*, *Robótica*, *TI*, *BM*) con todo su árbol independiente de `Criterio → Subcriterio → Actividad`.
-
-
-
----
-
-## 🏛️ Nueva Jerarquía Documental (7 Niveles)
-
-```text
-Universidad (ej. UCACUE)
- └── Facultad (ej. Facultad de Ingeniería)
-      └── Período Académico (ej. 2026-I — se crea a nivel Facultad)
-           ├── 📁 Carrera: Software
-           │    └── Criterio (1 al 5)
-           │         └── — Subcriterio (1 al 31)
-           │              └── — Actividad (Informe de Evidencias / Matriz...)
-           │                   └── 📄 Documentos PDF (aislados para Software)
-           │
-           └── 📁 Carrera: RVV (Realidad Virtual)
-                └── Criterio (1 al 5)
-                     └── — Subcriterio (1 al 31)
-                          └── — Actividad (Informe de Evidencias / Matriz...)
-                               └── 📄 Documentos PDF (aislados para RVV)
-
-```
+1. **Eliminación del nivel `Actividad` (Subida directa en `Subcriterio`):** ✅ Completado
+2. **Jerarquía Documental Simplificada (`Universidad → Facultad → Período → Carrera → Criterio → Subcriterio → PDF`):** ✅ Completado
+3. **Tablas Estructuradas para `Criterios` y `Subcriterios` en `ParametrizacionAdmin.jsx`:** ✅ Completado
 
 ---
 
-## 🛠️ Plan de Trabajo Paso a Paso (Entorno de Pruebas)
+## 🚀 Fase 5: Plan de Mejora de Usabilidad (UX) — "De 6 Clics a 1 Solo Paso"
 
-### Paso 1: Modelos Sequelize y Relaciones (`back-end/Model/`)
+### 🔍 Diagnóstico: ¿Por qué hoy se sienten muchos pasos?
 
-Para que el cambio sea limpio, cumpla con el requerimiento de "crear tablas para criterio, subcriterio y actividades" y no rompa ninguna prueba existente:
+1. **En el Explorador de Archivos ([`ExploradorDeArchivos.jsx`](file:///c:/Users/User/Desktop/PROYECTOS%20PERSONALES/Gestion%20de%20Archivos/front-end/src/views/ExploradorDeArchivos.jsx)):**
+   - **Problema actual (6 pantallas separadas):** Para subir un solo PDF, el usuario tiene que hacer **6 clics secuenciales**:
+     `1. Clic en Universidad → 2. Clic en Facultad → 3. Clic en Período → 4. Clic en Carrera → 5. Clic en Criterio → 6. Clic en Subcriterio → Subir PDF`.
+   - Si el usuario necesita subir evidencias en 10 subcriterios distintos de una misma carrera, tiene que **entrar y salir por los breadcrumbs una y otra vez**.
+   - Además, casi siempre hay **1 sola Universidad** (y muchas veces 1 Facultad o Período activo), por lo que pedir clic en esos niveles es innecesario.
 
-| Modelo / Archivo | Cambios Exactos |
-| --- | --- |
-| **`Model/Periodo.js`** | Cambiar pertenencia a Facultad (`facultad_id` obligatorio) y conservar `carrera_id` (`allowNull: true`) por retrocompatibilidad. Así un Período pertenece a la Facultad escogida.
-
- |
-| **`Model/Criterio.js`** | Agregar `carrera_id` (`allowNull: true`) además de `periodo_id`. De esta forma, dentro de un mismo `periodo_id`, las carpetas de Criterios de **Software** (`carrera_id = 1`) quedan físicamente separadas de las de **RVV** (`carrera_id = 2`).
-
- |
-| **`Model/Subcriterio.js`** *(Nuevo)* | Crear el modelo `Subcriterio` (`tableName: 'subcriterios'`) con `id`, `numero` (1-31), `nombre`, `descripcion`, `criterio_id`, `responsable_id`, `responsable_nombre`, `activo` (estructura idéntica a `Indicador.js`) y tabla pivote `subcriterios_responsables`.
-
- |
-| **`Model/Actividad.js`** | Agregar la FK `subcriterio_id` (`allowNull: true`) mantendo `indicador_id` (`allowNull: true`) sincronizado para que cualquier código legacy siga funcionando.
-
- |
-| **`Model/index.js`** | Declarar asociaciones:<br>
-
-<br>• `Facultad.hasMany(Periodo, { foreignKey: 'facultad_id', as: 'periodos' })`<br><br>
-
-<br>• `Criterio.belongsTo(Carrera, { foreignKey: 'carrera_id', as: 'carrera' })`<br><br>
-
-<br>• `Criterio.hasMany(Subcriterio, { foreignKey: 'criterio_id', as: 'subcriterios' })`<br><br>
-
-<br>• `Subcriterio.hasMany(Actividad, { foreignKey: 'subcriterio_id', as: 'actividades' })`<br><br>
-
-<br>• Exportar `Subcriterio` junto a los demás modelos.
-
- |
+2. **En Parametrización ([`ParametrizacionAdmin.jsx`](file:///c:/Users/User/Desktop/PROYECTOS%20PERSONALES/Gestion%20de%20Archivos/front-end/src/views/ParametrizacionAdmin.jsx)):**
+   - **Contexto desconectado entre pestañas:** Al cambiar entre `Período`, `Carrera`, `Criterio` y `Subcriterio`, el usuario tiene que volver a elegir `Universidad → Facultad → Período → Carrera` en cada pestaña.
+   - **Formularios grandes siempre abiertos arriba de las tablas:** Como al crear una Carrera/Período ya se autogeneran los **5 Criterios y 31 Subcriterios**, el 95% de las veces el administrador entra a **consultar, filtrar o editar en la tabla**, pero el formulario de "Nuevo Criterio / Nuevo Subcriterio" ocupa la mitad superior de la pantalla.
+   - **Falta de puente directo con el Explorador:** Desde la tabla de Subcriterios en Parametrización no hay un botón para saltar directo a subir/ver los PDFs de ese subcriterio.
 
 ---
 
-### Paso 2: Servicio y Controlador de Auto-Generación (`back-end/Controller/` y `Services/`)
+### 💡 Propuesta de Mejoras (Reducción de 6 pasos a 1–2 clics)
 
-1. **Catálogo Base de los 5 Criterios y 31 Subcriterios (`back-end/Utils/catalogoAcreditacion.js`):**
-* Centralizar los 5 Criterios oficiales y los 31 Subcriterios (con sus actividades base: *"Informe de Evidencias - [Subcriterio]"* y *"Matriz Consolidada - [Subcriterio]"*) en un módulo reutilizable tanto por el `seed.js` como por el endpoint de creación de Período.
+#### Mejora 1: Barra Superior de Contexto Rápido + Auto-selección Inteligente en el Explorador
+En [`ExploradorDeArchivos.jsx`](file:///c:/Users/User/Desktop/PROYECTOS%20PERSONALES/Gestion%20de%20Archivos/front-end/src/views/ExploradorDeArchivos.jsx):
+- **Auto-salto de niveles únicos y memoria de sesión (`localStorage`):**
+  - Si solo existe **1 Universidad**, se selecciona automáticamente al entrar (ahorra 1 paso siempre).
+  - Si la universidad tiene **1 sola Facultad** o **1 solo Período**, se preselecciona automáticamente.
+  - Se guarda en `localStorage` la última `Facultad + Período + Carrera` usada por el usuario para que al volver al Explorador aterrice directamente en su Carrera de trabajo.
+- **Selectores Rápidos en la Cabecera (`Facultad ▾` | `Período ▾` | `Carrera ▾`):**
+  - El usuario puede cambiar de Carrera o Período desde cualquier pantalla con **1 solo clic en el selector superior**, sin tener que retroceder a `Inicio`.
 
+#### Mejora 2: Vista Matriz / Tabla Interactiva de Carrera en el Explorador (Subir PDF en 1 Clic)
+En [`ExploradorDeArchivos.jsx`](file:///c:/Users/User/Desktop/PROYECTOS%20PERSONALES/Gestion%20de%20Archivos/front-end/src/views/ExploradorDeArchivos.jsx):
+- Cuando el usuario está dentro de una **Carrera** (ej. *Software — 2026-I*), en lugar de obligarlo a abrir carpetas de Criterios y luego carpetas de Subcriterios una por una:
+  - Mostrar los **5 Criterios como secciones/acordeones o pestañas filtro (`Todos | 1. Currículo | 2. Academia...`)** con la **Tabla directa de los 31 Subcriterios**.
+  - **Indicador de Progreso de la Carrera:** Barra superior que muestre cuántos de los 31 subcriterios ya tienen documentos cargados (ej. `14 / 31 subcriterios con evidencia (45%)`).
+  - **Acción rápida en cada fila de Subcriterio:**
+    - Botón **`[+ Subir PDF]` directo en la fila** (abre el selector de archivo o permite soltar el PDF sobre la fila sin cambiar de pantalla).
+    - Botón **`[Ver documentos (N)]`** que despliega los PDFs de ese subcriterio ahí mismo (o abre su vista detalle), permitiendo ver, descargar o firmar sin perder de vista los demás subcriterios.
 
-
-
-2. **Generación Automática al crear Período (`POST /api/parametrizacion/periodos`):**
-* Cuando el usuario envíe `{ nombre: "2026-I", facultad_id: X, generar_estructura: true }` (o por defecto al crear período en una facultad):
-
-
-1. Inicia una transacción `sequelize.transaction()`.
-
-
-2. Crea el `Periodo` vinculado a `facultad_id`.
-
-
-3. Busca todas las carreras activas de esa facultad (`Carrera.findAll({ where: { facultad_id, activo: true } })`, ej. *Software*, *RVV*, etc.).
-
-
-4. Por cada carrera encontrada, inserta sus **5 Criterios** (`periodo_id`, `carrera_id`), sus **31 Subcriterios** (`criterio_id`) y sus **Actividades** (`subcriterio_id`).
-
-
-5. Si luego se agrega una nueva carrera a la facultad, también tendrá un helper para generarle sus carpetas en el período activo.
-
-
-
-
-3.  Árbol `GET /api/parametrizacion/estructura`:
-* Actualizar el árbol JSON para que devuelva la jerarquía en el nuevo orden exacto:
-`Universidad → facultades[] → periodos[] → carreras[] → criterios[] → subcriterios[] (con alias indicadores[]) → actividades[]`.
-
-
-
-
-4. **Endpoints CRUD `/api/parametrizacion/subcriterios`:**
-* Crear rutas `GET`, `POST`, `PUT`, `DELETE` y `POST /subcriterios/:id/responsables` en `parametrizacion.routes.js` (manteniendo `/indicadores` apuntando al mismo controlador por compatibilidad).
-
-
-
-
-5. **`workflow.service.js`:**
-* En `asignarFirmanteInicial`, permitir resolver el `flujo_id` subiendo por `Actividad → Subcriterio → Criterio` (además del fallback a `FlujoGlobal`).
-
-
-
-
+#### Mejora 3: Contexto Persistente y Formularios Colapsables en `ParametrizacionAdmin.jsx`
+En [`ParametrizacionAdmin.jsx`](file:///c:/Users/User/Desktop/PROYECTOS%20PERSONALES/Gestion%20de%20Archivos/front-end/src/views/ParametrizacionAdmin.jsx):
+- **Barra de Contexto Compartida:** Si seleccionas una `Universidad`, `Facultad`, `Período` o `Carrera` en una pestaña, esa selección se mantiene activa al pasar a `Criterio` o `Subcriterio` (y se autoselecciona la primera Universidad/Facultad por defecto).
+- **Tabla como protagonista en `Criterio` y `Subcriterio`:**
+  - Mostrar primero la **Barra de Filtros + Tabla Estructurada** para trabajar de inmediato.
+  - Convertir el formulario de "Agregar Criterio / Subcriterio manual" en un panel desplegable con un botón **`+ Nuevo Subcriterio`** (ya que los 31 subcriterios se crean automáticamente con el período/carrera).
+- **Botón de Salto Directo `[📂 Documentos]` en la tabla de Subcriterios:**
+  - En cada fila de la tabla de Subcriterios en Parametrización, incluir un botón que lleve directamente a ese Subcriterio en el Explorador de Archivos.
 
 ---
 
-### Paso 3: Suite de Pruebas en Jest + Supertest (`back-end/tests/`)
+### 📊 Comparativa de Pasos (Antes vs. Después)
 
-Crearemos un archivo de prueba dedicado `back-end/tests/estructura-facultad-periodo-carrera.test.js` que validará en el entorno de pruebas:
-
-1. Creación de las tablas `criterios`, `subcriterios` y `actividades`.
-2. Creación de una Universidad, una Facultad y dos carreras: **`Software`** y **`RVV`**.
-3. Llamada a `POST /api/parametrizacion/periodos` escogiendo Universidad y Facultad:
-* Verifica que el período se cree para la Facultad.
-* Verifica que dentro del período existan carpetas separadas para **`Software`** y para **`RVV`**.
-* Verifica que tanto `Software` como `RVV` tengan sus propios Criterios → Subcriterios (1 al 31) → Actividades con IDs independientes en base de datos.
-
-
-4. Verificación de que `GET /api/parametrizacion/estructura` devuelva el árbol en el orden `Universidad → Facultad → Período → Carrera → Criterio → Subcriterio → Actividad`.
+| Tarea Frecuente | Antes | Con este Plan UX |
+| :--- | :--- | :--- |
+| **Entrar al sistema y llegar a los 31 Subcriterios de una Carrera** | **5 clics** (`Universidad → Facultad → Período → Carrera → Criterio`) | **0 a 1 clic** (Auto-selección inteligente + Vista Matriz de Carrera) |
+| **Subir PDFs en 5 subcriterios distintos de la misma carrera** | **15+ clics** (Entrar a Criterio → Entrar a Subcriterio → Subir → Volver atrás → Repetir) | **5 clics** (Botón `[+ Subir PDF]` directo en cada fila de la tabla de la Carrera) |
+| **Saber qué subcriterios de una carrera están vacíos (sin PDFs)** | Entrar criterio por criterio revisando tarjetas | **De un vistazo** (Semáforo `Con evidencia / Sin archivos` + filtro `Solo pendientes` + barra de progreso `X/31`) |
+| **Filtrar Subcriterios en Parametrización** | Elegir 5 dropdowns cada vez que cambias de pestaña | **Instantáneo** (Contexto compartido y preseleccionado) |
 
 ---
 
-### Paso 4: Actualización del Front-End (`front-end/src/`)
+### 📁 Archivos a Modificar en la Fase 5
 
-1. **`ExploradorDeArchivos.jsx`:**
-* Cambiar el orden de navegación de niveles:
-`universidades` → `facultades` → **`periodos`** → **`carreras`** (*Software*, *RVV*...) → `criterios` → **`subcriterios`** → `actividades` → `documentos`.
-
-
-* Actualizar `Breadcrumbs` para mostrar: `Inicio > UCACUE > Facultad de Ingeniería > 2026-I > Software > 1. CURRÍCULO > [1] Perfil de egreso > Informe de Evidencias`.
-
-
-
-
-2. **`ParametrizacionAdmin.jsx` y `AppContext.jsx`:**
-* Reordenar las pestañas a: `Universidad | Facultad | Período | Carrera | Criterio | Subcriterio | Actividad | Docentes | Flujos Firma`.
-
-
-* En la pestaña **Período**, pedir únicamente **Universidad** + **Facultad** + **Nombre del Período** y mostrar un mensaje informativo: *"Al crear el período se generarán automáticamente las carpetas de Criterios, Subcriterios y Actividades por separado para cada carrera de la facultad escogida"*.
-
-
-* Cambiar todas las etiquetas visuales de "Indicador / Indicadores" a **"Subcriterio / Subcriterios"** en formularios y selectores.
-
-
-
-
+1. **[`front-end/src/views/ExploradorDeArchivos.jsx`](file:///c:/Users/User/Desktop/PROYECTOS%20PERSONALES/Gestion%20de%20Archivos/front-end/src/views/ExploradorDeArchivos.jsx):**
+   - Auto-selección de Universidad/Facultad/Período/Carrera (con persistencia en `localStorage` y soporte de `navParams` para salto directo).
+   - Barra superior de selectores rápidos (`Facultad ▾`, `Período ▾`, `Carrera ▾`).
+   - Vista unificada de Carrera: filtro rápido por Criterio (`Todos`, `1..5`), barra de avance (`X/31 subcriterios con documentos`), filtro de estado (`Todos / Con documentos / Sin documentos`), subida directa `[+ Subir PDF]` desde la fila del subcriterio y despliegue inline o modal de sus documentos.
+2. **[`front-end/src/views/ParametrizacionAdmin.jsx`](file:///c:/Users/User/Desktop/PROYECTOS%20PERSONALES/Gestion%20de%20Archivos/front-end/src/views/ParametrizacionAdmin.jsx):**
+   - Auto-preselección de Universidad/Facultad/Período/Carrera y sincronización del contexto entre pestañas.
+   - Formulario de creación manual colapsable (`+ Nuevo Criterio` / `+ Nuevo Subcriterio`) para dar prioridad visual a las tablas.
+   - Botón de acceso directo desde cada fila de Subcriterio hacia sus documentos en el Explorador.

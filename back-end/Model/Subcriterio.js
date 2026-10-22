@@ -23,6 +23,14 @@ const Subcriterio = sequelize.define('Subcriterio', {
     allowNull: true,
     comment: 'Texto con el nombre o cargo del responsable (e.g. "Directores de Carrera")',
   },
+  requiere_firma: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true,
+  },
+  flujo_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
   activo: { type: DataTypes.BOOLEAN, defaultValue: true },
 }, {
   tableName: 'subcriterios',

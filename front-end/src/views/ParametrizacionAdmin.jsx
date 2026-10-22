@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Check, Building2, BookOpen, GraduationCap, CalendarDays, Microscope, Target, ClipboardList, Pencil, Trash2, X, Save, UserCheck, UserPlus, Search, Info } from 'lucide-react';
+import { Plus, Check, Building2, BookOpen, GraduationCap, CalendarDays, Microscope, Target, Pencil, Trash2, X, Save, UserCheck, UserPlus, Search, Info, FileText, FolderOpen, ChevronDown, ChevronUp } from 'lucide-react';
 import { useApp } from '../context/useApp';
 import { RESPONSABLES_PREDEFINIDOS, CRITERIOS_PREDEFINIDOS, INDICADORES_PREDEFINIDOS } from '../data/parametrosPredefinidos';
 import ModalDocenteForm from '../components/modals/ModalDocenteForm';
@@ -44,13 +44,13 @@ export default function ParametrizacionAdmin() {
     agregarPeriodo, actualizarPeriodo, eliminarPeriodo,
     agregarCriterio, actualizarCriterio, eliminarCriterio,
     agregarIndicador, actualizarIndicador, eliminarIndicador, asignarResponsablesIndicador,
-    agregarActividad, actualizarActividad, eliminarActividad, asignarUsuariosActividad,
     listarUsuarios,
     listarDocentes, eliminarDocente,
     flujosFirma, crearFlujo, actualizarFlujo, eliminarFlujo,
     listarRoles,
     listarFacultadesCatalogo, listarActividadesCatalogo,
     navParams,
+    navegarA,
   } = useApp();
 
   const [rolesBD, setRolesBD] = useState([]);
@@ -75,7 +75,7 @@ export default function ParametrizacionAdmin() {
 
   const actividadesDisponibles = catalogoActividades.length > 0
     ? catalogoActividades
-    : (universidades || []).flatMap(u => (u.facultades || []).flatMap(f => (f.carreras || []).flatMap(c => (c.periodos || []).flatMap(p => (p.criterios || []).flatMap(cr => (cr.indicadores || []).flatMap(i => i.actividades || []))))));
+    : (universidades || []).flatMap(u => (u.facultades || []).flatMap(f => (f.periodos || []).flatMap(p => (p.carreras || []).flatMap(ca => (ca.criterios || []).flatMap(cr => cr.subcriterios || cr.indicadores || [])))));
 
   const [usuariosDB, setUsuariosDB] = useState([]);
 
@@ -103,26 +103,81 @@ export default function ParametrizacionAdmin() {
     }
   };
 
-  const [tab, setTab] = useState(navParams?.tab || 'universidad');
+  const [tab, setTab] = useState(navParams?.tab || 'subcriterio');
 
   useEffect(() => {
     if (navParams?.tab) {
       setTab(navParams.tab);
     }
   }, [navParams]);
+
   const [exito, setExito] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [editando, setEditando] = useState(null); // { tipo, id, valor, meta }
   const [eliminandoId, setEliminandoId] = useState(null);
+
+  const [busquedaCriterio, setBusquedaCriterio] = useState('');
+  const [busquedaSubcriterio, setBusquedaSubcriterio] = useState('');
+  const [mostrarFormCriterio, setMostrarFormCriterio] = useState(false);
+  const [mostrarFormSubcriterio, setMostrarFormSubcriterio] = useState(false);
 
   const [fUniv, setFUniv] = useState({ nombre: '', siglas: '' });
   const [fFac,  setFfac]  = useState({ nombre: '', univId: '' });
   const [fCarr, setFCarr] = useState({ nombre: '', descripcion: '', univId: '', facId: '' });
   const [fPer,  setFPer]  = useState({ nombre: '', univId: '', facId: '' });
   const [fCrit, setFCrit] = useState({ nombre: '', univId: '', facId: '', perId: '', carrId: '', requiere_firma: true });
-  const [fInd,  setFInd]  = useState({ nombre: '', numero: '', responsablesIds: [], univId: '', facId: '', perId: '', carrId: '', critId: '' });
-  const [fAct,  setFAct]  = useState({ nombre: '', univId: '', facId: '', perId: '', carrId: '', critId: '', indId: '', informacion_ayuda: '', requiere_firma: true, flujo_id: '' });
+  const [fInd,  setFInd]  = useState({
+    nombre: '',
+    numero: '',
+    descripcion: '',
+    requiere_firma: true,
+    flujo_id: '',
+    responsablesIds: [],
+    univId: '',
+    facId: '',
+    perId: '',
+    carrId: '',
+    critId: '',
+  });
   const [fFlujo, setFFlujo] = useState({ nombre: '', es_global: false, pasos: [] });
+
+  // Auto-preseleccionar Universidad/Facultad/Período/Carrera inicial para evitar elegir 4 dropdowns cada vez
+  useEffect(() => {
+    if (!universidades || universidades.length === 0) return;
+    const u = universidades[0];
+    const f = u?.facultades?.[0];
+    const p = f?.periodos?.[f.periodos.length - 1] || f?.periodos?.[0];
+    const c = (p?.carreras || f?.carreras || [])?.[0];
+
+    const uId = u ? String(u.id) : '';
+    const fId = f ? String(f.id) : '';
+    const pId = p ? String(p.id) : '';
+    const cId = c ? String(c.id) : '';
+
+    setFfac(prev => prev.univId ? prev : { ...prev, univId: uId });
+    setFCarr(prev => prev.univId ? prev : { ...prev, univId: uId, facId: fId });
+    setFPer(prev => prev.univId ? prev : { ...prev, univId: uId, facId: fId });
+    setFCrit(prev => prev.univId ? prev : { ...prev, univId: uId, facId: fId, perId: pId, carrId: cId });
+    setFInd(prev => prev.univId ? prev : { ...prev, univId: uId, facId: fId, perId: pId, carrId: cId });
+  }, [universidades]);
+
+  function sincronizarContexto({ univId, facId, perId, carrId, critId = '' }) {
+    setFCrit(prev => ({
+      ...prev,
+      univId: univId ?? prev.univId,
+      facId: facId ?? prev.facId,
+      perId: perId ?? prev.perId,
+      carrId: carrId ?? prev.carrId,
+    }));
+    setFInd(prev => ({
+      ...prev,
+      univId: univId ?? prev.univId,
+      facId: facId ?? prev.facId,
+      perId: perId ?? prev.perId,
+      carrId: carrId ?? prev.carrId,
+      critId: critId,
+    }));
+  }
 
   function mostrarExito(msg) {
     setErrorMsg('');
@@ -175,7 +230,7 @@ export default function ParametrizacionAdmin() {
     try {
       await agregarPeriodo(Number(fPer.univId), Number(fPer.facId), { nombre: fPer.nombre });
       setFPer({ nombre: '', univId: '', facId: '' });
-      mostrarExito('Período creado exitosamente con sus carreras y estructura de acreditación');
+      mostrarExito('Período creado exitosamente con sus carreras, criterios y subcriterios');
     } catch (err) { mostrarError(err.message); }
   }
 
@@ -183,8 +238,12 @@ export default function ParametrizacionAdmin() {
     e.preventDefault();
     if (!fCrit.nombre || !fCrit.univId || !fCrit.facId || !fCrit.perId || !fCrit.carrId) return;
     try {
-      await agregarCriterio(Number(fCrit.univId), Number(fCrit.facId), Number(fCrit.carrId), Number(fCrit.perId), { nombre: fCrit.nombre, requiere_firma: fCrit.requiere_firma, flujo_id: null });
-      setFCrit({ nombre: '', univId: '', facId: '', perId: '', carrId: '', requiere_firma: true });
+      await agregarCriterio(Number(fCrit.univId), Number(fCrit.facId), Number(fCrit.carrId), Number(fCrit.perId), {
+        nombre: fCrit.nombre,
+        requiere_firma: fCrit.requiere_firma,
+        flujo_id: null,
+      });
+      setFCrit(prev => ({ ...prev, nombre: '', requiere_firma: true }));
       mostrarExito('Criterio creado exitosamente');
     } catch (err) { mostrarError(err.message); }
   }
@@ -193,27 +252,34 @@ export default function ParametrizacionAdmin() {
     e.preventDefault();
     if (!fInd.nombre || !fInd.numero || !fInd.univId || !fInd.facId || !fInd.perId || !fInd.carrId || !fInd.critId) return;
     try {
-      const nuevoInd = await agregarIndicador(Number(fInd.univId), Number(fInd.facId), Number(fInd.carrId), Number(fInd.perId), Number(fInd.critId), { nombre: fInd.nombre, numero: Number(fInd.numero) });
+      const nuevoInd = await agregarIndicador(
+        Number(fInd.univId),
+        Number(fInd.facId),
+        Number(fInd.carrId),
+        Number(fInd.perId),
+        Number(fInd.critId),
+        {
+          nombre: fInd.nombre,
+          numero: Number(fInd.numero),
+          descripcion: fInd.descripcion || undefined,
+          requiere_firma: fInd.requiere_firma,
+          flujo_id: fInd.flujo_id || null,
+          responsable_nombre: fInd.responsable_nombre || undefined,
+        }
+      );
       if (fInd.responsablesIds && fInd.responsablesIds.length > 0) {
         await asignarResponsablesIndicador(nuevoInd.id, fInd.responsablesIds);
       }
-      setFInd({ nombre: '', numero: '', responsablesIds: [], univId: '', facId: '', perId: '', carrId: '', critId: '' });
+      setFInd(prev => ({
+        ...prev,
+        nombre: '',
+        numero: '',
+        descripcion: '',
+        requiere_firma: true,
+        flujo_id: '',
+        responsablesIds: [],
+      }));
       mostrarExito('Subcriterio creado exitosamente');
-    } catch (err) { mostrarError(err.message); }
-  }
-
-  async function submitAct(e) {
-    e.preventDefault();
-    if (!fAct.nombre || !fAct.univId || !fAct.facId || !fAct.perId || !fAct.carrId || !fAct.critId || !fAct.indId) return;
-    try {
-      await agregarActividad(Number(fAct.univId), Number(fAct.facId), Number(fAct.carrId), Number(fAct.perId), Number(fAct.critId), Number(fAct.indId), {
-        nombre: fAct.nombre,
-        informacion_ayuda: fAct.informacion_ayuda,
-        requiere_firma: fAct.requiere_firma,
-        flujo_id: fAct.flujo_id || null,
-      });
-      setFAct({ nombre: '', univId: '', facId: '', perId: '', carrId: '', critId: '', indId: '', informacion_ayuda: '', requiere_firma: true, flujo_id: '' });
-      mostrarExito('Actividad creada exitosamente');
     } catch (err) { mostrarError(err.message); }
   }
 
@@ -262,16 +328,15 @@ export default function ParametrizacionAdmin() {
       } else if (tipo === 'criterio') {
         const payload = { ...valor, flujo_id: valor.flujo_id || null };
         await actualizarCriterio(id, meta.univId, meta.facId, meta.carrId, meta.perId, payload);
-      } else if (tipo === 'indicador') {
-        await actualizarIndicador(id, meta.univId, meta.facId, meta.carrId, meta.perId, meta.critId, valor);
+      } else if (tipo === 'indicador' || tipo === 'subcriterio') {
+        const payload = {
+          ...valor,
+          numero: Number(valor.numero),
+          flujo_id: valor.flujo_id || null,
+        };
+        await actualizarIndicador(id, meta.univId, meta.facId, meta.carrId, meta.perId, meta.critId, payload);
         if (valor.responsablesIds !== undefined) {
           await asignarResponsablesIndicador(id, valor.responsablesIds);
-        }
-      } else if (tipo === 'actividad') {
-        const payload = { ...valor, flujo_id: valor.flujo_id || null };
-        await actualizarActividad(id, meta.univId, meta.facId, meta.carrId, meta.perId, meta.critId, meta.indId, payload);
-        if (valor.usuariosAsignadosIds !== undefined) {
-          await asignarUsuariosActividad(id, meta.univId, meta.facId, meta.carrId, meta.perId, meta.critId, meta.indId, valor.usuariosAsignadosIds);
         }
       } else if (tipo === 'flujo') {
         const pasosPayload = (valor.pasos || []).map((p, i) => ({
@@ -299,8 +364,7 @@ export default function ParametrizacionAdmin() {
       else if (tipo === 'carrera') await eliminarCarrera(id, meta.univId, meta.facId);
       else if (tipo === 'periodo') await eliminarPeriodo(id, meta.univId, meta.facId, meta.carrId);
       else if (tipo === 'criterio') await eliminarCriterio(id, meta.univId, meta.facId, meta.carrId, meta.perId);
-      else if (tipo === 'indicador') await eliminarIndicador(id, meta.univId, meta.facId, meta.carrId, meta.perId, meta.critId);
-      else if (tipo === 'actividad') await eliminarActividad(id, meta.univId, meta.facId, meta.carrId, meta.perId, meta.critId, meta.indId);
+      else if (tipo === 'indicador' || tipo === 'subcriterio') await eliminarIndicador(id, meta.univId, meta.facId, meta.carrId, meta.perId, meta.critId);
       else if (tipo === 'flujo') await eliminarFlujo(id);
       mostrarExito('Eliminado correctamente');
     } catch (err) { mostrarError(err.message); }
@@ -320,24 +384,17 @@ export default function ParametrizacionAdmin() {
     { id: 'carrera',     label: 'Carrera',     icon: GraduationCap },
     { id: 'criterio',    label: 'Criterio',    icon: Microscope },
     { id: 'subcriterio', label: 'Subcriterio', icon: Target },
-    { id: 'actividad',   label: 'Actividad',   icon: ClipboardList },
     { id: 'docentes',    label: 'Docentes',    icon: UserCheck },
     { id: 'flujos',      label: 'Flujos Firma', icon: Pencil },
   ];
 
   // Helper getters for dropdowns
-  const univSelFac  = universidades.find(u => u.id === Number(fFac.univId));
-
   const univSelPer  = universidades.find(u => u.id === Number(fPer.univId));
-  const facSelPer   = univSelPer?.facultades.find(f => f.id === Number(fPer.facId));
-
   const univSelCarr = universidades.find(u => u.id === Number(fCarr.univId));
-  const facSelCarr  = univSelCarr?.facultades.find(f => f.id === Number(fCarr.facId));
 
   const univSelCrit = universidades.find(u => u.id === Number(fCrit.univId));
   const facSelCrit  = univSelCrit?.facultades.find(f => f.id === Number(fCrit.facId));
   const perSelCrit  = facSelCrit?.periodos?.find(p => p.id === Number(fCrit.perId));
-  const carrSelCrit = perSelCrit?.carreras?.find(c => c.id === Number(fCrit.carrId)) || facSelCrit?.carreras?.find(c => c.id === Number(fCrit.carrId));
 
   const univSelInd  = universidades.find(u => u.id === Number(fInd.univId));
   const facSelInd   = univSelInd?.facultades.find(f => f.id === Number(fInd.facId));
@@ -351,13 +408,75 @@ export default function ParametrizacionAdmin() {
       )
     : [];
 
-  const univSelAct  = universidades.find(u => u.id === Number(fAct.univId));
-  const facSelAct   = univSelAct?.facultades.find(f => f.id === Number(fAct.facId));
-  const perSelAct   = facSelAct?.periodos?.find(p => p.id === Number(fAct.perId));
-  const carrSelAct  = perSelAct?.carreras?.find(c => c.id === Number(fAct.carrId)) || facSelAct?.carreras?.find(c => c.id === Number(fAct.carrId));
-  const critSelAct  = carrSelAct?.criterios?.find(c => c.id === Number(fAct.critId));
-  const indSelAct   = (critSelAct?.subcriterios || critSelAct?.indicadores)?.find(i => i.id === Number(fAct.indId));
+  // ── Filas aplanadas y filtradas para Tabla de Criterios ─────────────────
+  const filasCriterios = universidades.flatMap(u =>
+    (u.facultades || []).flatMap(f =>
+      (f.periodos || []).flatMap(p =>
+        (p.carreras || []).flatMap(ca =>
+          (ca.criterios || []).map(c => ({
+            u,
+            f,
+            p,
+            ca,
+            c,
+            totalSubcriterios: (c.subcriterios || c.indicadores || []).length,
+          }))
+        )
+      )
+    )
+  ).filter(row => {
+    if (fCrit.univId && row.u.id !== Number(fCrit.univId)) return false;
+    if (fCrit.facId && row.f.id !== Number(fCrit.facId)) return false;
+    if (fCrit.perId && row.p.id !== Number(fCrit.perId)) return false;
+    if (fCrit.carrId && row.ca.id !== Number(fCrit.carrId)) return false;
+    if (busquedaCriterio.trim()) {
+      const q = busquedaCriterio.toLowerCase();
+      return (
+        row.c.nombre?.toLowerCase().includes(q) ||
+        row.ca.nombre?.toLowerCase().includes(q) ||
+        row.p.nombre?.toLowerCase().includes(q) ||
+        row.f.nombre?.toLowerCase().includes(q)
+      );
+    }
+    return true;
+  });
 
+  // ── Filas aplanadas y filtradas para Tabla de Subcriterios ──────────────
+  const filasSubcriterios = universidades.flatMap(u =>
+    (u.facultades || []).flatMap(f =>
+      (f.periodos || []).flatMap(p =>
+        (p.carreras || []).flatMap(ca =>
+          (ca.criterios || []).flatMap(c =>
+            (c.subcriterios || c.indicadores || []).map(i => ({
+              u,
+              f,
+              p,
+              ca,
+              c,
+              i,
+            }))
+          )
+        )
+      )
+    )
+  ).filter(row => {
+    if (fInd.univId && row.u.id !== Number(fInd.univId)) return false;
+    if (fInd.facId && row.f.id !== Number(fInd.facId)) return false;
+    if (fInd.perId && row.p.id !== Number(fInd.perId)) return false;
+    if (fInd.carrId && row.ca.id !== Number(fInd.carrId)) return false;
+    if (fInd.critId && String(row.c.id) !== String(fInd.critId)) return false;
+    if (busquedaSubcriterio.trim()) {
+      const q = busquedaSubcriterio.toLowerCase();
+      return (
+        row.i.nombre?.toLowerCase().includes(q) ||
+        String(row.i.numero || '').includes(q) ||
+        row.c.nombre?.toLowerCase().includes(q) ||
+        row.ca.nombre?.toLowerCase().includes(q) ||
+        row.i.responsable_nombre?.toLowerCase().includes(q)
+      );
+    }
+    return true;
+  });
 
   function ItemRow({ tipo, id, meta, children, editFields }) {
     const esEditando = editando?.tipo === tipo && editando?.id === id;
@@ -614,7 +733,7 @@ export default function ParametrizacionAdmin() {
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-800 flex items-start space-x-2">
                     <Info size={16} className="text-blue-600 mt-0.5 flex-shrink-0" />
                     <span>
-                      Al crear el período se generarán automáticamente las carpetas de Criterios, Subcriterios y Actividades por separado para cada carrera de la facultad escogida.
+                      Al crear el período se generarán automáticamente los 5 Criterios y 31 Subcriterios por separado para cada carrera de la facultad escogida.
                     </span>
                   </div>
                   <FormField label="Universidad">
@@ -666,130 +785,354 @@ export default function ParametrizacionAdmin() {
             </div>
           )}
 
-          {/* Criterio */}
+          {/* ══════════ CRITERIO (Filtros Rápidos + Tabla Protagonista + Formulario Colapsable) ══════════ */}
           {tab === 'criterio' && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              <div>
-                <h3 className="text-sm font-semibold text-navy-900 mb-4">Nuevo Criterio</h3>
-                <form onSubmit={submitCrit} className="space-y-4">
+            <div className="space-y-4">
+              {/* Barra Compacta de Filtros de Contexto + Botón Nuevo Criterio */}
+              <div className="bg-gray-50/70 border border-gray-200 rounded-xl p-4 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h3 className="text-sm font-bold text-navy-900">Criterios de Acreditación</h3>
+                    <p className="text-xs text-gray-500">Filtra por carrera o edita directamente en la tabla. Haz clic en los subcriterios de una fila para ver su detalle.</p>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    {(fCrit.univId || fCrit.facId || fCrit.perId || fCrit.carrId) && (
+                      <button
+                        type="button"
+                        onClick={() => sincronizarContexto({ univId: '', facId: '', perId: '', carrId: '', critId: '' })}
+                        className="text-xs text-blue-600 hover:text-blue-800 font-medium px-2 py-1"
+                      >
+                        Ver todas las carreras
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setMostrarFormCriterio(v => !v)}
+                      className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-navy-900 text-white rounded-lg text-xs font-medium hover:bg-navy-800 transition-colors"
+                    >
+                      <Plus size={14} />
+                      <span>{mostrarFormCriterio ? 'Ocultar formulario' : 'Agregar Criterio'}</span>
+                      {mostrarFormCriterio ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Selectores de Contexto Sincronizados */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                   <FormField label="Universidad">
-                    <select value={fCrit.univId} onChange={e => setFCrit({...fCrit, univId: e.target.value, facId: '', perId: '', carrId: ''})} className={selectCls}>
-                      <option value="">Seleccionar...</option>
+                    <select
+                      value={fCrit.univId}
+                      onChange={e => sincronizarContexto({ univId: e.target.value, facId: '', perId: '', carrId: '' })}
+                      className={selectCls}
+                    >
+                      <option value="">Todas las universidades...</option>
                       {universidades.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
                     </select>
                   </FormField>
                   <FormField label="Facultad">
-                    <select value={fCrit.facId} onChange={e => setFCrit({...fCrit, facId: e.target.value, perId: '', carrId: ''})} className={selectCls} disabled={!fCrit.univId}>
-                      <option value="">Seleccionar...</option>
+                    <select
+                      value={fCrit.facId}
+                      onChange={e => sincronizarContexto({ univId: fCrit.univId, facId: e.target.value, perId: '', carrId: '' })}
+                      className={selectCls}
+                      disabled={!fCrit.univId}
+                    >
+                      <option value="">Todas las facultades...</option>
                       {univSelCrit?.facultades.map(f => <option key={f.id} value={f.id}>{f.nombre}</option>)}
                     </select>
                   </FormField>
                   <FormField label="Período">
-                    <select value={fCrit.perId} onChange={e => setFCrit({...fCrit, perId: e.target.value, carrId: ''})} className={selectCls} disabled={!fCrit.facId}>
-                      <option value="">Seleccionar...</option>
+                    <select
+                      value={fCrit.perId}
+                      onChange={e => sincronizarContexto({ univId: fCrit.univId, facId: fCrit.facId, perId: e.target.value, carrId: '' })}
+                      className={selectCls}
+                      disabled={!fCrit.facId}
+                    >
+                      <option value="">Todos los períodos...</option>
                       {(facSelCrit?.periodos || []).map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
                     </select>
                   </FormField>
                   <FormField label="Carrera">
-                    <select value={fCrit.carrId} onChange={e => setFCrit({...fCrit, carrId: e.target.value})} className={selectCls} disabled={!fCrit.perId}>
-                      <option value="">Seleccionar...</option>
+                    <select
+                      value={fCrit.carrId}
+                      onChange={e => sincronizarContexto({ univId: fCrit.univId, facId: fCrit.facId, perId: fCrit.perId, carrId: e.target.value })}
+                      className={selectCls}
+                      disabled={!fCrit.perId}
+                    >
+                      <option value="">Todas las carreras...</option>
                       {(perSelCrit?.carreras || facSelCrit?.carreras || []).map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
                     </select>
                   </FormField>
-                  <FormField label="Nombre del Criterio">
-                    <select
-                      value={CRITERIOS_PREDEFINIDOS.includes(fCrit.nombre) ? fCrit.nombre : ''}
-                      onChange={e => {
-                        if (e.target.value) setFCrit({ ...fCrit, nombre: e.target.value });
-                      }}
-                      className={`${selectCls} mb-2`}
-                    >
-                      <option value="">-- Seleccionar Criterio Predefinido (opcional) --</option>
-                      {CRITERIOS_PREDEFINIDOS.map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                    <input value={fCrit.nombre} onChange={e => setFCrit({...fCrit, nombre: e.target.value})} placeholder="O escribe el nombre del criterio..." className={inputCls} />
-                  </FormField>
-                  <Toggle value={fCrit.requiere_firma} onChange={v => setFCrit({...fCrit, requiere_firma: v})} label="Requiere firma digital" />
-                  <button
-                    type="submit"
-                    disabled={!fCrit.nombre || !fCrit.univId || !fCrit.facId || !fCrit.perId || !fCrit.carrId}
-                    className="w-full flex items-center justify-center space-x-2 px-4 py-2.5 bg-navy-900 text-white rounded-lg text-sm font-medium hover:bg-navy-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    <Plus size={16} /><span>Crear Criterio</span>
-                  </button>
-                </form>
-              </div>
-              <div>
-                <h3 className="text-sm font-semibold text-navy-900 mb-4">Criterios existentes</h3>
-                <div className="space-y-2">
-                  {universidades.flatMap(u => (u.facultades || []).flatMap(f => (f.periodos || []).flatMap(p => (p.carreras || []).flatMap(ca => (ca.criterios || []).map(c => (
-                    <ItemRow
-                      key={c.id} tipo="criterio" id={c.id}
-                      meta={{ univId: u.id, facId: f.id, perId: p.id, carrId: ca.id, valorEdicion: { nombre: c.nombre, requiere_firma: c.requiere_firma } }}
-                      editFields={
-                        <>
-                          <input value={editando?.valor?.nombre || ''} onChange={e => setEditando(prev => ({ ...prev, valor: { ...prev.valor, nombre: e.target.value } }))} placeholder="Nombre" className={inputSmCls} />
-                          <div className="mt-2">
-                            <Toggle
-                              value={editando?.valor?.requiere_firma ?? true}
-                              onChange={v => setEditando(prev => ({ ...prev, valor: { ...prev.valor, requiere_firma: v } }))}
-                              label="Requiere firma"
-                            />
-                          </div>
-                        </>
-                      }
-                    >
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <span className="font-medium text-gray-800">{c.nombre}</span>
-                          <span className="ml-2 text-gray-400 text-xs">· {ca.nombre} ({p.nombre})</span>
-                        </div>
-                        <div className="flex flex-col items-end space-y-1">
-                          <span className={`text-xs px-2 py-0.5 rounded-full ${c.requiere_firma ? 'bg-blue-100 text-blue-700' : 'bg-gray-200 text-gray-500'}`}>
-                            {c.requiere_firma ? 'Con firma' : 'Sin firma'}
-                          </span>
-                        </div>
-                      </div>
-                    </ItemRow>
-                  ))))))}
                 </div>
+
+                {/* Formulario Colapsable para Crear Criterio Manual */}
+                {mostrarFormCriterio && (
+                  <form onSubmit={submitCrit} className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-end pt-3 border-t border-gray-200">
+                    <div className="lg:col-span-4">
+                      <FormField label="Criterio Predefinido (Opcional)">
+                        <select
+                          value={CRITERIOS_PREDEFINIDOS.includes(fCrit.nombre) ? fCrit.nombre : ''}
+                          onChange={e => {
+                            if (e.target.value) setFCrit({ ...fCrit, nombre: e.target.value });
+                          }}
+                          className={selectCls}
+                        >
+                          <option value="">-- Seleccionar predefinido --</option>
+                          {CRITERIOS_PREDEFINIDOS.map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                      </FormField>
+                    </div>
+                    <div className="lg:col-span-4">
+                      <FormField label="Nombre del Criterio">
+                        <input value={fCrit.nombre} onChange={e => setFCrit({...fCrit, nombre: e.target.value})} placeholder="Ej. 1. CURRÍCULO..." className={inputCls} />
+                      </FormField>
+                    </div>
+                    <div className="lg:col-span-2 pb-1">
+                      <Toggle value={fCrit.requiere_firma} onChange={v => setFCrit({...fCrit, requiere_firma: v})} label="Requiere firma" />
+                    </div>
+                    <div className="lg:col-span-2">
+                      <button
+                        type="submit"
+                        disabled={!fCrit.nombre || !fCrit.univId || !fCrit.facId || !fCrit.perId || !fCrit.carrId}
+                        className="w-full flex items-center justify-center space-x-1.5 px-4 py-2.5 bg-navy-900 text-white rounded-lg text-sm font-medium hover:bg-navy-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        <Plus size={16} /><span>Crear Criterio</span>
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </div>
+
+              {/* Tabla Estructurada de Criterios */}
+              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-xs">
+                <div className="px-5 py-3.5 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center space-x-2">
+                    <Microscope size={16} className="text-navy-700" />
+                    <h4 className="text-sm font-semibold text-navy-900">
+                      Tabla de Criterios ({filasCriterios.length})
+                    </h4>
+                  </div>
+                  <div className="relative w-full sm:w-72">
+                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input
+                      type="text"
+                      value={busquedaCriterio}
+                      onChange={e => setBusquedaCriterio(e.target.value)}
+                      placeholder="Buscar criterio, carrera o período..."
+                      className="w-full pl-8 pr-3 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-navy-500"
+                    />
+                  </div>
+                </div>
+
+                {filasCriterios.length === 0 ? (
+                  <div className="py-12 text-center text-sm text-gray-400">
+                    No se encontraron criterios con los filtros seleccionados.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto max-h-[540px] overflow-y-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50 sticky top-0 z-10 border-b border-gray-100">
+                        <tr>
+                          <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase">Criterio</th>
+                          <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Carrera</th>
+                          <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Período / Facultad</th>
+                          <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Subcriterios (1 Clic)</th>
+                          <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Firma Digital</th>
+                          <th className="text-right px-5 py-3 text-xs font-semibold text-gray-500 uppercase">Acciones</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {filasCriterios.map(({ u, f, p, ca, c, totalSubcriterios }) => {
+                          const esEditando = editando?.tipo === 'criterio' && editando?.id === c.id;
+                          const esEliminando = eliminandoId === c.id;
+                          const meta = {
+                            univId: u.id,
+                            facId: f.id,
+                            perId: p.id,
+                            carrId: ca.id,
+                            valorEdicion: { nombre: c.nombre, requiere_firma: c.requiere_firma },
+                          };
+
+                          return (
+                            <tr key={`${ca.id}-${c.id}`} className={`hover:bg-gray-50/70 transition-colors ${esEliminando ? 'opacity-50' : ''}`}>
+                              <td className="px-5 py-3">
+                                {esEditando ? (
+                                  <input
+                                    value={editando?.valor?.nombre || ''}
+                                    onChange={e => setEditando(prev => ({ ...prev, valor: { ...prev.valor, nombre: e.target.value } }))}
+                                    className={inputSmCls}
+                                    placeholder="Nombre del criterio"
+                                  />
+                                ) : (
+                                  <div>
+                                    <span className="font-semibold text-navy-900 text-xs">{c.nombre}</span>
+                                    {c.descripcion && <p className="text-[11px] text-gray-400 mt-0.5">{c.descripcion}</p>}
+                                  </div>
+                                )}
+                              </td>
+                              <td className="px-4 py-3">
+                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                  {ca.nombre}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-xs text-gray-600">
+                                <span className="font-medium text-gray-800">{p.nombre}</span>
+                                <span className="text-gray-400 ml-1">· {f.nombre}</span>
+                              </td>
+                              <td className="px-4 py-3 text-center">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    sincronizarContexto({
+                                      univId: String(u.id),
+                                      facId: String(f.id),
+                                      perId: String(p.id),
+                                      carrId: String(ca.id),
+                                      critId: String(c.id),
+                                    });
+                                    setTab('subcriterio');
+                                  }}
+                                  className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-md text-xs font-semibold bg-navy-50 text-navy-800 hover:bg-navy-100 border border-navy-200 transition-colors"
+                                  title="Ver subcriterios de este criterio"
+                                >
+                                  <Target size={12} />
+                                  <span>{totalSubcriterios} subcriterios →</span>
+                                </button>
+                              </td>
+                              <td className="px-4 py-3 text-center">
+                                {esEditando ? (
+                                  <div className="flex justify-center">
+                                    <Toggle
+                                      value={editando?.valor?.requiere_firma ?? true}
+                                      onChange={v => setEditando(prev => ({ ...prev, valor: { ...prev.valor, requiere_firma: v } }))}
+                                      label=""
+                                    />
+                                  </div>
+                                ) : (
+                                  <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium ${c.requiere_firma ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-gray-100 text-gray-500'}`}>
+                                    {c.requiere_firma ? 'Con firma' : 'Sin firma'}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-5 py-3 text-right">
+                                {esEditando ? (
+                                  <div className="flex items-center justify-end space-x-1.5">
+                                    <button onClick={guardarEdicion} className="px-2.5 py-1 bg-navy-900 text-white text-xs rounded-lg hover:bg-navy-800 flex items-center space-x-1">
+                                      <Save size={12} /><span>Guardar</span>
+                                    </button>
+                                    <button onClick={cancelarEdicion} className="px-2 py-1 bg-gray-200 text-gray-700 text-xs rounded-lg hover:bg-gray-300">
+                                      <X size={12} />
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center justify-end space-x-1">
+                                    <button
+                                      onClick={() => iniciarEdicion('criterio', c.id, meta.valorEdicion, meta)}
+                                      className="p-1.5 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
+                                      title="Editar Criterio"
+                                    >
+                                      <Pencil size={14} />
+                                    </button>
+                                    <button
+                                      onClick={() => handleEliminar('criterio', c.id, meta)}
+                                      disabled={esEliminando}
+                                      className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-40"
+                                      title="Eliminar Criterio"
+                                    >
+                                      <Trash2 size={14} />
+                                    </button>
+                                  </div>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             </div>
           )}
 
-          {/* Subcriterio (Indicador) */}
+          {/* ══════════ SUBCRITERIO (Filtros Rápidos + Tabla Protagonista + Salto Directo a PDFs) ══════════ */}
           {(tab === 'subcriterio' || tab === 'indicador') && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              <div>
-                <h3 className="text-sm font-semibold text-navy-900 mb-4">Nuevo Subcriterio</h3>
-                <form onSubmit={submitInd} className="space-y-3">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    <FormField label="Universidad">
-                      <select value={fInd.univId} onChange={e => setFInd({...fInd, univId: e.target.value, facId: '', perId: '', carrId: '', critId: ''})} className={selectCls}>
-                        <option value="">Seleccionar...</option>
-                        {universidades.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
-                      </select>
-                    </FormField>
-                    <FormField label="Facultad">
-                      <select value={fInd.facId} onChange={e => setFInd({...fInd, facId: e.target.value, perId: '', carrId: '', critId: ''})} className={selectCls} disabled={!fInd.univId}>
-                        <option value="">Seleccionar...</option>
-                        {univSelInd?.facultades.map(f => <option key={f.id} value={f.id}>{f.nombre}</option>)}
-                      </select>
-                    </FormField>
-                    <FormField label="Período">
-                      <select value={fInd.perId} onChange={e => setFInd({...fInd, perId: e.target.value, carrId: '', critId: ''})} className={selectCls} disabled={!fInd.facId}>
-                        <option value="">Seleccionar...</option>
-                        {(facSelInd?.periodos || []).map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-                      </select>
-                    </FormField>
-                    <FormField label="Carrera">
-                      <select value={fInd.carrId} onChange={e => setFInd({...fInd, carrId: e.target.value, critId: ''})} className={selectCls} disabled={!fInd.perId}>
-                        <option value="">Seleccionar...</option>
-                        {(perSelInd?.carreras || facSelInd?.carreras || []).map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-                      </select>
-                    </FormField>
+            <div className="space-y-4">
+              {/* Panel Superior Compacto: Filtros de Contexto + Botón Agregar Subcriterio */}
+              <div className="bg-gray-50/70 border border-gray-200 rounded-xl p-4 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h3 className="text-sm font-bold text-navy-900">Subcriterios y Evidencias PDF</h3>
+                    <p className="text-xs text-gray-500">
+                      Edita responsables o flujos en línea, o haz clic en <strong>PDFs</strong> para subir y gestionar documentos directamente.
+                    </p>
                   </div>
+                  <div className="flex items-center space-x-2">
+                    {(fInd.univId || fInd.facId || fInd.perId || fInd.carrId || fInd.critId) && (
+                      <button
+                        type="button"
+                        onClick={() => sincronizarContexto({ univId: '', facId: '', perId: '', carrId: '', critId: '' })}
+                        className="text-xs text-blue-600 hover:text-blue-800 font-medium px-2 py-1"
+                      >
+                        Ver todos
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setMostrarFormSubcriterio(v => !v)}
+                      className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-navy-900 text-white rounded-lg text-xs font-medium hover:bg-navy-800 transition-colors"
+                    >
+                      <Plus size={14} />
+                      <span>{mostrarFormSubcriterio ? 'Ocultar formulario' : 'Agregar Subcriterio'}</span>
+                      {mostrarFormSubcriterio ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                    </button>
+                  </div>
+                </div>
 
+                {/* Selectores de Contexto Sincronizados */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                  <FormField label="Universidad">
+                    <select
+                      value={fInd.univId}
+                      onChange={e => sincronizarContexto({ univId: e.target.value, facId: '', perId: '', carrId: '', critId: '' })}
+                      className={selectCls}
+                    >
+                      <option value="">Todas...</option>
+                      {universidades.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                    </select>
+                  </FormField>
+                  <FormField label="Facultad">
+                    <select
+                      value={fInd.facId}
+                      onChange={e => sincronizarContexto({ univId: fInd.univId, facId: e.target.value, perId: '', carrId: '', critId: '' })}
+                      className={selectCls}
+                      disabled={!fInd.univId}
+                    >
+                      <option value="">Todas...</option>
+                      {univSelInd?.facultades.map(f => <option key={f.id} value={f.id}>{f.nombre}</option>)}
+                    </select>
+                  </FormField>
+                  <FormField label="Período">
+                    <select
+                      value={fInd.perId}
+                      onChange={e => sincronizarContexto({ univId: fInd.univId, facId: fInd.facId, perId: e.target.value, carrId: '', critId: '' })}
+                      className={selectCls}
+                      disabled={!fInd.facId}
+                    >
+                      <option value="">Todos...</option>
+                      {(facSelInd?.periodos || []).map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                    </select>
+                  </FormField>
+                  <FormField label="Carrera">
+                    <select
+                      value={fInd.carrId}
+                      onChange={e => sincronizarContexto({ univId: fInd.univId, facId: fInd.facId, perId: fInd.perId, carrId: e.target.value, critId: '' })}
+                      className={selectCls}
+                      disabled={!fInd.perId}
+                    >
+                      <option value="">Todas...</option>
+                      {(perSelInd?.carreras || facSelInd?.carreras || []).map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                    </select>
+                  </FormField>
                   <FormField label="Criterio">
                     <select
                       value={fInd.critId}
@@ -803,283 +1146,377 @@ export default function ParametrizacionAdmin() {
                       className={selectCls}
                       disabled={!fInd.carrId}
                     >
-                      <option value="">Seleccionar...</option>
+                      <option value="">Todos los criterios...</option>
                       {(carrSelInd?.criterios || []).map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
                     </select>
                   </FormField>
-
-                  <FormField label="Seleccionar Subcriterio Predefinido">
-                    <select
-                      value={indicadoresFiltrados.some(i => i.nombre === fInd.nombre) ? fInd.nombre : ''}
-                      disabled={!fInd.critId}
-                      onChange={e => {
-                        const sel = indicadoresFiltrados.find(i => i.nombre === e.target.value);
-                        if (sel) {
-                          setFInd(prev => ({
-                            ...prev,
-                            numero: sel.numero,
-                            nombre: sel.nombre,
-                            responsable_nombre: sel.responsable_nombre,
-                          }));
-                        } else {
-                          setFInd(prev => ({
-                            ...prev,
-                            numero: '',
-                            nombre: '',
-                            responsable_nombre: '',
-                          }));
-                        }
-                      }}
-                      className={selectCls}
-                    >
-                      <option value="">
-                        {fInd.critId
-                          ? `-- Seleccionar Subcriterio (${indicadoresFiltrados.length} disponibles) --`
-                          : '-- Primero seleccione un Criterio --'}
-                      </option>
-                      {indicadoresFiltrados.map(ind => (
-                        <option key={`${ind.numero}-${ind.nombre}`} value={ind.nombre}>
-                          [{ind.numero}] {ind.nombre}
-                        </option>
-                      ))}
-                    </select>
-                  </FormField>
-
-                  <div className="grid grid-cols-4 gap-2.5">
-                    <div className="col-span-1">
-                      <FormField label="Número">
-                        <input type="number" value={fInd.numero} onChange={e => setFInd({...fInd, numero: e.target.value})} placeholder="1, 2, 3..." className={inputCls} readOnly />
-                      </FormField>
-                    </div>
-                    <div className="col-span-3">
-                      <FormField label="Nombre">
-                        <input value={fInd.nombre} onChange={e => setFInd({...fInd, nombre: e.target.value})} placeholder="Ej. Sílabos, Mallas..." className={inputCls} readOnly />
-                      </FormField>
-                    </div>
-                  </div>
-
-                  <FormField label="Responsables Asignados">
-                    <div className="max-h-28 overflow-y-auto space-y-1.5 p-2 border border-gray-200 rounded-lg bg-gray-50/50">
-                      {usuariosDB.map(u => {
-                        const seleccionados = fInd.responsablesIds || [];
-                        const isChecked = seleccionados.includes(u.id);
-                        return (
-                          <label key={u.id} className="flex items-center space-x-2 cursor-pointer">
-                            <input 
-                              type="checkbox" 
-                              checked={isChecked}
-                              onChange={(e) => {
-                                const newSelected = e.target.checked 
-                                  ? [...seleccionados, u.id]
-                                  : seleccionados.filter(id => id !== u.id);
-                                setFInd({...fInd, responsablesIds: newSelected});
-                              }}
-                              className="rounded text-navy-600 focus:ring-navy-500 bg-white border-gray-300"
-                            />
-                            <span className="text-xs text-gray-700">{u.nombre} <span className="text-gray-400">({u.email})</span></span>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  </FormField>
-
-                  <button
-                    type="submit"
-                    disabled={!fInd.nombre || !fInd.numero || !fInd.univId || !fInd.facId || !fInd.perId || !fInd.carrId || !fInd.critId}
-                    className="w-full flex items-center justify-center space-x-2 px-4 py-2.5 bg-navy-900 text-white rounded-lg text-sm font-medium hover:bg-navy-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    <Plus size={16} /><span>Crear Subcriterio</span>
-                  </button>
-                </form>
-              </div>
-              <div>
-                <h3 className="text-sm font-semibold text-navy-900 mb-4">Subcriterios existentes</h3>
-                <div className="space-y-2">
-                  {universidades.flatMap(u => (u.facultades || []).flatMap(f => (f.periodos || []).flatMap(p => (p.carreras || []).flatMap(ca => (ca.criterios || []).flatMap(c => (c.subcriterios || c.indicadores || []).map(i => (
-                    <ItemRow
-                      key={i.id} tipo="indicador" id={i.id}
-                      meta={{ univId: u.id, facId: f.id, perId: p.id, carrId: ca.id, critId: c.id, valorEdicion: { nombre: i.nombre, numero: i.numero, responsablesIds: i.responsables?.map(u => u.id) || [] } }}
-                      editFields={
-                        <>
-                          <input type="number" value={editando?.valor?.numero || ''} onChange={e => setEditando(prev => ({ ...prev, valor: { ...prev.valor, numero: e.target.value } }))} placeholder="Número" className={inputSmCls} />
-                          <input value={editando?.valor?.nombre || ''} onChange={e => setEditando(prev => ({ ...prev, valor: { ...prev.valor, nombre: e.target.value } }))} placeholder="Nombre" className={`${inputSmCls} mt-1`} />
-                          <div className="mt-2">
-                            <label className="block text-xs font-semibold text-gray-600 uppercase mb-2">Responsables Asignados</label>
-                            <div className="max-h-32 overflow-y-auto space-y-2 p-2 border border-gray-200 rounded-lg bg-gray-50/50">
-                              {usuariosDB.map(u => {
-                                const seleccionados = editando?.valor?.responsablesIds || [];
-                                const isChecked = seleccionados.includes(u.id);
-                                return (
-                                  <label key={u.id} className="flex items-center space-x-2 cursor-pointer">
-                                    <input 
-                                      type="checkbox" 
-                                      checked={isChecked}
-                                      onChange={(e) => {
-                                        const newSelected = e.target.checked 
-                                          ? [...seleccionados, u.id]
-                                          : seleccionados.filter(id => id !== u.id);
-                                        setEditando(prev => ({ ...prev, valor: { ...prev.valor, responsablesIds: newSelected } }));
-                                      }}
-                                      className="rounded text-navy-600 focus:ring-navy-500 bg-white border-gray-300"
-                                    />
-                                    <span className="text-xs text-gray-700">{u.nombre} <span className="text-gray-400">({u.email})</span></span>
-                                  </label>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        </>
-                      }
-                    >
-                      <span className="font-medium text-gray-800">
-                        [{i.numero}] {i.nombre}
-                        {i.responsables && i.responsables.length > 0 && (
-                          <span className="text-gray-500 font-normal text-xs ml-1">
-                            (Resp: {i.responsables.map(r => r.nombre).join(', ')})
-                          </span>
-                        )}
-                      </span>
-                      <span className="ml-2 text-gray-400 text-xs">· {c.nombre} ({ca.nombre})</span>
-                    </ItemRow>
-                  )))))))}
                 </div>
+
+                {/* Formulario Colapsable de Nuevo Subcriterio */}
+                {mostrarFormSubcriterio && (
+                  <form onSubmit={submitInd} className="space-y-3 pt-3 border-t border-gray-200">
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
+                      <div className="lg:col-span-4">
+                        <FormField label="Subcriterio Predefinido">
+                          <select
+                            value={indicadoresFiltrados.some(i => i.nombre === fInd.nombre) ? fInd.nombre : ''}
+                            disabled={!fInd.critId}
+                            onChange={e => {
+                              const sel = indicadoresFiltrados.find(i => i.nombre === e.target.value);
+                              if (sel) {
+                                setFInd(prev => ({
+                                  ...prev,
+                                  numero: sel.numero,
+                                  nombre: sel.nombre,
+                                  responsable_nombre: sel.responsable_nombre,
+                                }));
+                              } else {
+                                setFInd(prev => ({
+                                  ...prev,
+                                  numero: '',
+                                  nombre: '',
+                                  responsable_nombre: '',
+                                }));
+                              }
+                            }}
+                            className={selectCls}
+                          >
+                            <option value="">
+                              {fInd.critId
+                                ? `-- Elegir de los ${indicadoresFiltrados.length} disponibles --`
+                                : '-- Primero elija un Criterio --'}
+                            </option>
+                            {indicadoresFiltrados.map(ind => (
+                              <option key={`${ind.numero}-${ind.nombre}`} value={ind.nombre}>
+                                [{ind.numero}] {ind.nombre}
+                              </option>
+                            ))}
+                          </select>
+                        </FormField>
+                      </div>
+
+                      <div className="lg:col-span-1">
+                        <FormField label="N°">
+                          <input
+                            type="number"
+                            value={fInd.numero}
+                            onChange={e => setFInd({...fInd, numero: e.target.value})}
+                            placeholder="1-31"
+                            className={inputCls}
+                          />
+                        </FormField>
+                      </div>
+
+                      <div className="lg:col-span-4">
+                        <FormField label="Nombre del Subcriterio">
+                          <input
+                            value={fInd.nombre}
+                            onChange={e => setFInd({...fInd, nombre: e.target.value})}
+                            placeholder="Ej. Perfil de egreso, Syllabus..."
+                            className={inputCls}
+                          />
+                        </FormField>
+                      </div>
+
+                      <div className="lg:col-span-3">
+                        <FormField label="Flujo de Firma (Opcional)">
+                          <select value={fInd.flujo_id || ''} onChange={e => setFInd({...fInd, flujo_id: e.target.value})} className={selectCls}>
+                            <option value="">-- Flujo Global por Defecto --</option>
+                            {flujosFirma.map(fl => <option key={fl.id} value={fl.id}>{fl.nombre} {fl.es_global ? '(Global)' : ''}</option>)}
+                          </select>
+                        </FormField>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-end">
+                      <div className="lg:col-span-5">
+                        <FormField label="Instrucciones / Ayuda para subida de PDFs (Opcional)">
+                          <input
+                            value={fInd.descripcion}
+                            onChange={e => setFInd({...fInd, descripcion: e.target.value})}
+                            placeholder="Instrucciones que verá el docente al subir documentos en este subcriterio..."
+                            className={inputCls}
+                          />
+                        </FormField>
+                      </div>
+
+                      <div className="lg:col-span-5">
+                        <FormField label="Responsables Asignados">
+                          <div className="max-h-24 overflow-y-auto flex flex-wrap gap-2 p-2 border border-gray-200 rounded-lg bg-white">
+                            {usuariosDB.map(u => {
+                              const seleccionados = fInd.responsablesIds || [];
+                              const isChecked = seleccionados.includes(u.id);
+                              return (
+                                <label key={u.id} className={`inline-flex items-center space-x-1.5 px-2 py-1 rounded-md text-xs cursor-pointer border transition-colors ${isChecked ? 'bg-navy-50 border-navy-300 text-navy-900 font-medium' : 'bg-gray-50 border-gray-200 text-gray-600'}`}>
+                                  <input
+                                    type="checkbox"
+                                    checked={isChecked}
+                                    onChange={e => {
+                                      const newSelected = e.target.checked
+                                        ? [...seleccionados, u.id]
+                                        : seleccionados.filter(id => id !== u.id);
+                                      setFInd({...fInd, responsablesIds: newSelected});
+                                    }}
+                                    className="rounded text-navy-600 focus:ring-navy-500"
+                                  />
+                                  <span>{u.nombre}</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </FormField>
+                      </div>
+
+                      <div className="lg:col-span-2">
+                        <button
+                          type="submit"
+                          disabled={!fInd.nombre || !fInd.numero || !fInd.univId || !fInd.facId || !fInd.perId || !fInd.carrId || !fInd.critId}
+                          className="w-full flex items-center justify-center space-x-1.5 px-4 py-2.5 bg-navy-900 text-white rounded-lg text-sm font-medium hover:bg-navy-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          <Plus size={16} /><span>Crear Subcriterio</span>
+                        </button>
+                      </div>
+                    </div>
+                  </form>
+                )}
+              </div>
+
+              {/* Tabla Estructurada de Subcriterios */}
+              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-xs">
+                <div className="px-5 py-3.5 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center space-x-2">
+                    <Target size={16} className="text-navy-700" />
+                    <h4 className="text-sm font-semibold text-navy-900">
+                      Tabla de Subcriterios ({filasSubcriterios.length})
+                    </h4>
+                  </div>
+                  <div className="relative w-full sm:w-80">
+                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input
+                      type="text"
+                      value={busquedaSubcriterio}
+                      onChange={e => setBusquedaSubcriterio(e.target.value)}
+                      placeholder="Buscar por N°, subcriterio, criterio o responsable..."
+                      className="w-full pl-8 pr-3 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-navy-500"
+                    />
+                  </div>
+                </div>
+
+                {filasSubcriterios.length === 0 ? (
+                  <div className="py-12 text-center text-sm text-gray-400">
+                    No se encontraron subcriterios con los filtros seleccionados.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto max-h-[580px] overflow-y-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50 sticky top-0 z-10 border-b border-gray-100">
+                        <tr>
+                          <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase w-16">N°</th>
+                          <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Subcriterio</th>
+                          <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Criterio Padre</th>
+                          <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Carrera / Período</th>
+                          <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Responsables</th>
+                          <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Documentos (1 Clic)</th>
+                          <th className="text-right px-5 py-3 text-xs font-semibold text-gray-500 uppercase">Acciones</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {filasSubcriterios.map(({ u, f, p, ca, c, i }) => {
+                          const esEditando = (editando?.tipo === 'subcriterio' || editando?.tipo === 'indicador') && editando?.id === i.id;
+                          const esEliminando = eliminandoId === i.id;
+                          const totalDocs = typeof i.cantidadDocumentos === 'number'
+                            ? i.cantidadDocumentos
+                            : (i.documentos?.length || 0);
+                          const meta = {
+                            univId: u.id,
+                            facId: f.id,
+                            perId: p.id,
+                            carrId: ca.id,
+                            critId: c.id,
+                            valorEdicion: {
+                              numero: i.numero,
+                              nombre: i.nombre,
+                              descripcion: i.descripcion || i.informacion_ayuda || '',
+                              flujo_id: i.flujo_id || '',
+                              requiere_firma: i.requiere_firma ?? true,
+                              responsablesIds: i.responsables?.map(r => r.id) || [],
+                            },
+                          };
+
+                          return (
+                            <tr key={`${ca.id}-${c.id}-${i.id}`} className={`hover:bg-gray-50/70 transition-colors align-top ${esEliminando ? 'opacity-50' : ''}`}>
+                              <td className="px-4 py-3 text-center">
+                                {esEditando ? (
+                                  <input
+                                    type="number"
+                                    value={editando?.valor?.numero || ''}
+                                    onChange={e => setEditando(prev => ({ ...prev, valor: { ...prev.valor, numero: e.target.value } }))}
+                                    className={`${inputSmCls} text-center`}
+                                  />
+                                ) : (
+                                  <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-md text-xs font-bold bg-navy-100 text-navy-800">
+                                    [{i.numero}]
+                                  </span>
+                                )}
+                              </td>
+
+                              <td className="px-4 py-3">
+                                {esEditando ? (
+                                  <div className="space-y-1.5">
+                                    <input
+                                      value={editando?.valor?.nombre || ''}
+                                      onChange={e => setEditando(prev => ({ ...prev, valor: { ...prev.valor, nombre: e.target.value } }))}
+                                      placeholder="Nombre del subcriterio"
+                                      className={inputSmCls}
+                                    />
+                                    <input
+                                      value={editando?.valor?.descripcion || ''}
+                                      onChange={e => setEditando(prev => ({ ...prev, valor: { ...prev.valor, descripcion: e.target.value } }))}
+                                      placeholder="Instrucciones para subida de PDFs..."
+                                      className={inputSmCls}
+                                    />
+                                    <select
+                                      value={editando?.valor?.flujo_id || ''}
+                                      onChange={e => setEditando(prev => ({ ...prev, valor: { ...prev.valor, flujo_id: e.target.value } }))}
+                                      className={inputSmCls}
+                                    >
+                                      <option value="">-- Usar Flujo Global --</option>
+                                      {flujosFirma.map(fl => <option key={fl.id} value={fl.id}>{fl.nombre}</option>)}
+                                    </select>
+                                  </div>
+                                ) : (
+                                  <div>
+                                    <span className="font-semibold text-navy-900 text-xs">{i.nombre}</span>
+                                    {(i.descripcion || i.informacion_ayuda) && (
+                                      <p className="text-[11px] text-gray-400 mt-0.5 line-clamp-1">
+                                        {i.descripcion || i.informacion_ayuda}
+                                      </p>
+                                    )}
+                                  </div>
+                                )}
+                              </td>
+
+                              <td className="px-4 py-3 text-xs text-gray-700 font-medium">
+                                {c.nombre}
+                              </td>
+
+                              <td className="px-4 py-3">
+                                <div className="flex flex-col gap-0.5">
+                                  <span className="inline-flex items-center w-fit px-2 py-0.5 rounded-full text-[11px] font-medium bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                    {ca.nombre}
+                                  </span>
+                                  <span className="text-[11px] text-gray-400">{p.nombre} · {f.nombre}</span>
+                                </div>
+                              </td>
+
+                              <td className="px-4 py-3">
+                                {esEditando ? (
+                                  <div className="max-h-28 overflow-y-auto space-y-1 p-2 border border-gray-200 rounded-lg bg-gray-50">
+                                    {usuariosDB.map(usr => {
+                                      const seleccionados = editando?.valor?.responsablesIds || [];
+                                      const isChecked = seleccionados.includes(usr.id);
+                                      return (
+                                        <label key={usr.id} className="flex items-center space-x-1.5 cursor-pointer text-xs">
+                                          <input
+                                            type="checkbox"
+                                            checked={isChecked}
+                                            onChange={e => {
+                                              const nuevos = e.target.checked
+                                                ? [...seleccionados, usr.id]
+                                                : seleccionados.filter(id => id !== usr.id);
+                                              setEditando(prev => ({ ...prev, valor: { ...prev.valor, responsablesIds: nuevos } }));
+                                            }}
+                                            className="rounded text-navy-600"
+                                          />
+                                          <span className="text-gray-700 truncate">{usr.nombre}</span>
+                                        </label>
+                                      );
+                                    })}
+                                  </div>
+                                ) : (
+                                  <div className="flex flex-wrap gap-1">
+                                    {i.responsables && i.responsables.length > 0 ? (
+                                      i.responsables.map(r => (
+                                        <span key={r.id} className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                          {r.nombre}
+                                        </span>
+                                      ))
+                                    ) : i.responsable_nombre ? (
+                                      <span className="text-xs text-gray-600">{i.responsable_nombre}</span>
+                                    ) : (
+                                      <span className="text-xs text-gray-400 italic">Sin asignar</span>
+                                    )}
+                                  </div>
+                                )}
+                              </td>
+
+                              <td className="px-4 py-3 text-center">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    navegarA &&
+                                    navegarA('explorador', {
+                                      univId: u.id,
+                                      facId: f.id,
+                                      perId: p.id,
+                                      carrId: ca.id,
+                                      critId: c.id,
+                                      subId: i.id,
+                                    })
+                                  }
+                                  className={`inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-semibold border transition-colors ${
+                                    totalDocs > 0
+                                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                                      : 'bg-navy-50 text-navy-800 border-navy-200 hover:bg-navy-100'
+                                  }`}
+                                  title="Ir directamente a subir o ver PDFs de este subcriterio"
+                                >
+                                  <FolderOpen size={12} />
+                                  <span>{totalDocs} PDF{totalDocs === 1 ? '' : 's'} →</span>
+                                </button>
+                              </td>
+
+                              <td className="px-5 py-3 text-right">
+                                {esEditando ? (
+                                  <div className="flex items-center justify-end space-x-1.5">
+                                    <button onClick={guardarEdicion} className="px-2.5 py-1 bg-navy-900 text-white text-xs rounded-lg hover:bg-navy-800 flex items-center space-x-1">
+                                      <Save size={12} /><span>Guardar</span>
+                                    </button>
+                                    <button onClick={cancelarEdicion} className="px-2 py-1 bg-gray-200 text-gray-700 text-xs rounded-lg hover:bg-gray-300">
+                                      <X size={12} />
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center justify-end space-x-1">
+                                    <button
+                                      onClick={() => iniciarEdicion('subcriterio', i.id, meta.valorEdicion, meta)}
+                                      className="p-1.5 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
+                                      title="Editar Subcriterio"
+                                    >
+                                      <Pencil size={14} />
+                                    </button>
+                                    <button
+                                      onClick={() => handleEliminar('subcriterio', i.id, meta)}
+                                      disabled={esEliminando}
+                                      className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-40"
+                                      title="Eliminar Subcriterio"
+                                    >
+                                      <Trash2 size={14} />
+                                    </button>
+                                  </div>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             </div>
           )}
 
-          {/* Actividad */}
-          {tab === 'actividad' && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              <div>
-                <h3 className="text-sm font-semibold text-navy-900 mb-4">Nueva Actividad</h3>
-                <form onSubmit={submitAct} className="space-y-3">
-                  <div className="p-3 bg-gray-50/70 rounded-lg border border-gray-200">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                      <FormField label="Universidad">
-                        <select value={fAct.univId} onChange={e => setFAct({...fAct, univId: e.target.value, facId: '', perId: '', carrId: '', critId: '', indId: ''})} className={selectCls}>
-                          <option value="">Seleccionar...</option>
-                          {universidades.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
-                        </select>
-                      </FormField>
-                      <FormField label="Facultad">
-                        <select value={fAct.facId} onChange={e => setFAct({...fAct, facId: e.target.value, perId: '', carrId: '', critId: '', indId: ''})} className={selectCls} disabled={!fAct.univId}>
-                          <option value="">Seleccionar...</option>
-                          {univSelAct?.facultades.map(f => <option key={f.id} value={f.id}>{f.nombre}</option>)}
-                        </select>
-                      </FormField>
-                      <FormField label="Período">
-                        <select value={fAct.perId} onChange={e => setFAct({...fAct, perId: e.target.value, carrId: '', critId: '', indId: ''})} className={selectCls} disabled={!fAct.facId}>
-                          <option value="">Seleccionar...</option>
-                          {(facSelAct?.periodos || []).map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-                        </select>
-                      </FormField>
-                      <FormField label="Carrera">
-                        <select value={fAct.carrId} onChange={e => setFAct({...fAct, carrId: e.target.value, critId: '', indId: ''})} className={selectCls} disabled={!fAct.perId}>
-                          <option value="">Seleccionar...</option>
-                          {(perSelAct?.carreras || facSelAct?.carreras || []).map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-                        </select>
-                      </FormField>
-                      <FormField label="Criterio">
-                        <select value={fAct.critId} onChange={e => setFAct({...fAct, critId: e.target.value, indId: ''})} className={selectCls} disabled={!fAct.carrId}>
-                          <option value="">Seleccionar...</option>
-                          {(carrSelAct?.criterios || []).map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-                        </select>
-                      </FormField>
-                      <FormField label="Subcriterio">
-                        <select value={fAct.indId} onChange={e => setFAct({...fAct, indId: e.target.value})} className={selectCls} disabled={!fAct.critId}>
-                          <option value="">Seleccionar...</option>
-                          {((critSelAct?.subcriterios || critSelAct?.indicadores) || []).map(i => <option key={i.id} value={i.id}>[{i.numero}] {i.nombre}</option>)}
-                        </select>
-                      </FormField>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    <FormField label="Nombre">
-                      <input value={fAct.nombre} onChange={e => setFAct({...fAct, nombre: e.target.value})} placeholder="Entregables, Informes..." className={inputCls} />
-                    </FormField>
-                    <FormField label="Flujo de Firma (Opcional)">
-                      <select value={fAct.flujo_id || ''} onChange={e => setFAct({...fAct, flujo_id: e.target.value})} className={selectCls}>
-                        <option value="">-- Usar Flujo Global por Defecto --</option>
-                        {flujosFirma.map(f => <option key={f.id} value={f.id}>{f.nombre} {f.es_global ? '(Global)' : ''}</option>)}
-                      </select>
-                    </FormField>
-                  </div>
-
-                  <FormField label="Descripción / Ayuda">
-                    <textarea value={fAct.informacion_ayuda} onChange={e => setFAct({...fAct, informacion_ayuda: e.target.value})} className={`${inputCls} resize-none`} rows={2} placeholder="Instrucciones para esta actividad..."></textarea>
-                  </FormField>
-
-                  <Toggle value={fAct.requiere_firma} onChange={v => setFAct({...fAct, requiere_firma: v})} label="Requiere firma digital" />
-                  <button
-                    type="submit"
-                    disabled={!fAct.nombre || !fAct.univId || !fAct.facId || !fAct.perId || !fAct.carrId || !fAct.critId || !fAct.indId}
-                    className="w-full flex items-center justify-center space-x-2 px-4 py-2.5 bg-navy-900 text-white rounded-lg text-sm font-medium hover:bg-navy-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    <Plus size={16} /><span>Crear Actividad</span>
-                  </button>
-                </form>
-              </div>
-              <div>
-                <h3 className="text-sm font-semibold text-navy-900 mb-4">Actividades existentes</h3>
-                <div className="space-y-2">
-                  {universidades.flatMap(u => (u.facultades || []).flatMap(f => (f.periodos || []).flatMap(p => (p.carreras || []).flatMap(ca => (ca.criterios || []).flatMap(c => (c.subcriterios || c.indicadores || []).flatMap(i => (i.actividades || []).map(a => (
-                    <ItemRow
-                      key={a.id} tipo="actividad" id={a.id}
-                      meta={{ univId: u.id, facId: f.id, perId: p.id, carrId: ca.id, critId: c.id, indId: i.id, valorEdicion: { nombre: a.nombre, informacion_ayuda: a.informacion_ayuda || '', requiere_firma: a.requiere_firma, flujo_id: a.flujo_id || '', usuariosAsignadosIds: a.usuariosAsignados?.map(u => u.id) || [] } }}
-                      editFields={
-                        <>
-                          <input value={editando?.valor?.nombre || ''} onChange={e => setEditando(prev => ({ ...prev, valor: { ...prev.valor, nombre: e.target.value } }))} placeholder="Nombre" className={inputSmCls} />
-                          <textarea value={editando?.valor?.informacion_ayuda || ''} onChange={e => setEditando(prev => ({ ...prev, valor: { ...prev.valor, informacion_ayuda: e.target.value } }))} placeholder="Instrucciones" rows={2} className={`${inputSmCls} mt-1 resize-none`} />
-                          <div className="mt-2">
-                            <select value={editando?.valor?.flujo_id || ''} onChange={e => setEditando(prev => ({ ...prev, valor: { ...prev.valor, flujo_id: e.target.value } }))} className={inputSmCls}>
-                              <option value="">-- Usar Flujo Global por Defecto --</option>
-                              {flujosFirma.map(fl => <option key={fl.id} value={fl.id}>{fl.nombre}</option>)}
-                            </select>
-                          </div>
-                          <div className="mt-2 flex items-center space-x-4">
-                            <Toggle
-                              value={editando?.valor?.requiere_firma ?? true}
-                              onChange={v => setEditando(prev => ({ ...prev, valor: { ...prev.valor, requiere_firma: v } }))}
-                              label="Requiere firma"
-                            />
-                          </div>
-                          <div className="mt-2">
-                            <label className="block text-xs font-semibold text-gray-600 uppercase mb-2">Usuarios Asignados (Vacío = Público)</label>
-                            <div className="max-h-32 overflow-y-auto space-y-2 p-2 border border-gray-200 rounded-lg bg-gray-50/50">
-                              {usuariosDB.map(u => {
-                                const seleccionados = editando?.valor?.usuariosAsignadosIds || [];
-                                const isChecked = seleccionados.includes(u.id);
-                                return (
-                                  <label key={u.id} className="flex items-center space-x-2 cursor-pointer">
-                                    <input 
-                                      type="checkbox" 
-                                      checked={isChecked}
-                                      onChange={(e) => {
-                                        const newSelected = e.target.checked 
-                                          ? [...seleccionados, u.id]
-                                          : seleccionados.filter(id => id !== u.id);
-                                        setEditando(prev => ({ ...prev, valor: { ...prev.valor, usuariosAsignadosIds: newSelected } }));
-                                      }}
-                                      className="rounded text-navy-600 focus:ring-navy-500 bg-white border-gray-300"
-                                    />
-                                    <span className="text-xs text-gray-700">{u.nombre} <span className="text-gray-400">({u.email})</span></span>
-                                  </label>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        </>
-                      }
-                    >
-                      <span className="font-medium text-gray-800">{a.nombre}</span>
-                      <span className="ml-2 text-gray-400 text-xs">· {i.nombre} ({ca.nombre})</span>
-                    </ItemRow>
-                  ))))))))}
-                </div>
-              </div>
-            </div>
-          )}
           {/* Flujos */}
           {tab === 'flujos' && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -1101,7 +1538,7 @@ export default function ParametrizacionAdmin() {
 
                     {fFlujo.pasos.length === 0 ? (
                       <p className="text-xs text-gray-400 italic py-3 text-center bg-white rounded-lg border border-dashed border-gray-200">
-                        No hay pasos configurados. Haz clic en "Agregar Paso" para asignar firmantes por facultad y actividad.
+                        No hay pasos configurados. Haz clic en "Agregar Paso" para asignar firmantes.
                       </p>
                     ) : (
                       <div className="space-y-2.5">
@@ -1232,13 +1669,13 @@ export default function ParametrizacionAdmin() {
             </div>
           )}
 
-          {/* ══════════ DOCENTES (N:M Facultades y Actividades) ══════════ */}
+          {/* ══════════ DOCENTES ══════════ */}
           {tab === 'docentes' && (
             <div className="space-y-6">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-4 border-b border-gray-100">
                 <div>
                   <h3 className="text-base font-bold text-navy-900">Parametrización de Docentes</h3>
-                  <p className="text-xs text-gray-500">Gestión de docentes con asignación múltiple a Facultades y Actividades (N:M)</p>
+                  <p className="text-xs text-gray-500">Gestión de docentes con asignación múltiple a Facultades y Carreras</p>
                 </div>
                 <button
                   type="button"
@@ -1286,7 +1723,6 @@ export default function ParametrizacionAdmin() {
                           </div>
                           
                           <div className="flex flex-wrap gap-3 text-xs">
-                            {/* Facultades */}
                             <div className="flex items-center gap-1">
                               <span className="text-gray-500 font-medium">Facultades:</span>
                               {(d.facultades && d.facultades.length > 0) ? (
@@ -1300,13 +1736,12 @@ export default function ParametrizacionAdmin() {
                               )}
                             </div>
 
-                            {/* Actividades */}
                             <div className="flex items-center gap-1">
-                              <span className="text-gray-500 font-medium">Actividades:</span>
-                              {(d.actividades && d.actividades.length > 0) ? (
-                                d.actividades.map(a => (
-                                  <span key={a.id} className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                    {a.nombre}
+                              <span className="text-gray-500 font-medium">Carreras:</span>
+                              {(d.carreras && d.carreras.length > 0) ? (
+                                d.carreras.map(c => (
+                                  <span key={c.id} className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                    {c.nombre}
                                   </span>
                                 ))
                               ) : (
@@ -1316,7 +1751,6 @@ export default function ParametrizacionAdmin() {
                           </div>
                         </div>
 
-                        {/* Botones de acción */}
                         <div className="flex items-center space-x-2 flex-shrink-0 self-end md:self-center">
                           <button
                             type="button"

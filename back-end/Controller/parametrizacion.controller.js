@@ -183,15 +183,186 @@ const criterioCtrl = crearCRUD(Criterio, [
   { model: Periodo, as: 'periodo', attributes: ['id', 'nombre'] },
 ]);
 
-const subcriterioCtrl = crearCRUD(Subcriterio, [
+const _subcriterioBase = crearCRUD(Subcriterio, [
   { model: Criterio, as: 'criterio', attributes: ['id', 'nombre'] },
   { model: Usuario, as: 'responsables', attributes: ['id', 'nombre', 'email'] },
 ]);
 
-const indicadorCtrl = crearCRUD(Indicador, [
+const subcriterioCtrl = {
+  ..._subcriterioBase,
+  async crear(req, res) {
+    const errores = validationResult(req);
+    if (!errores.isEmpty()) return res.status(400).json({ errores: errores.array() });
+    try {
+      const payload = {
+        ...req.body,
+        descripcion: req.body.descripcion ?? req.body.informacion_ayuda ?? null,
+      };
+      const sub = await Subcriterio.create(payload);
+      if (Indicador) {
+        await Indicador.findOrCreate({
+          where: { criterio_id: sub.criterio_id, numero: sub.numero },
+          defaults: {
+            nombre: sub.nombre,
+            descripcion: sub.descripcion,
+            criterio_id: sub.criterio_id,
+            responsable_nombre: sub.responsable_nombre,
+          },
+        }).catch(() => {});
+      }
+      res.status(201).json(sub);
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  },
+  async actualizar(req, res) {
+    const errores = validationResult(req);
+    if (!errores.isEmpty()) return res.status(400).json({ errores: errores.array() });
+    try {
+      const registro = await Subcriterio.findOne({ where: { id: req.params.id, activo: true } });
+      if (!registro) return res.status(404).json({ error: 'Registro no encontrado' });
+      const numAnterior = registro.numero;
+      const payload = {
+        ...req.body,
+        ...(req.body.informacion_ayuda !== undefined && req.body.descripcion === undefined
+          ? { descripcion: req.body.informacion_ayuda }
+          : {}),
+      };
+      await registro.update(payload);
+      if (Indicador) {
+        await Indicador.update(
+          {
+            ...(payload.nombre !== undefined ? { nombre: payload.nombre } : {}),
+            ...(payload.numero !== undefined ? { numero: payload.numero } : {}),
+            ...(payload.descripcion !== undefined ? { descripcion: payload.descripcion } : {}),
+            ...(payload.responsable_nombre !== undefined ? { responsable_nombre: payload.responsable_nombre } : {}),
+          },
+          { where: { criterio_id: registro.criterio_id, numero: numAnterior } }
+        ).catch(() => {});
+      }
+      res.json(registro);
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  },
+  async eliminar(req, res) {
+    try {
+      const registro = await Subcriterio.findOne({ where: { id: req.params.id, activo: true } });
+      if (!registro) return res.status(404).json({ error: 'Registro no encontrado' });
+      await registro.update({ activo: false });
+      if (Indicador) {
+        await Indicador.update(
+          { activo: false },
+          { where: { criterio_id: registro.criterio_id, numero: registro.numero } }
+        ).catch(() => {});
+      }
+      res.json({ mensaje: 'Registro eliminado correctamente' });
+    } catch {
+      res.status(500).json({ error: 'Error al eliminar registro' });
+    }
+  },
+};
+
+const _indicadorBase = crearCRUD(Indicador, [
   { model: Criterio, as: 'criterio', attributes: ['id', 'nombre'] },
   { model: Usuario, as: 'responsables', attributes: ['id', 'nombre', 'email'] },
 ]);
+
+const indicadorCtrl = {
+  ..._indicadorBase,
+  async crear(req, res) {
+    const errores = validationResult(req);
+    if (!errores.isEmpty()) return res.status(400).json({ errores: errores.array() });
+    try {
+      const payload = {
+        ...req.body,
+        descripcion: req.body.descripcion ?? req.body.informacion_ayuda ?? null,
+      };
+      const ind = await Indicador.create(payload);
+      if (Subcriterio) {
+        await Subcriterio.findOrCreate({
+          where: { criterio_id: ind.criterio_id, numero: ind.numero },
+          defaults: {
+            nombre: ind.nombre,
+            descripcion: ind.descripcion,
+            criterio_id: ind.criterio_id,
+            responsable_nombre: ind.responsable_nombre,
+            requiere_firma: req.body.requiere_firma ?? true,
+            flujo_id: req.body.flujo_id || null,
+          },
+        }).catch(() => {});
+      }
+      res.status(201).json(ind);
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  },
+  async actualizar(req, res) {
+    const errores = validationResult(req);
+    if (!errores.isEmpty()) return res.status(400).json({ errores: errores.array() });
+    try {
+      // Buscar primero en Subcriterio o Indicador por ID
+      let sub = Subcriterio ? await Subcriterio.findOne({ where: { id: req.params.id, activo: true } }) : null;
+      let ind = await Indicador.findOne({ where: { id: req.params.id, activo: true } });
+
+      const payload = {
+        ...req.body,
+        ...(req.body.informacion_ayuda !== undefined && req.body.descripcion === undefined
+          ? { descripcion: req.body.informacion_ayuda }
+          : {}),
+      };
+
+      if (sub) {
+        const numAnt = sub.numero;
+        await sub.update(payload);
+        if (Indicador) {
+          await Indicador.update(
+            {
+              ...(payload.nombre !== undefined ? { nombre: payload.nombre } : {}),
+              ...(payload.numero !== undefined ? { numero: payload.numero } : {}),
+              ...(payload.descripcion !== undefined ? { descripcion: payload.descripcion } : {}),
+            },
+            { where: { criterio_id: sub.criterio_id, numero: numAnt } }
+          ).catch(() => {});
+        }
+        return res.json(sub);
+      }
+
+      if (!ind) return res.status(404).json({ error: 'Registro no encontrado' });
+      const numAnt = ind.numero;
+      await ind.update(payload);
+      if (Subcriterio) {
+        await Subcriterio.update(payload, { where: { criterio_id: ind.criterio_id, numero: numAnt } }).catch(() => {});
+      }
+      res.json(ind);
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  },
+  async eliminar(req, res) {
+    try {
+      const sub = Subcriterio ? await Subcriterio.findOne({ where: { id: req.params.id, activo: true } }) : null;
+      const ind = await Indicador.findOne({ where: { id: req.params.id, activo: true } });
+      if (!sub && !ind) return res.status(404).json({ error: 'Registro no encontrado' });
+
+      if (sub) {
+        await sub.update({ activo: false });
+        if (Indicador) {
+          await Indicador.update({ activo: false }, { where: { criterio_id: sub.criterio_id, numero: sub.numero } }).catch(() => {});
+        }
+      }
+      if (ind) {
+        await ind.update({ activo: false });
+        if (Subcriterio) {
+          await Subcriterio.update({ activo: false }, { where: { criterio_id: ind.criterio_id, numero: ind.numero } }).catch(() => {});
+        }
+      }
+      res.json({ mensaje: 'Registro eliminado correctamente' });
+    } catch {
+      res.status(500).json({ error: 'Error al eliminar registro' });
+    }
+  },
+};
 
 const actividadCtrl = crearCRUD(Actividad, [
   { model: Subcriterio, as: 'subcriterio', attributes: ['id', 'numero', 'nombre'] },
@@ -239,8 +410,8 @@ async function generarEstructuraCarrera(req, res) {
   }
 }
 
-// ─── Estructura jerárquica completa (7 niveles) ───────────────────────────
-// Universidad → Facultad → Período → Carrera → Criterio → Subcriterio → Actividad
+// ─── Estructura jerárquica completa (6 niveles: Documentos en Subcriterio) ──
+// Universidad → Facultad → Período → Carrera → Criterio → Subcriterio → Documentos
 async function estructura(req, res) {
   try {
     const universidades = await Universidad.findAll({ where: { activo: true }, order: [['id', 'ASC']] });
@@ -250,28 +421,23 @@ async function estructura(req, res) {
     const criterios     = await Criterio.findAll({ where: { activo: true }, order: [['id', 'ASC']] });
     const subcriterios  = await Subcriterio.findAll({
       where: { activo: true },
-      include: [{ model: Usuario, as: 'responsables', attributes: ['id', 'nombre'] }],
-      order: [['numero', 'ASC']],
-    });
-    const indicadores   = await Indicador.findAll({
-      where: { activo: true },
-      include: [{ model: Usuario, as: 'responsables', attributes: ['id', 'nombre'] }],
-      order: [['numero', 'ASC']],
-    });
-    const actividades   = await Actividad.findAll({
-      where: { activo: true },
       attributes: {
         include: [
           [
             sequelize.literal(
-              '(SELECT COUNT(*)::int FROM documentos AS d WHERE d.actividad_id = "Actividad".id)'
+              '(SELECT COUNT(*)::int FROM documentos AS d WHERE d.subcriterio_id = "Subcriterio".id)'
             ),
             'cantidadDocumentos',
           ],
         ],
       },
-      include: [{ model: Usuario, as: 'usuariosAsignados', attributes: ['id', 'nombre'] }],
-      order: [['id', 'ASC']],
+      include: [{ model: Usuario, as: 'responsables', attributes: ['id', 'nombre', 'email'] }],
+      order: [['numero', 'ASC']],
+    });
+    const indicadores   = await Indicador.findAll({
+      where: { activo: true },
+      include: [{ model: Usuario, as: 'responsables', attributes: ['id', 'nombre', 'email'] }],
+      order: [['numero', 'ASC']],
     });
 
     const resultado = universidades.map(u => ({
@@ -320,31 +486,23 @@ async function estructura(req, res) {
                     const listaBase = critSubcriteriosDB.length > 0 ? critSubcriteriosDB : critIndicadoresDB;
 
                     const itemsMapeados = listaBase.map(item => {
-                      const subActs = actividades.filter(a =>
-                        a.subcriterio_id === item.id || a.indicador_id === item.id
+                      const cantDocs = parseInt(
+                        item.get?.('cantidadDocumentos') ?? item.dataValues?.cantidadDocumentos ?? item.cantidadDocumentos ?? 0,
+                        10
                       );
 
                       return {
                         id: item.id,
                         numero: item.numero,
                         nombre: item.nombre,
+                        descripcion: item.descripcion || '',
+                        informacion_ayuda: item.descripcion || '',
+                        requiere_firma: item.requiere_firma ?? true,
+                        flujo_id: item.flujo_id || null,
+                        responsable_nombre: item.responsable_nombre || '',
                         responsables: item.responsables || [],
-                        actividades: subActs.map(a => {
-                          const cantDocs = parseInt(
-                            a.get?.('cantidadDocumentos') ?? a.dataValues?.cantidadDocumentos ?? a.cantidadDocumentos ?? 0,
-                            10
-                          );
-                          return {
-                            id: a.id,
-                            nombre: a.nombre,
-                            informacion_ayuda: a.descripcion || '',
-                            requiere_firma: a.requiere_firma,
-                            flujo_id: a.flujo_id || null,
-                            usuariosAsignados: a.usuariosAsignados || [],
-                            cantidadDocumentos: isNaN(cantDocs) ? 0 : cantDocs,
-                            documentos: [],
-                          };
-                        }),
+                        cantidadDocumentos: isNaN(cantDocs) ? 0 : cantDocs,
+                        documentos: [],
                       };
                     });
 
@@ -390,8 +548,20 @@ const asignarResponsablesIndicador = async (req, res) => {
   const { id } = req.params;
   const { responsablesIds } = req.body;
   try {
+    const subDirecto = Subcriterio ? await Subcriterio.findByPk(id) : null;
     const indicador = await Indicador.findByPk(id);
-    if (!indicador) return res.status(404).json({ error: 'Indicador no encontrado' });
+    if (!subDirecto && !indicador) return res.status(404).json({ error: 'Subcriterio / Indicador no encontrado' });
+
+    if (subDirecto) {
+      await subDirecto.setResponsables(responsablesIds || []);
+      if (Indicador) {
+        const indEq = await Indicador.findOne({
+          where: { criterio_id: subDirecto.criterio_id, numero: subDirecto.numero },
+        });
+        if (indEq) await indEq.setResponsables(responsablesIds || []);
+      }
+      return res.json({ mensaje: 'Responsables asignados correctamente' });
+    }
 
     await indicador.setResponsables(responsablesIds || []);
 

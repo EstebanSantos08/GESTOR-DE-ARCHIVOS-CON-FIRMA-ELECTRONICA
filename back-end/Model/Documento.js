@@ -34,6 +34,11 @@ const Documento = sequelize.define('Documento', {
     comment: 'ID del usuario que debe firmar a continuación',
   },
   facultad_id: { type: DataTypes.INTEGER, allowNull: true },
+  subcriterio_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    comment: 'Subcriterio al que pertenece directamente el documento PDF',
+  },
   actividad_id: { type: DataTypes.INTEGER, allowNull: true },
   flujo_id: { type: DataTypes.INTEGER, allowNull: true },
   paso_actual: { type: DataTypes.INTEGER, defaultValue: 1 },

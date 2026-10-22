@@ -45,8 +45,8 @@ const SUBCRITERIOS_ACREDITACION = [
 ];
 
 /**
- * Genera de forma automatizada los 5 Criterios, 31 Subcriterios (e Indicadores legacy)
- * y sus Actividades base para una Carrera dentro de un Período dado.
+ * Genera de forma automatizada los 5 Criterios y 31 Subcriterios (e Indicadores legacy)
+ * para una Carrera dentro de un Período dado. Los documentos PDF se suben directamente al Subcriterio.
  */
 async function generarEstructuraParaCarreraYPeriodo({
   carreraId,
@@ -54,7 +54,7 @@ async function generarEstructuraParaCarreraYPeriodo({
   models,
   transaction,
 }) {
-  const { Criterio, Subcriterio, Indicador, Actividad } = models;
+  const { Criterio, Subcriterio, Indicador } = models;
 
   const criteriosCreados = [];
 
@@ -79,62 +79,31 @@ async function generarEstructuraParaCarreraYPeriodo({
   for (const subDef of SUBCRITERIOS_ACREDITACION) {
     const criterio = criteriosCreados[subDef.criterioIdx];
 
-    // 1. Crear Subcriterio
-    let subcriterio = null;
+    // 1. Crear Subcriterio (nivel final donde se suben los documentos PDF)
     if (Subcriterio) {
-      [subcriterio] = await Subcriterio.findOrCreate({
+      await Subcriterio.findOrCreate({
         where: { numero: subDef.numero, criterio_id: criterio.id },
         defaults: {
           nombre: subDef.nombre,
+          descripcion: `Subir los documentos PDF respaldatorios para el subcriterio [${subDef.numero}] ${subDef.nombre}.`,
           criterio_id: criterio.id,
           responsable_nombre: subDef.responsableTexto,
+          requiere_firma: true,
         },
         transaction,
       });
     }
 
     // 2. Crear Indicador (para mantener sincronía y compatibilidad retroactiva)
-    let indicador = null;
     if (Indicador) {
-      [indicador] = await Indicador.findOrCreate({
+      await Indicador.findOrCreate({
         where: { numero: subDef.numero, criterio_id: criterio.id },
         defaults: {
           nombre: subDef.nombre,
+          descripcion: `Subir los documentos PDF respaldatorios para el subcriterio [${subDef.numero}] ${subDef.nombre}.`,
           criterio_id: criterio.id,
           responsable_nombre: subDef.responsableTexto,
         },
-        transaction,
-      });
-    }
-
-    // 3. Actividad: Informe de Evidencias
-    const actInformeDefaults = {
-      descripcion: 'Subir todos los PDFs respaldatorios para este subcriterio.',
-      subcriterio_id: subcriterio?.id || null,
-      indicador_id: indicador?.id || null,
-    };
-    await Actividad.findOrCreate({
-      where: {
-        nombre: `Informe de Evidencias - ${subDef.nombre}`,
-        ...(subcriterio?.id ? { subcriterio_id: subcriterio.id } : { indicador_id: indicador.id }),
-      },
-      defaults: actInformeDefaults,
-      transaction,
-    });
-
-    // 4. Actividad opcional (pares): Matriz Consolidada
-    if (subDef.numero % 2 === 0) {
-      const actMatrizDefaults = {
-        descripcion: 'Subir Excel convertido a PDF con la matriz de datos.',
-        subcriterio_id: subcriterio?.id || null,
-        indicador_id: indicador?.id || null,
-      };
-      await Actividad.findOrCreate({
-        where: {
-          nombre: `Matriz Consolidada - ${subDef.nombre}`,
-          ...(subcriterio?.id ? { subcriterio_id: subcriterio.id } : { indicador_id: indicador.id }),
-        },
-        defaults: actMatrizDefaults,
         transaction,
       });
     }

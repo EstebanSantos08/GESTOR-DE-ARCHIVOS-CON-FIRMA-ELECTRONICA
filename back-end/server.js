@@ -13,7 +13,7 @@ const flujosRoutes = require('./Routes/flujos.routes');
 
 const app = express();
 
-// ─── Validación estricta de Variables de Entorno al arrancar ──────────────
+// ─── Validación de Variables de Entorno al arrancar ────────────────────────
 function validarVariablesEntorno() {
   const obligatorias = [
     'CLOUDFLARE_R2_ACCOUNT_ID',
@@ -25,10 +25,16 @@ function validarVariablesEntorno() {
   const faltantes = obligatorias.filter((variable) => !process.env[variable]);
 
   if (faltantes.length > 0) {
-    console.error('❌ ERROR FATAL: Faltan variables de entorno requeridas para Cloudflare R2:');
-    faltantes.forEach((v) => console.error(`   - ${v}`));
-    console.error('Verifique la configuración en el panel de Render o en su archivo .env local.');
-    process.exit(1);
+    if (process.env.NODE_ENV === 'production') {
+      console.error('❌ ERROR FATAL: Faltan variables de entorno requeridas para Cloudflare R2:');
+      faltantes.forEach((v) => console.error(`   - ${v}`));
+      console.error('Verifique la configuración en el panel de Render o en su archivo .env local.');
+      process.exit(1);
+    } else {
+      console.warn('⚠️ Modo Desarrollo Local: Variables CLOUDFLARE_R2_* no definidas en .env; usando almacenamiento local en ./uploads.');
+    }
+  } else {
+    console.log(`✓ Configuración R2 validada: Bucket "${process.env.CLOUDFLARE_R2_BUCKET_NAME}"`);
   }
 
   // Certificado institucional en memoria (Base64)
@@ -38,27 +44,20 @@ function validarVariablesEntorno() {
   } else {
     console.log('✓ Certificado institucional en memoria configurado correctamente.');
   }
-
-  console.log(`✓ Configuración R2 validada: Bucket "${process.env.CLOUDFLARE_R2_BUCKET_NAME}"`);
 }
 
 validarVariablesEntorno();
 
 // ─── CORS ─────────────────────────────────────────────────────────────────
-// En producción se permite FRONTEND_URL, subdominios *.pages.dev (Cloudflare) y localhost.
 const allowedOrigins = process.env.FRONTEND_URL
   ? process.env.FRONTEND_URL.split(',').map((u) => u.trim())
   : [];
 
 const corsOptions = {
   origin: (origin, callback) => {
-    // Permitir peticiones sin origen (curl, Postman, server-to-server)
     if (!origin) return callback(null, true);
-
-    // En desarrollo permitir cualquier origen
     if (process.env.NODE_ENV !== 'production') return callback(null, true);
 
-    // En producción permitir orígenes explícitos, Cloudflare Pages (*.pages.dev) o localhost
     const isExplicit = allowedOrigins.includes(origin);
     const isCloudflarePages = /^https:\/\/[a-zA-Z0-9-]+\.pages\.dev$/.test(origin);
     const isLocal = /^http:\/\/localhost(:\d+)?$/.test(origin);
@@ -87,8 +86,8 @@ app.use('/api/flujos', flujosRoutes);
 app.get('/api/health', (req, res) => {
   res.json({
     estado: 'OK',
-    almacenamiento: 'Cloudflare R2',
-    bucket: process.env.CLOUDFLARE_R2_BUCKET_NAME,
+    almacenamiento: process.env.CLOUDFLARE_R2_BUCKET_NAME ? 'Cloudflare R2' : 'Local Dev',
+    bucket: process.env.CLOUDFLARE_R2_BUCKET_NAME || 'local-dev-uploads',
     timestamp: new Date().toISOString(),
   });
 });
@@ -132,22 +131,18 @@ app.use((err, req, res, next) => {
 
 // ─── Inicio ────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
-// Render requiere escuchar en 0.0.0.0 (no solo en localhost)
 const HOST = '0.0.0.0';
 
 async function iniciar() {
   try {
-    // 1. Conexión a Base de Datos PostgreSQL
     await sequelize.authenticate();
     console.log('Conexión a PostgreSQL establecida');
 
-    // Forzar actualización segura del esquema para incorporar nuevas columnas (como ruta_archivo_original)
     await sequelize.sync({ alter: true });
     await sequelize.query('ALTER TABLE periodos ALTER COLUMN carrera_id DROP NOT NULL;').catch(() => {});
     await sequelize.query('ALTER TABLE actividades ALTER COLUMN indicador_id DROP NOT NULL;').catch(() => {});
     console.log('Modelos sincronizados con la base de datos');
 
-    // Auto-seed si la base de datos está vacía
     try {
       const { Rol, UsuarioRol } = require('./Model');
       const totalRoles = await Rol.count();
@@ -165,19 +160,17 @@ async function iniciar() {
       console.warn('⚠️ Nota sobre seed inicial:', seedErr.message);
     }
 
-    // 2. Conexión y auto-creación del bucket en Cloudflare R2
-    console.log('☁️ Verificando y asegurando bucket en Cloudflare R2...');
+    console.log('☁️ Verificando almacenamiento...');
     try {
       const bucketVerificado = await r2Service.asegurarBucketExiste();
-      console.log(`✅ Bucket "${bucketVerificado}" en Cloudflare R2 verificado y listo.`);
+      console.log(`✅ Almacenamiento "${bucketVerificado}" verificado y listo.`);
     } catch (r2Err) {
       console.error('❌ ERROR FATAL AL CONECTAR CON CLOUDFLARE R2:');
       console.error(`   ${r2Err.message}`);
       console.error('Verifique que el token tenga permiso Admin Read & Write y que las credenciales sean correctas.');
-      process.exit(1); // Hace que Render falle el despliegue de inmediato
+      process.exit(1);
     }
 
-    // 3. Escuchar peticiones solo después de confirmar R2 y BD
     app.listen(PORT, HOST, () => {
       console.log(`🚀 Servidor corriendo en http://${HOST}:${PORT}`);
       console.log(`Entorno: ${process.env.NODE_ENV || 'development'}`);

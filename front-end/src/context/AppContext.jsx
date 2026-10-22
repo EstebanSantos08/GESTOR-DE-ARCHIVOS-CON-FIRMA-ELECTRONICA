@@ -26,8 +26,6 @@ function parsearUsuario(data) {
     roles = ['DOCENTE'];
   }
 
-  // Normaliza carreras: acepta tanto el alias M:N 'carreras' (array de objetos)
-  // como el alias antiguo 'carrera' (objeto único) por compatibilidad transitoria.
   let carreras = [];
   if (data.carreras && Array.isArray(data.carreras)) {
     carreras = data.carreras.map(c => (typeof c === 'object' ? { id: c.id, nombre: c.nombre } : { id: c, nombre: '' }));
@@ -93,7 +91,6 @@ export function AppProvider({ children }) {
     const activeUser = usr || usuario;
     if (!activeToken) return;
     try {
-      // Admins pueden ver todos los documentos; el resto solo ve los suyos y donde son firmantes
       const esAdmin = activeUser?.roles?.includes('ADMINISTRADOR') || activeUser?.roles?.some(r => r === 'ADMINISTRADOR' || r?.nombre === 'ADMINISTRADOR');
       const url = esAdmin ? `${API_URL}/documentos?todos=true` : `${API_URL}/documentos`;
       const res = await fetch(url, {
@@ -182,7 +179,6 @@ export function AppProvider({ children }) {
           documentoRef: d,
         });
       } else if (d.firmante_actual_id && d.estado !== 'COMPLETADO' && d.estado !== 'RECHAZADO') {
-        // Documento en proceso (cualquier estado con firmante pendiente)
         items.push({
           id: `pend-${d.id}`,
           documento: d.nombre_original,
@@ -208,32 +204,7 @@ export function AppProvider({ children }) {
       });
       if (res.ok) {
         const data = await res.json();
-        
-        // Filtrar actividades según permisos
-        const isAdmin = usuario?.roles?.some(r => r.nombre === 'ADMINISTRADOR');
-        if (!isAdmin) {
-          data.forEach(u => {
-            u.facultades.forEach(f => {
-              f.carreras.forEach(ca => {
-                ca.periodos.forEach(p => {
-                  p.criterios.forEach(c => {
-                    c.indicadores.forEach(i => {
-                      if (i.actividades) {
-                        i.actividades = i.actividades.filter(a => {
-                          const asignados = a.usuariosAsignados || [];
-                          // Si no hay asignados, es pública. Si hay, debe incluir al usuario actual.
-                          return asignados.length === 0 || asignados.some(usr => usr.id === usuario?.id);
-                        });
-                      }
-                    });
-                  });
-                });
-              });
-            });
-          });
-        }
-        
-        setUniversidades(data);
+        setUniversidades(Array.isArray(data) ? data : []);
       }
     } catch {
       // Si falla, se queda con estructura vacía
@@ -242,14 +213,12 @@ export function AppProvider({ children }) {
     }
   }
 
-  async function cargarDocumentosActividad(actividadId) {
-    const res = await fetch(`${API_URL}/documentos?actividad_id=${actividadId}`, {
+  async function cargarDocumentosSubcriterio(subcriterioId) {
+    const res = await fetch(`${API_URL}/documentos?subcriterio_id=${subcriterioId}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!res.ok) return [];
     const docs = await res.json();
-    // Devolvemos el documento completo con todos los campos del backend
-    // más alias de compatibilidad para el panel lateral
     return docs.map(d => ({
       ...d,
       nombre: d.nombre_original,
@@ -261,6 +230,9 @@ export function AppProvider({ children }) {
       observaciones: d.observaciones || '',
     }));
   }
+
+  // Alias por retrocompatibilidad
+  const cargarDocumentosActividad = cargarDocumentosSubcriterio;
 
   async function login(email, password) {
     const res = await fetch(`${API_URL}/auth/login`, {
@@ -364,7 +336,7 @@ export function AppProvider({ children }) {
         setMetricasApi(data);
       }
     } catch {
-      // silencioso — las métricas locales sirven como fallback
+      // silencioso
     }
   }
 
@@ -382,32 +354,35 @@ export function AppProvider({ children }) {
     localStorage.removeItem('gestdoc_usuario');
   }
 
-  function navegarA(vista, params = null) {
-    setVistaActual(vista);
-    setNavParams(params);
-  }
+  function _inyectarDocumentosEnSubcriterio(subcriterioId, docs) {
+    const actualizarListaSub = (lista = []) =>
+      lista.map(s =>
+        s.id === subcriterioId
+          ? {
+              ...s,
+              documentos: docs,
+              cantidadDocumentos: Array.isArray(docs) ? docs.length : (s.cantidadDocumentos || 0),
+            }
+          : s
+      );
 
-  function _inyectarDocumentosEnActividad(actividadId, docs) {
     setUniversidades(prev =>
       prev.map(u => ({
         ...u,
-        facultades: u.facultades.map(f => ({
+        facultades: (u.facultades || []).map(f => ({
           ...f,
-          carreras: f.carreras.map(ca => ({
-            ...ca,
-            periodos: ca.periodos.map(p => ({
-              ...p,
-              criterios: p.criterios.map(c => ({
-                ...c,
-                indicadores: c.indicadores.map(i => ({
-                  ...i,
-                  actividades: i.actividades.map(a =>
-                    a.id === actividadId
-                      ? { ...a, documentos: docs, cantidadDocumentos: Array.isArray(docs) ? docs.length : (a.cantidadDocumentos || 0) }
-                      : a
-                  ),
-                })),
-              })),
+          periodos: (f.periodos || []).map(p => ({
+            ...p,
+            carreras: (p.carreras || []).map(ca => ({
+              ...ca,
+              criterios: (ca.criterios || []).map(c => {
+                const nuevosSub = actualizarListaSub(c.subcriterios || c.indicadores || []);
+                return {
+                  ...c,
+                  subcriterios: nuevosSub,
+                  indicadores: nuevosSub,
+                };
+              }),
             })),
           })),
         })),
@@ -415,10 +390,12 @@ export function AppProvider({ children }) {
     );
   }
 
-  async function subirDocumento(file, actividadId, facultadId) {
+  const _inyectarDocumentosEnActividad = _inyectarDocumentosEnSubcriterio;
+
+  async function subirDocumento(file, subcriterioId, facultadId) {
     const formData = new FormData();
     formData.append('archivo', file);
-    if (actividadId) formData.append('actividad_id', actividadId);
+    if (subcriterioId) formData.append('subcriterio_id', subcriterioId);
     if (facultadId) formData.append('facultad_id', facultadId);
 
     const res = await fetch(`${API_URL}/documentos/subir`, {
@@ -431,15 +408,15 @@ export function AppProvider({ children }) {
       throw new Error(err.error || 'Error al subir documento');
     }
 
-    if (actividadId) {
-      const docs = await cargarDocumentosActividad(actividadId);
-      _inyectarDocumentosEnActividad(actividadId, docs);
+    if (subcriterioId) {
+      const docs = await cargarDocumentosSubcriterio(subcriterioId);
+      _inyectarDocumentosEnSubcriterio(subcriterioId, docs);
     }
     cargarMetricasApi();
     cargarDocumentosGlobales();
   }
 
-  async function firmarDocumento(docId, nombreDoc) {
+  async function firmarDocumento(docId) {
     const body = { observaciones: '' };
     if (certBase64 && certPassword) {
       body.certBase64 = certBase64;
@@ -456,7 +433,6 @@ export function AppProvider({ children }) {
 
     const doc = data.documento;
 
-    // Actualizar el documento con todos los cambios (estado, firmante, paso)
     const cambiosDoc = {
       estado: doc.estado,
       firmante_actual_id: doc.firmante_actual_id,
@@ -465,7 +441,6 @@ export function AppProvider({ children }) {
     };
     _actualizarDocumentoEnEstado(docId, cambiosDoc);
 
-    // Actualizar el documento seleccionado con datos completos
     if (documentoSeleccionado?.id === docId) {
       setDocumentoSeleccionado(prev => ({ ...prev, ...cambiosDoc }));
     }
@@ -491,7 +466,7 @@ export function AppProvider({ children }) {
     cargarDocumentosGlobales();
   }
 
-  async function eliminarDocumento(docId, actividadId) {
+  async function eliminarDocumento(docId, subcriterioId) {
     const res = await fetch(`${API_URL}/documentos/${docId}`, {
       method: 'DELETE',
       headers: authHeaders(),
@@ -499,15 +474,12 @@ export function AppProvider({ children }) {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Error al eliminar documento');
 
-    // Elimina el doc del estado local
-    if (actividadId) {
-      _inyectarDocumentosEnActividad(
-        actividadId,
-        (universidades
-          .flatMap(u => u.facultades.flatMap(f => f.carreras.flatMap(ca => ca.periodos.flatMap(p => p.criterios.flatMap(c => c.indicadores.flatMap(i => i.actividades))))))
-          .find(a => a.id === actividadId)?.documentos || []
-        ).filter(d => d.id !== docId)
-      );
+    if (subcriterioId) {
+      const subActual = universidades
+        .flatMap(u => (u.facultades || []).flatMap(f => (f.periodos || []).flatMap(p => (p.carreras || []).flatMap(ca => (ca.criterios || []).flatMap(c => c.subcriterios || c.indicadores || [])))))
+        .find(s => s.id === subcriterioId);
+      const docsRestantes = (subActual?.documentos || []).filter(d => d.id !== docId);
+      _inyectarDocumentosEnSubcriterio(subcriterioId, docsRestantes);
     }
 
     if (documentoSeleccionado?.id === docId) setDocumentoSeleccionado(null);
@@ -532,25 +504,29 @@ export function AppProvider({ children }) {
   }
 
   function _actualizarDocumentoEnEstado(docId, cambios) {
+    const actualizarSubLista = (lista = []) =>
+      lista.map(s => ({
+        ...s,
+        documentos: (s.documentos || []).map(d => (d.id === docId ? { ...d, ...cambios } : d)),
+      }));
+
     setUniversidades(prev =>
       prev.map(u => ({
         ...u,
-        facultades: u.facultades.map(f => ({
+        facultades: (u.facultades || []).map(f => ({
           ...f,
-          carreras: f.carreras.map(ca => ({
-            ...ca,
-            periodos: ca.periodos.map(p => ({
-              ...p,
-              criterios: p.criterios.map(c => ({
-                ...c,
-                indicadores: c.indicadores.map(i => ({
-                  ...i,
-                  actividades: i.actividades.map(a => ({
-                    ...a,
-                    documentos: a.documentos.map(d => d.id === docId ? { ...d, ...cambios } : d),
-                  })),
-                })),
-              })),
+          periodos: (f.periodos || []).map(p => ({
+            ...p,
+            carreras: (p.carreras || []).map(ca => ({
+              ...ca,
+              criterios: (ca.criterios || []).map(c => {
+                const actualizados = actualizarSubLista(c.subcriterios || c.indicadores || []);
+                return {
+                  ...c,
+                  subcriterios: actualizados,
+                  indicadores: actualizados,
+                };
+              }),
             })),
           })),
         })),
@@ -567,9 +543,6 @@ export function AppProvider({ children }) {
   }
 
   async function actualizarRolUsuario(usuarioId, rol_id) {
-    // El backend ahora espera un array de IDs en 'roles' (PUT /usuarios/:id).
-    // Se mantiene la firma original (rol_id único) para no romper los llamadores
-    // existentes, pero se envía como array.
     const roles = Array.isArray(rol_id) ? rol_id : [rol_id];
     const res = await fetch(`${API_URL}/auth/usuarios/${usuarioId}`, {
       method: 'PUT',
@@ -610,10 +583,6 @@ export function AppProvider({ children }) {
     return res.json();
   }
 
-  // ─── API: Carreras ────────────────────────────────────────────────────────
-  // listarCarreras: devuelve todas las carreras activas de la BD (para selects
-  // en formularios de creación/edición de usuarios sin depender del árbol
-  // jerárquico de universidades).
   async function listarCarreras() {
     try {
       const res = await fetch(`${API_URL}/parametrizacion/carreras`, {
@@ -626,9 +595,6 @@ export function AppProvider({ children }) {
     }
   }
 
-  // crearCarrera: crea una carrera nueva vía el endpoint de parametrización.
-  // Llama a agregarCarrera del contexto si se conocen univId y facId,
-  // o hace la llamada directa si solo se tienen datos básicos.
   async function crearCarrera(datos) {
     const res = await fetch(`${API_URL}/parametrizacion/carreras`, {
       method: 'POST',
@@ -640,7 +606,6 @@ export function AppProvider({ children }) {
     return data;
   }
 
-  // ─── API: Docentes (N:M con Facultades y Actividades) ──────────────────────
   async function listarDocentes() {
     const res = await fetch(`${API_URL}/parametrizacion/docentes`, {
       headers: authHeaders(),
@@ -703,7 +668,7 @@ export function AppProvider({ children }) {
 
   async function listarActividadesCatalogo() {
     try {
-      const res = await fetch(`${API_URL}/parametrizacion/actividades`, {
+      const res = await fetch(`${API_URL}/parametrizacion/subcriterios`, {
         headers: authHeaders(),
       });
       if (!res.ok) return [];
@@ -732,7 +697,7 @@ export function AppProvider({ children }) {
     try {
       const res = await fetch(`${API_URL}/flujos`, { headers: { Authorization: `Bearer ${token}` } });
       if (res.ok) setFlujosFirma(await res.json());
-    } catch (e) {}
+    } catch {}
   }
 
   async function crearFlujo(datos) {
@@ -846,7 +811,7 @@ export function AppProvider({ children }) {
     if (!res.ok) throw new Error(data.error || data.errores?.[0]?.msg || 'Error al crear facultad');
     setUniversidades(prev =>
       prev.map(u => u.id === univId
-        ? { ...u, facultades: [...u.facultades, { ...data, carreras: [] }] }
+        ? { ...u, facultades: [...u.facultades, { ...data, carreras: [], periodos: [] }] }
         : u
       )
     );
@@ -862,13 +827,7 @@ export function AppProvider({ children }) {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Error al actualizar carrera');
-    setUniversidades(prev => prev.map(u => u.id === univId
-      ? { ...u, facultades: u.facultades.map(f => f.id === facultadId
-          ? { ...f, carreras: f.carreras.map(ca => ca.id === id ? { ...ca, ...data } : ca) }
-          : f
-        ) }
-      : u
-    ));
+    await cargarEstructura();
     return data;
   }
 
@@ -879,13 +838,7 @@ export function AppProvider({ children }) {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Error al eliminar carrera');
-    setUniversidades(prev => prev.map(u => u.id === univId
-      ? { ...u, facultades: u.facultades.map(f => f.id === facultadId
-          ? { ...f, carreras: f.carreras.filter(ca => ca.id !== id) }
-          : f
-        ) }
-      : u
-    ));
+    await cargarEstructura();
     return data;
   }
 
@@ -897,17 +850,7 @@ export function AppProvider({ children }) {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || data.errores?.[0]?.msg || 'Error al crear carrera');
-    setUniversidades(prev =>
-      prev.map(u => u.id === univId
-        ? {
-          ...u, facultades: u.facultades.map(f => f.id === facultadId
-            ? { ...f, carreras: [...f.carreras, { ...data, periodos: [] }] }
-            : f
-          )
-        }
-        : u
-      )
-    );
+    await cargarEstructura();
     return data;
   }
 
@@ -924,7 +867,7 @@ export function AppProvider({ children }) {
     return data;
   }
 
-  async function eliminarPeriodo(id, univId, facultadId, carreraId) {
+  async function eliminarPeriodo(id) {
     const res = await fetch(`${API_URL}/parametrizacion/periodos/${id}`, {
       method: 'DELETE',
       headers: authHeaders(),
@@ -972,7 +915,7 @@ export function AppProvider({ children }) {
     return data;
   }
 
-  async function eliminarCriterio(id, univId, facultadId, carreraId, periodoId) {
+  async function eliminarCriterio(id) {
     const res = await fetch(`${API_URL}/parametrizacion/criterios/${id}`, {
       method: 'DELETE',
       headers: authHeaders(),
@@ -995,118 +938,60 @@ export function AppProvider({ children }) {
     return data;
   }
 
-  // CRUD Indicadores / Subcriterios
+  // CRUD Subcriterios (e Indicadores por compatibilidad)
   async function actualizarIndicador(id, univId, facultadId, carreraId, periodoId, criterioId, datos) {
-    const res = await fetch(`${API_URL}/parametrizacion/indicadores/${id}`, {
+    const res = await fetch(`${API_URL}/parametrizacion/subcriterios/${id}`, {
       method: 'PUT',
       headers: authHeaders(),
       body: JSON.stringify(datos),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Error al actualizar indicador');
+    if (!res.ok) throw new Error(data.error || 'Error al actualizar subcriterio');
     await cargarEstructura();
     return data;
   }
 
-  async function eliminarIndicador(id, univId, facultadId, carreraId, periodoId, criterioId) {
-    const res = await fetch(`${API_URL}/parametrizacion/indicadores/${id}`, {
+  async function eliminarIndicador(id) {
+    const res = await fetch(`${API_URL}/parametrizacion/subcriterios/${id}`, {
       method: 'DELETE',
       headers: authHeaders(),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Error al eliminar indicador');
+    if (!res.ok) throw new Error(data.error || 'Error al eliminar subcriterio');
     await cargarEstructura();
     return data;
   }
 
   async function agregarIndicador(univId, facultadId, carreraId, periodoId, criterioId, datos) {
-    const res = await fetch(`${API_URL}/parametrizacion/indicadores`, {
+    const res = await fetch(`${API_URL}/parametrizacion/subcriterios`, {
       method: 'POST',
       headers: authHeaders(),
       body: JSON.stringify({ ...datos, criterio_id: criterioId }),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || data.errores?.[0]?.msg || 'Error al crear indicador');
+    if (!res.ok) throw new Error(data.error || data.errores?.[0]?.msg || 'Error al crear subcriterio');
     await cargarEstructura();
     return data;
   }
 
   async function asignarResponsablesIndicador(id, responsablesIds) {
-    const res = await fetch(`${API_URL}/parametrizacion/indicadores/${id}/responsables`, {
+    const res = await fetch(`${API_URL}/parametrizacion/subcriterios/${id}/responsables`, {
       method: 'POST',
       headers: authHeaders(),
       body: JSON.stringify({ responsablesIds }),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Error al asignar responsables al indicador');
-    await cargarEstructura();
-    return data;
-  }
-
-  // CRUD Actividades
-  async function actualizarActividad(id, univId, facultadId, carreraId, periodoId, criterioId, indicadorId, datos) {
-    const res = await fetch(`${API_URL}/parametrizacion/actividades/${id}`, {
-      method: 'PUT',
-      headers: authHeaders(),
-      body: JSON.stringify(datos),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Error al actualizar actividad');
-    await cargarEstructura();
-    return data;
-  }
-
-  async function eliminarActividad(id, univId, facultadId, carreraId, periodoId, criterioId, indicadorId) {
-    const res = await fetch(`${API_URL}/parametrizacion/actividades/${id}`, {
-      method: 'DELETE',
-      headers: authHeaders(),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Error al eliminar actividad');
-    await cargarEstructura();
-    return data;
-  }
-
-  async function agregarActividad(univId, facultadId, carreraId, periodoId, criterioId, indicadorId, datos) {
-    const res = await fetch(`${API_URL}/parametrizacion/actividades`, {
-      method: 'POST',
-      headers: authHeaders(),
-      body: JSON.stringify({
-        ...datos,
-        indicador_id: indicadorId,
-        subcriterio_id: indicadorId,
-      }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || data.errores?.[0]?.msg || 'Error al crear actividad');
-    await cargarEstructura();
-    return data;
-  }
-
-  async function asignarUsuariosActividad(id, univId, facultadId, carreraId, periodoId, criterioId, indicadorId, usuariosIds) {
-    const res = await fetch(`${API_URL}/parametrizacion/actividades/${id}/usuarios`, {
-      method: 'POST',
-      headers: authHeaders(),
-      body: JSON.stringify({ usuariosIds }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Error al asignar usuarios a la actividad');
-    
-    // Refresh only the affected activity tree in the local state, or rely on a full refresh?
-    // It's safer to just fetch the full tree again to get the populated users, or manually inject.
-    // For simplicity we fetch the whole tree again to ensure consistency:
+    if (!res.ok) throw new Error(data.error || 'Error al asignar responsables al subcriterio');
     await cargarEstructura();
     return data;
   }
 
   const todosLosDocs = (universidades ?? []).flatMap(u =>
     (u?.facultades ?? []).flatMap(f =>
-      (f?.carreras ?? []).flatMap(ca =>
-        (ca?.periodos ?? []).flatMap(p =>
-          (p?.criterios ?? []).flatMap(c =>
-            (c?.indicadores ?? []).flatMap(i =>
-              (i?.actividades ?? []).flatMap(a => a?.documentos ?? [])
-            )
+      (f?.periodos ?? []).flatMap(p =>
+        (p?.carreras ?? []).flatMap(ca =>
+          (ca?.criterios ?? []).flatMap(c =>
+            (c?.subcriterios ?? c?.indicadores ?? []).flatMap(i => i?.documentos ?? [])
           )
         )
       )
@@ -1119,7 +1004,6 @@ export function AppProvider({ children }) {
     firmados: todosLosDocs.filter(d => d.estado === 'COMPLETADO').length,
     rechazados: todosLosDocs.filter(d => d.estado === 'RECHAZADO').length,
   };
-  // Las métricas de la API son más precisas (incluyen todos los docs del servidor)
   const metricas = metricasApi || metricasLocales;
 
   return (
@@ -1129,6 +1013,7 @@ export function AppProvider({ children }) {
       isAutenticado, login, logout, registrar,
       cambiarPassword, solicitarRecuperacion, resetPassword, adminResetPassword,
       universidades, setUniversidades, cargandoEstructura, cargarEstructura,
+      cargarDocumentosSubcriterio, _inyectarDocumentosEnSubcriterio,
       cargarDocumentosActividad, _inyectarDocumentosEnActividad,
       auditoria, alertas,
       documentoSeleccionado, setDocumentoSeleccionado,
@@ -1152,7 +1037,6 @@ export function AppProvider({ children }) {
       actualizarSubcriterio: actualizarIndicador,
       eliminarSubcriterio: eliminarIndicador,
       asignarResponsablesSubcriterio: asignarResponsablesIndicador,
-      agregarActividad, actualizarActividad, eliminarActividad, asignarUsuariosActividad,
       flujosFirma, crearFlujo, actualizarFlujo, eliminarFlujo,
       metricas, todosLosDocs,
     }}>

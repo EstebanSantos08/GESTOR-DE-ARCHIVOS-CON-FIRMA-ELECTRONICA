@@ -2,7 +2,7 @@
 
 const multer = require('multer');
 const { pipeline } = require('stream');
-const { sequelize, Documento, Usuario, Rol, Facultad, Actividad, FlujoFirma, PasoFirma } = require('../Model');
+const { sequelize, Documento, Usuario, Rol, Facultad, Subcriterio, Actividad, FlujoFirma, PasoFirma } = require('../Model');
 const firmaService = require('../Services/firma.service');
 const workflowService = require('../Services/workflow.service');
 const {
@@ -38,8 +38,8 @@ const upload = multer({
 // ─── Controladores ─────────────────────────────────────────────────────────
 
 /**
- * Sube un documento PDF original a Cloudflare R2 y prepara los sellos visuales
- * para todos los firmantes programados antes del inicio del flujo de firmas.
+ * Sube un documento PDF original a Cloudflare R2 directamente en un Subcriterio
+ * y prepara los sellos visuales para todos los firmantes programados.
  */
 async function subirDocumento(req, res) {
   if (!req.file) {
@@ -62,7 +62,9 @@ async function subirDocumento(req, res) {
     claveOriginal = generarClave('originales', req.file.originalname);
     await subirArchivoR2(claveOriginal, bufferOriginal, 'application/pdf');
 
-    // 2. Crear registro inicial en PostgreSQL
+    const subcriterioId = req.body.subcriterio_id || req.body.actividad_id || null;
+
+    // 2. Crear registro inicial en PostgreSQL vinculado a subcriterio_id
     const documento = await Documento.create({
       nombre_original: req.file.originalname,
       ruta_archivo: claveOriginal,
@@ -70,6 +72,7 @@ async function subirDocumento(req, res) {
       estado: 'PENDIENTE',
       subido_por_id: req.usuario.id,
       facultad_id: req.body.facultad_id || null,
+      subcriterio_id: subcriterioId,
       actividad_id: req.body.actividad_id || null,
       hash_sha256: hashOriginal,
     });
@@ -109,7 +112,7 @@ async function subirDocumento(req, res) {
 }
 
 /**
- * Lista los documentos accesibles para el usuario actual según sus roles y actividad.
+ * Lista los documentos accesibles para el usuario actual según sus roles y subcriterio.
  */
 async function listarDocumentos(req, res) {
   try {
@@ -117,7 +120,17 @@ async function listarDocumentos(req, res) {
     const usuarioRoles = req.usuario.roles || [req.usuario.rol].filter(Boolean);
     const esAdmin = usuarioRoles.includes('ADMINISTRADOR');
 
-    if (req.query.actividad_id) {
+    if (req.query.subcriterio_id) {
+      where.subcriterio_id = parseInt(req.query.subcriterio_id, 10);
+
+      if (!esAdmin) {
+        const { Op } = require('sequelize');
+        where[Op.or] = [
+          { subido_por_id: req.usuario.id },
+          { firmante_actual_id: req.usuario.id },
+        ];
+      }
+    } else if (req.query.actividad_id) {
       where.actividad_id = parseInt(req.query.actividad_id, 10);
 
       if (!esAdmin) {
@@ -139,19 +152,25 @@ async function listarDocumentos(req, res) {
 
     if (req.query.estado) where.estado = req.query.estado;
 
+    const includeModels = [
+      { model: Usuario, as: 'subidoPor', attributes: ['id', 'nombre', 'email'] },
+      { model: Usuario, as: 'firmanteActual', attributes: ['id', 'nombre'] },
+      { model: Facultad, as: 'facultad', attributes: ['id', 'nombre'] },
+      { model: Actividad, as: 'actividad', attributes: ['id', 'nombre'] },
+      {
+        model: FlujoFirma,
+        as: 'flujoFirma',
+        include: [{ model: PasoFirma, as: 'pasos', include: [{ model: Rol, as: 'rolRequerido' }] }],
+      },
+    ];
+
+    if (Subcriterio) {
+      includeModels.push({ model: Subcriterio, as: 'subcriterio', attributes: ['id', 'numero', 'nombre'] });
+    }
+
     const documentos = await Documento.findAll({
       where,
-      include: [
-        { model: Usuario, as: 'subidoPor', attributes: ['id', 'nombre', 'email'] },
-        { model: Usuario, as: 'firmanteActual', attributes: ['id', 'nombre'] },
-        { model: Facultad, as: 'facultad', attributes: ['id', 'nombre'] },
-        { model: Actividad, as: 'actividad', attributes: ['id', 'nombre'] },
-        {
-          model: FlujoFirma,
-          as: 'flujoFirma',
-          include: [{ model: PasoFirma, as: 'pasos', include: [{ model: Rol, as: 'rolRequerido' }] }],
-        },
-      ],
+      include: includeModels,
       order: [['creado_en', 'DESC']],
     });
 
@@ -172,18 +191,24 @@ async function listarDocumentos(req, res) {
  */
 async function obtenerDocumento(req, res) {
   try {
+    const includeModels = [
+      { model: Usuario, as: 'subidoPor', attributes: ['id', 'nombre', 'email'] },
+      { model: Usuario, as: 'firmanteActual', include: [{ model: Rol, as: 'roles' }] },
+      { model: Facultad, as: 'facultad' },
+      { model: Actividad, as: 'actividad' },
+      {
+        model: FlujoFirma,
+        as: 'flujoFirma',
+        include: [{ model: PasoFirma, as: 'pasos', include: [{ model: Rol, as: 'rolRequerido' }] }],
+      },
+    ];
+
+    if (Subcriterio) {
+      includeModels.push({ model: Subcriterio, as: 'subcriterio' });
+    }
+
     const documento = await Documento.findByPk(req.params.id, {
-      include: [
-        { model: Usuario, as: 'subidoPor', attributes: ['id', 'nombre', 'email'] },
-        { model: Usuario, as: 'firmanteActual', include: [{ model: Rol, as: 'roles' }] },
-        { model: Facultad, as: 'facultad' },
-        { model: Actividad, as: 'actividad' },
-        {
-          model: FlujoFirma,
-          as: 'flujoFirma',
-          include: [{ model: PasoFirma, as: 'pasos', include: [{ model: Rol, as: 'rolRequerido' }] }],
-        },
-      ],
+      include: includeModels,
     });
 
     if (!documento) {
@@ -211,7 +236,6 @@ async function firmarDocumento(req, res) {
   const t = await sequelize.transaction();
 
   try {
-    // 1. Bloqueo de fila para evitar firmas concurrentes en la misma versión
     const documento = await Documento.findByPk(req.params.id, {
       lock: t.LOCK.UPDATE,
       transaction: t,
@@ -222,7 +246,6 @@ async function firmarDocumento(req, res) {
       return res.status(404).json({ error: 'Documento no encontrado' });
     }
 
-    // Compatibilidad con rutas heredadas no migradas a R2
     if (!documento.ruta_archivo || !documento.ruta_archivo.startsWith('documentos/')) {
       await t.rollback();
       return res.status(410).json({
@@ -235,10 +258,8 @@ async function firmarDocumento(req, res) {
       transaction: t,
     });
 
-    // 2. Descargar PDF actual desde R2 en memoria
     let pdfBuffer = await obtenerBufferR2(documento.ruta_archivo);
 
-    // Si el PDF aún no fue preparado (sigue en originales), prepararlo antes de firmar
     if (documento.ruta_archivo.startsWith('documentos/originales/')) {
       const firmantesProgramados = await workflowService.obtenerFirmantesProgramados(documento);
       pdfBuffer = await firmaService.prepararDocumento(pdfBuffer, firmantesProgramados, documento.creado_en);
@@ -251,7 +272,6 @@ async function firmarDocumento(req, res) {
       }, { transaction: t });
     }
 
-    // 3. Obtener certificado P12 en memoria (del usuario o institucional)
     let certPassword;
 
     if (req.body.certBase64 && req.body.certPassword) {
@@ -274,7 +294,6 @@ async function firmarDocumento(req, res) {
 
     const nombreRolFirmante = (usuarioFirmante.roles && usuarioFirmante.roles[0]?.nombre) || 'Usuario';
 
-    // 4. Firmar criptográficamente (PAdES-BES con CAdES-BES detached)
     const resultado = await firmaService.firmarDocumento({
       pdfBuffer,
       certBuffer,
@@ -282,11 +301,9 @@ async function firmarDocumento(req, res) {
       firmante: { nombre: usuarioFirmante.nombre, rol: nombreRolFirmante },
     });
 
-    // 5. Subir PDF firmado a R2
     claveFirmada = generarClave('firmados', documento.nombre_original);
     await subirArchivoR2(claveFirmada, resultado.pdfFirmado, 'application/pdf');
 
-    // 6. Actualizar registro y trazabilidad
     const rutaAnterior = documento.ruta_archivo;
     const rutaOriginal = documento.ruta_archivo_original || rutaAnterior;
 
@@ -296,7 +313,6 @@ async function firmarDocumento(req, res) {
       hash_sha256: resultado.hashSha256,
     }, { transaction: t });
 
-    // 7. Avanzar paso en el workflow dentro de la misma transacción
     const documentoActualizado = await workflowService.procesarFirma(
       documento.id,
       req.usuario,
@@ -304,7 +320,6 @@ async function firmarDocumento(req, res) {
       { transaction: t }
     );
 
-    // 8. Confirmar transacción
     await t.commit();
 
     res.json({
@@ -312,14 +327,12 @@ async function firmarDocumento(req, res) {
       documento: documentoActualizado,
     });
   } catch (err) {
-    // Si hubo error, revertir transacción
     try {
       await t.rollback();
     } catch {
       // rollback ya ejecutado o no aplicable
     }
 
-    // Compensación: si se subió el PDF firmado a R2 pero falló la BD, eliminarlo de R2
     if (claveFirmada) {
       await eliminarArchivoR2(claveFirmada);
     }
@@ -327,7 +340,6 @@ async function firmarDocumento(req, res) {
     const statusCode = err.name === 'CertificadoInvalidoError' ? 400 : 500;
     res.status(statusCode).json({ error: err.message });
   } finally {
-    // Sobrescribir con ceros los buffers sensibles en memoria
     if (certBuffer && Buffer.isBuffer(certBuffer)) {
       certBuffer.fill(0);
     }
@@ -359,7 +371,6 @@ async function descargarDocumento(req, res) {
       return res.status(404).json({ error: 'Documento no encontrado' });
     }
 
-    // Compatibilidad con registros antiguos en disco
     if (!documento.ruta_archivo || !documento.ruta_archivo.startsWith('documentos/')) {
       return res.status(410).json({
         error: 'El archivo de este documento se encuentra en una ruta local heredada no disponible en el almacenamiento en la nube R2.',
@@ -413,12 +424,10 @@ async function eliminarDocumento(req, res) {
       return res.status(403).json({ error: 'No tienes permiso para eliminar este documento' });
     }
 
-    // 1. Eliminar archivo actual de R2
     if (documento.ruta_archivo && documento.ruta_archivo.startsWith('documentos/')) {
       await eliminarArchivoR2(documento.ruta_archivo);
     }
 
-    // 2. Eliminar archivo original de R2 si difiere
     if (
       documento.ruta_archivo_original &&
       documento.ruta_archivo_original.startsWith('documentos/') &&
@@ -463,7 +472,6 @@ async function resumenDocumentos(req, res) {
 
 /**
  * Purga completa de todos los documentos en BD y todos los objetos bajo 'documentos/' en R2.
- * Exclusivo para administradores.
  */
 async function purgarTodosDocumentos(req, res) {
   try {
@@ -474,12 +482,10 @@ async function purgarTodosDocumentos(req, res) {
       return res.status(403).json({ error: 'No autorizado. Solo ADMINISTRADOR puede purgar documentos.' });
     }
 
-    // 1. Eliminar todos los objetos de R2 con prefijo 'documentos/'
     console.log('[R2] Purgando todos los objetos con prefijo documentos/...');
     const eliminadosR2 = await eliminarPorPrefijoR2('documentos/');
     console.log(`[R2] ${eliminadosR2} objetos eliminados de Cloudflare R2.`);
 
-    // 2. Vaciar tabla de documentos en PostgreSQL
     try {
       await Documento.destroy({ where: {}, truncate: true, cascade: true });
     } catch {

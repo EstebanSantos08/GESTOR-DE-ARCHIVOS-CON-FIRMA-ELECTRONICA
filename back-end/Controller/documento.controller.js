@@ -80,25 +80,22 @@ async function subirDocumento(req, res) {
     // 3. Asignar el firmante inicial según la parametrización del workflow
     await workflowService.asignarFirmanteInicial(documento);
 
-    // 4. Preparar el documento (estampar sellos visuales QR de los firmantes programados)
+    // 4. Normalizar el documento original (sin estampar sellos adelantados; cada sello se agrega al firmar)
     try {
-      const firmantesProgramados = await workflowService.obtenerFirmantesProgramados(documento);
-      const pdfPreparado = await firmaService.prepararDocumento(
-        bufferOriginal,
-        firmantesProgramados,
-        documento.creado_en || new Date()
-      );
+      if (typeof firmaService.normalizarPdfOriginal === 'function') {
+        const pdfPreparado = await firmaService.normalizarPdfOriginal(bufferOriginal);
 
-      clavePreparado = generarClave('preparados', req.file.originalname);
-      await subirArchivoR2(clavePreparado, pdfPreparado, 'application/pdf');
+        clavePreparado = generarClave('preparados', req.file.originalname);
+        await subirArchivoR2(clavePreparado, pdfPreparado, 'application/pdf');
 
-      const hashPreparado = firmaService.calcularHash(pdfPreparado);
-      await documento.update({
-        ruta_archivo: clavePreparado,
-        hash_sha256: hashPreparado,
-      });
+        const hashPreparado = firmaService.calcularHash(pdfPreparado);
+        await documento.update({
+          ruta_archivo: clavePreparado,
+          hash_sha256: hashPreparado,
+        });
+      }
     } catch (prepErr) {
-      console.warn('[Workflow] No se pudo pre-estampar sellos en la subida, se mantiene original:', prepErr.message);
+      console.warn('[Workflow] No se pudo normalizar PDF en la subida, se mantiene original:', prepErr.message);
     }
 
     res.status(201).json(await documento.reload());

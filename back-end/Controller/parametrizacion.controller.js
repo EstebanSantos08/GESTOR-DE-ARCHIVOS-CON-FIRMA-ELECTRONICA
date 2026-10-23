@@ -79,9 +79,6 @@ const facultadCtrl = crearCRUD(Facultad, [
   { model: Universidad, as: 'universidad', attributes: ['id', 'nombre'] },
 ]);
 
-// carreraCtrl: CRUD genérico más un `crear` especializado que extrae solo
-// los campos permitidos (nombre, descripcion, facultad_id) para evitar que
-// propiedades extra del body generen errores de columna desconocida en Sequelize.
 const _carreraBase = crearCRUD(Carrera, [
   { model: Facultad, as: 'facultad', attributes: ['id', 'nombre'] },
 ]);
@@ -92,15 +89,35 @@ const carreraCtrl = {
   async crear(req, res) {
     const errores = validationResult(req);
     if (!errores.isEmpty()) return res.status(400).json({ errores: errores.array() });
+    const t = await sequelize.transaction();
     try {
-      const { nombre, descripcion, facultad_id } = req.body;
-      const carrera = await Carrera.create({ nombre, descripcion, facultad_id });
-      // Recargar con facultad para la respuesta completa
+      const { nombre, descripcion, facultad_id, generar_estructura = true } = req.body;
+      const carrera = await Carrera.create({ nombre, descripcion, facultad_id }, { transaction: t });
+
+      // Si ya existen períodos activos en la facultad, generar automáticamente los 5 Criterios y 31 Subcriterios para esta carrera
+      if (generar_estructura && facultad_id) {
+        const periodosExistentes = await Periodo.findAll({
+          where: { facultad_id, activo: true },
+          transaction: t,
+        });
+        for (const per of periodosExistentes) {
+          await generarEstructuraParaCarreraYPeriodo({
+            carreraId: carrera.id,
+            periodoId: per.id,
+            models: { Criterio, Subcriterio, Indicador, Actividad },
+            transaction: t,
+          });
+        }
+      }
+
+      await t.commit();
+
       const completa = await Carrera.findByPk(carrera.id, {
         include: [{ model: Facultad, as: 'facultad', attributes: ['id', 'nombre'] }],
       });
       res.status(201).json(completa);
     } catch (err) {
+      await t.rollback();
       res.status(400).json({ error: err.message });
     }
   },
@@ -301,7 +318,6 @@ const indicadorCtrl = {
     const errores = validationResult(req);
     if (!errores.isEmpty()) return res.status(400).json({ errores: errores.array() });
     try {
-      // Buscar primero en Subcriterio o Indicador por ID
       let sub = Subcriterio ? await Subcriterio.findOne({ where: { id: req.params.id, activo: true } }) : null;
       let ind = await Indicador.findOne({ where: { id: req.params.id, activo: true } });
 
@@ -418,7 +434,42 @@ async function estructura(req, res) {
     const facultades    = await Facultad.findAll({ where: { activo: true }, order: [['id', 'ASC']] });
     const carreras      = await Carrera.findAll({ where: { activo: true }, order: [['id', 'ASC']] });
     const periodos      = await Periodo.findAll({ where: { activo: true }, order: [['id', 'ASC']] });
-    const criterios     = await Criterio.findAll({ where: { activo: true }, order: [['id', 'ASC']] });
+    let criterios       = await Criterio.findAll({ where: { activo: true }, order: [['id', 'ASC']] });
+    let subcriteriosPre = Subcriterio ? await Subcriterio.findAll({ where: { activo: true }, attributes: ['id', 'criterio_id'] }) : [];
+
+    // Auto-generar los 5 Criterios y 31 Subcriterios para cualquier (Período, Carrera) activa de una misma Facultad que aún no los tenga completos
+    let huboAutogeneracion = false;
+    for (const f of facultades) {
+      const facCarreras = carreras.filter(ca => ca.facultad_id === f.id);
+      const facCarreraIds = facCarreras.map(ca => ca.id);
+      const facPeriodos = periodos.filter(p =>
+        p.facultad_id === f.id || (p.carrera_id && facCarreraIds.includes(p.carrera_id))
+      );
+
+      for (const p of facPeriodos) {
+        for (const ca of facCarreras) {
+          const carrCriterios = criterios.filter(
+            c => c.periodo_id === p.id && (c.carrera_id === ca.id || (!c.carrera_id && p.carrera_id === ca.id))
+          );
+          const critIds = carrCriterios.map(c => c.id);
+          const totalSubs = subcriteriosPre.filter(s => critIds.includes(s.criterio_id)).length;
+
+          if (carrCriterios.length < 5 || totalSubs < 31) {
+            await generarEstructuraParaCarreraYPeriodo({
+              carreraId: ca.id,
+              periodoId: p.id,
+              models: { Criterio, Subcriterio, Indicador, Actividad },
+            });
+            huboAutogeneracion = true;
+          }
+        }
+      }
+    }
+
+    if (huboAutogeneracion) {
+      criterios = await Criterio.findAll({ where: { activo: true }, order: [['id', 'ASC']] });
+    }
+
     const subcriterios  = await Subcriterio.findAll({
       where: { activo: true },
       attributes: {
@@ -460,7 +511,6 @@ async function estructura(req, res) {
             id: f.id,
             nombre: f.nombre,
             descripcion: f.descripcion,
-            // Lista de carreras a nivel facultad por retrocompatibilidad
             carreras: facCarreras.map(ca => ({
               id: ca.id,
               nombre: ca.nombre,
@@ -513,7 +563,7 @@ async function estructura(req, res) {
                       requiere_firma: c.requiere_firma,
                       flujo_id: c.flujo_id || null,
                       subcriterios: itemsMapeados,
-                      indicadores: itemsMapeados, // Alias idéntico para retrocompatibilidad
+                      indicadores: itemsMapeados,
                     };
                   }),
                 };
@@ -758,7 +808,6 @@ const docenteCtrl = {
       const whereUsuario = { activo: true };
       const include = [];
 
-      // 1. Filtro por Rol (opcional)
       const filtroRol = rolId || rol;
       if (filtroRol) {
         const whereRol = isNaN(filtroRol)
@@ -782,7 +831,6 @@ const docenteCtrl = {
         });
       }
 
-      // 2. Filtro por Facultad (M:N)
       if (facultadId) {
         include.push({
           model: Facultad,
@@ -802,7 +850,6 @@ const docenteCtrl = {
         });
       }
 
-      // 3. Filtro por Actividad (M:N)
       if (actividadId) {
         include.push({
           model: Actividad,

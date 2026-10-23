@@ -366,23 +366,33 @@ export function AppProvider({ children }) {
           : s
       );
 
+    const actualizarCriterios = (criterios = []) =>
+      criterios.map(c => {
+        const nuevosSub = actualizarListaSub(c.subcriterios || c.indicadores || []);
+        return {
+          ...c,
+          subcriterios: nuevosSub,
+          indicadores: nuevosSub,
+        };
+      });
+
     setUniversidades(prev =>
       prev.map(u => ({
         ...u,
         facultades: (u.facultades || []).map(f => ({
           ...f,
+          carreras: (f.carreras || []).map(ca => ({
+            ...ca,
+            periodos: (ca.periodos || []).map(p => ({
+              ...p,
+              criterios: actualizarCriterios(p.criterios || []),
+            })),
+          })),
           periodos: (f.periodos || []).map(p => ({
             ...p,
             carreras: (p.carreras || []).map(ca => ({
               ...ca,
-              criterios: (ca.criterios || []).map(c => {
-                const nuevosSub = actualizarListaSub(c.subcriterios || c.indicadores || []);
-                return {
-                  ...c,
-                  subcriterios: nuevosSub,
-                  indicadores: nuevosSub,
-                };
-              }),
+              criterios: actualizarCriterios(ca.criterios || []),
             })),
           })),
         })),
@@ -510,23 +520,33 @@ export function AppProvider({ children }) {
         documentos: (s.documentos || []).map(d => (d.id === docId ? { ...d, ...cambios } : d)),
       }));
 
+    const actualizarCriterios = (criterios = []) =>
+      criterios.map(c => {
+        const actualizados = actualizarSubLista(c.subcriterios || c.indicadores || []);
+        return {
+          ...c,
+          subcriterios: actualizados,
+          indicadores: actualizados,
+        };
+      });
+
     setUniversidades(prev =>
       prev.map(u => ({
         ...u,
         facultades: (u.facultades || []).map(f => ({
           ...f,
+          carreras: (f.carreras || []).map(ca => ({
+            ...ca,
+            periodos: (ca.periodos || []).map(p => ({
+              ...p,
+              criterios: actualizarCriterios(p.criterios || []),
+            })),
+          })),
           periodos: (f.periodos || []).map(p => ({
             ...p,
             carreras: (p.carreras || []).map(ca => ({
               ...ca,
-              criterios: (ca.criterios || []).map(c => {
-                const actualizados = actualizarSubLista(c.subcriterios || c.indicadores || []);
-                return {
-                  ...c,
-                  subcriterios: actualizados,
-                  indicadores: actualizados,
-                };
-              }),
+              criterios: actualizarCriterios(ca.criterios || []),
             })),
           })),
         })),

@@ -238,8 +238,8 @@ export default function ExploradorDeArchivos() {
       const { univId, facId, perId, carrId, critId, subId } = navParams;
       if (univId) setSelUniId(Number(univId));
       if (facId) setSelFacId(Number(facId));
-      if (perId) setSelPerId(Number(perId));
       if (carrId) setSelCarrId(Number(carrId));
+      if (perId) setSelPerId(Number(perId));
       if (critId) {
         setSelCritId(Number(critId));
         setFiltroCriterioId(String(critId));
@@ -248,15 +248,20 @@ export default function ExploradorDeArchivos() {
         autoInitRef.current = true;
         entrarSubcriterio(Number(subId));
         return;
-      } else if (carrId) {
+      } else if (perId && carrId) {
         autoInitRef.current = true;
         setNivel('criterios');
+        return;
+      } else if (carrId) {
+        autoInitRef.current = true;
+        setNivel('periodos');
         return;
       }
     }
   }, [navParams, universidades]);
 
   // 2. Auto-selección inteligente y restauración de contexto en localStorage
+  // Flujo jerárquico: Universidad → Facultad → Carrera → Período → Criterio → Subcriterio
   useEffect(() => {
     if (!universidades || universidades.length === 0 || autoInitRef.current) return;
     autoInitRef.current = true;
@@ -266,14 +271,14 @@ export default function ExploradorDeArchivos() {
       if (guardado) {
         const u = universidades.find(x => x.id === Number(guardado.uniId));
         const f = u?.facultades?.find(x => x.id === Number(guardado.facId));
-        const p = f?.periodos?.find(x => x.id === Number(guardado.perId));
-        const c = (p?.carreras || f?.carreras || []).find(x => x.id === Number(guardado.carrId));
+        const c = f?.carreras?.find(x => x.id === Number(guardado.carrId));
+        const p = (c?.periodos || f?.periodos || []).find(x => x.id === Number(guardado.perId));
 
-        if (u && f && p && c) {
+        if (u && f && c && p) {
           setSelUniId(u.id);
           setSelFacId(f.id);
-          setSelPerId(p.id);
           setSelCarrId(c.id);
+          setSelPerId(p.id);
           setNivel('criterios');
           return;
         }
@@ -282,7 +287,7 @@ export default function ExploradorDeArchivos() {
       // Ignorar errores de parseo en localStorage
     }
 
-    // Si no hay sesión previa válida, auto-avanzar niveles con 1 sola opción
+    // Si no hay sesión previa válida, auto-avanzar niveles con 1 sola opción (Universidad → Facultad → Carrera → Período)
     if (universidades.length === 1) {
       const u = universidades[0];
       setSelUniId(u.id);
@@ -292,31 +297,20 @@ export default function ExploradorDeArchivos() {
         const f = facs[0];
         setSelFacId(f.id);
 
-        const pers = f.periodos || [];
-        if (pers.length === 1) {
-          const p = pers[0];
-          setSelPerId(p.id);
+        const carrs = f.carreras || [];
+        if (carrs.length === 1) {
+          const c = carrs[0];
+          setSelCarrId(c.id);
 
-          const carrs = p.carreras || f.carreras || [];
-          if (carrs.length === 1) {
-            setSelCarrId(carrs[0].id);
+          const pers = c.periodos || f.periodos || [];
+          if (pers.length === 1) {
+            setSelPerId(pers[0].id);
             setNivel('criterios');
           } else {
-            setNivel('carreras');
-          }
-        } else if (pers.length > 1) {
-          // Preseleccionar el último período (más reciente) si tiene carreras
-          const ultimoPeriodo = pers[pers.length - 1];
-          setSelPerId(ultimoPeriodo.id);
-          const carrs = ultimoPeriodo.carreras || f.carreras || [];
-          if (carrs.length === 1) {
-            setSelCarrId(carrs[0].id);
-            setNivel('criterios');
-          } else {
-            setNivel('carreras');
+            setNivel('periodos');
           }
         } else {
-          setNivel('periodos');
+          setNivel('carreras');
         }
       } else {
         setNivel('facultades');
@@ -324,19 +318,19 @@ export default function ExploradorDeArchivos() {
     }
   }, [universidades]);
 
-  // Guardar selección activa en localStorage cuando llega a una carrera
+  // Guardar selección activa en localStorage cuando llega a una carrera y período
   useEffect(() => {
-    if (selUniId && selFacId && selPerId && selCarrId) {
+    if (selUniId && selFacId && selCarrId && selPerId) {
       try {
         localStorage.setItem(
           STORAGE_CTX_KEY,
-          JSON.stringify({ uniId: selUniId, facId: selFacId, perId: selPerId, carrId: selCarrId })
+          JSON.stringify({ uniId: selUniId, facId: selFacId, carrId: selCarrId, perId: selPerId })
         );
       } catch {
         // Ignorar errores de cuota
       }
     }
-  }, [selUniId, selFacId, selPerId, selCarrId]);
+  }, [selUniId, selFacId, selCarrId, selPerId]);
 
   useEffect(() => {
     setBusqueda('');
@@ -348,22 +342,27 @@ export default function ExploradorDeArchivos() {
 
   const uniActual  = (universidades ?? []).find(u => u.id === Number(selUniId));
   const facActual  = uniActual?.facultades?.find(f => f.id === Number(selFacId));
-  const periActual = facActual?.periodos?.find(p => p.id === Number(selPerId));
-  const carrActual = periActual?.carreras?.find(c => c.id === Number(selCarrId)) || facActual?.carreras?.find(c => c.id === Number(selCarrId));
-  const critActual = carrActual?.criterios?.find(c => c.id === Number(selCritId));
+  const carrActual = facActual?.carreras?.find(c => c.id === Number(selCarrId));
+  const periActual = (carrActual?.periodos || facActual?.periodos || []).find(p => p.id === Number(selPerId));
+  const criteriosActivos =
+    periActual?.criterios ||
+    periActual?.carreras?.find(c => c.id === Number(selCarrId))?.criterios ||
+    carrActual?.criterios ||
+    [];
+  const critActual = criteriosActivos.find(c => c.id === Number(selCritId));
   const subActual  = (
     critActual?.subcriterios ||
     critActual?.indicadores ||
-    (carrActual?.criterios || []).flatMap(cr => cr.subcriterios || cr.indicadores || [])
+    criteriosActivos.flatMap(cr => cr.subcriterios || cr.indicadores || [])
   )?.find(i => i.id === Number(selIndId));
 
-  // Handlers de cambio rápido en la barra superior
+  // Handlers de cambio rápido en la barra superior (Universidad → Facultad → Carrera → Período)
   function handleSelectRapidoUni(id) {
     const numId = id ? Number(id) : null;
     setSelUniId(numId);
     setSelFacId(null);
-    setSelPerId(null);
     setSelCarrId(null);
+    setSelPerId(null);
     setSelCritId(null);
     setSelIndId(null);
     setNivel(numId ? 'facultades' : 'universidades');
@@ -372,8 +371,8 @@ export default function ExploradorDeArchivos() {
   function handleSelectRapidoFac(id) {
     const numId = id ? Number(id) : null;
     setSelFacId(numId);
-    setSelPerId(null);
     setSelCarrId(null);
+    setSelPerId(null);
     setSelCritId(null);
     setSelIndId(null);
     if (!numId) {
@@ -381,37 +380,17 @@ export default function ExploradorDeArchivos() {
       return;
     }
     const f = uniActual?.facultades?.find(x => x.id === numId);
-    const pers = f?.periodos || [];
-    if (pers.length === 1) {
-      const p = pers[0];
-      setSelPerId(p.id);
-      const carrs = p.carreras || f.carreras || [];
-      if (carrs.length === 1) {
-        setSelCarrId(carrs[0].id);
+    const carrs = f?.carreras || [];
+    if (carrs.length === 1) {
+      const c = carrs[0];
+      setSelCarrId(c.id);
+      const pers = c.periodos || f?.periodos || [];
+      if (pers.length === 1) {
+        setSelPerId(pers[0].id);
         setNivel('criterios');
       } else {
-        setNivel('carreras');
+        setNivel('periodos');
       }
-    } else {
-      setNivel('periodos');
-    }
-  }
-
-  function handleSelectRapidoPer(id) {
-    const numId = id ? Number(id) : null;
-    setSelPerId(numId);
-    setSelCarrId(null);
-    setSelCritId(null);
-    setSelIndId(null);
-    if (!numId) {
-      setNivel('periodos');
-      return;
-    }
-    const p = facActual?.periodos?.find(x => x.id === numId);
-    const carrs = p?.carreras || facActual?.carreras || [];
-    if (carrs.length === 1) {
-      setSelCarrId(carrs[0].id);
-      setNivel('criterios');
     } else {
       setNivel('carreras');
     }
@@ -420,11 +399,33 @@ export default function ExploradorDeArchivos() {
   function handleSelectRapidoCarr(id) {
     const numId = id ? Number(id) : null;
     setSelCarrId(numId);
+    setSelPerId(null);
     setSelCritId(null);
     setSelIndId(null);
     setFiltroCriterioId('TODOS');
     setSubExpandidoId(null);
-    setNivel(numId ? 'criterios' : 'carreras');
+    if (!numId) {
+      setNivel('carreras');
+      return;
+    }
+    const c = facActual?.carreras?.find(x => x.id === numId);
+    const pers = c?.periodos || facActual?.periodos || [];
+    if (pers.length === 1) {
+      setSelPerId(pers[0].id);
+      setNivel('criterios');
+    } else {
+      setNivel('periodos');
+    }
+  }
+
+  function handleSelectRapidoPer(id) {
+    const numId = id ? Number(id) : null;
+    setSelPerId(numId);
+    setSelCritId(null);
+    setSelIndId(null);
+    setFiltroCriterioId('TODOS');
+    setSubExpandidoId(null);
+    setNivel(numId ? 'criterios' : 'periodos');
   }
 
   async function handleDescargar(doc) {
@@ -449,14 +450,14 @@ export default function ExploradorDeArchivos() {
 
   function breadcrumbItems() {
     const items = [{ label: 'Inicio', onClick: () => setNivel('universidades') }];
-    if (['facultades','periodos','carreras','criterios','subcriterios','indicadores','documentos'].includes(nivel) && uniActual)
+    if (['facultades','carreras','periodos','criterios','subcriterios','indicadores','documentos'].includes(nivel) && uniActual)
       items.push({ label: uniActual?.siglas || uniActual?.nombre, onClick: () => setNivel('facultades') });
-    if (['periodos','carreras','criterios','subcriterios','indicadores','documentos'].includes(nivel) && facActual)
-      items.push({ label: facActual?.nombre, onClick: () => setNivel('periodos') });
-    if (['carreras','criterios','subcriterios','indicadores','documentos'].includes(nivel) && periActual)
-      items.push({ label: periActual?.nombre, onClick: () => setNivel('carreras') });
-    if (['criterios','subcriterios','indicadores','documentos'].includes(nivel) && carrActual)
-      items.push({ label: carrActual?.nombre, onClick: () => { setFiltroCriterioId('TODOS'); setNivel('criterios'); } });
+    if (['carreras','periodos','criterios','subcriterios','indicadores','documentos'].includes(nivel) && facActual)
+      items.push({ label: facActual?.nombre, onClick: () => setNivel('carreras') });
+    if (['periodos','criterios','subcriterios','indicadores','documentos'].includes(nivel) && carrActual)
+      items.push({ label: carrActual?.nombre, onClick: () => setNivel('periodos') });
+    if (['criterios','subcriterios','indicadores','documentos'].includes(nivel) && periActual)
+      items.push({ label: periActual?.nombre, onClick: () => { setFiltroCriterioId('TODOS'); setNivel('criterios'); } });
     if (['subcriterios','indicadores'].includes(nivel) && critActual)
       items.push({ label: critActual?.nombre, onClick: () => setNivel('subcriterios') });
     if (nivel === 'documentos' && subActual)
@@ -655,8 +656,8 @@ export default function ExploradorDeArchivos() {
     });
   };
 
-  // Cálculo de subcriterios y avance de la carrera seleccionada
-  const todosSubcriteriosCarrera = (carrActual?.criterios || []).flatMap(cr =>
+  // Cálculo de subcriterios y avance de la carrera y período seleccionados
+  const todosSubcriteriosCarrera = (criteriosActivos || []).flatMap(cr =>
     (cr.subcriterios || cr.indicadores || []).map(sub => {
       const totalDocs = typeof sub.cantidadDocumentos === 'number'
         ? sub.cantidadDocumentos
@@ -754,29 +755,29 @@ export default function ExploradorDeArchivos() {
             ))}
           </select>
 
-          {/* Selector Período */}
-          <select
-            value={selPerId || ''}
-            onChange={e => handleSelectRapidoPer(e.target.value)}
-            disabled={!facActual}
-            className="text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 bg-gray-50 hover:bg-white focus:outline-none focus:ring-2 focus:ring-navy-500 font-medium text-gray-700 disabled:opacity-40"
-          >
-            <option value="">Seleccionar Período...</option>
-            {(facActual?.periodos || []).map(p => (
-              <option key={p.id} value={p.id}>{p.nombre}</option>
-            ))}
-          </select>
-
-          {/* Selector Carrera */}
+          {/* Selector Carrera (primero) */}
           <select
             value={selCarrId || ''}
             onChange={e => handleSelectRapidoCarr(e.target.value)}
-            disabled={!periActual}
-            className="text-xs border border-navy-200 rounded-lg px-3 py-1.5 bg-navy-50/60 hover:bg-navy-50 focus:outline-none focus:ring-2 focus:ring-navy-500 font-semibold text-navy-900 disabled:opacity-40"
+            disabled={!facActual}
+            className="text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 bg-gray-50 hover:bg-white focus:outline-none focus:ring-2 focus:ring-navy-500 font-medium text-gray-700 disabled:opacity-40"
           >
             <option value="">Seleccionar Carrera...</option>
-            {(periActual?.carreras || facActual?.carreras || []).map(c => (
+            {(facActual?.carreras || []).map(c => (
               <option key={c.id} value={c.id}>{c.nombre}</option>
+            ))}
+          </select>
+
+          {/* Selector Período (después de Carrera) */}
+          <select
+            value={selPerId || ''}
+            onChange={e => handleSelectRapidoPer(e.target.value)}
+            disabled={!carrActual}
+            className="text-xs border border-navy-200 rounded-lg px-3 py-1.5 bg-navy-50/60 hover:bg-navy-50 focus:outline-none focus:ring-2 focus:ring-navy-500 font-semibold text-navy-900 disabled:opacity-40"
+          >
+            <option value="">Seleccionar Período...</option>
+            {(carrActual?.periodos || facActual?.periodos || []).map(p => (
+              <option key={p.id} value={p.id}>{p.nombre}</option>
             ))}
           </select>
 
@@ -919,7 +920,7 @@ export default function ExploradorDeArchivos() {
                 <CarpetaCard
                   key={f.id}
                   nombre={f.nombre}
-                  descripcion={`${f.periodos?.length || 0} períodos · ${f.carreras?.length || 0} carreras`}
+                  descripcion={`${f.carreras?.length || 0} carreras · ${f.periodos?.length || 0} períodos`}
                   onClick={() => handleSelectRapidoFac(f.id)}
                   onEdit={esAdmin ? () => abrirEditar('facultad', f.id, f.nombre, { univId: selUniId }) : null}
                   onDelete={esAdmin ? () => handleEliminar('facultad', f.id, f.nombre, { univId: selUniId }) : null}
@@ -929,44 +930,22 @@ export default function ExploradorDeArchivos() {
           </div>
         )}
 
-        {/* Nivel 3: Períodos */}
-        {nivel === 'periodos' && (
-          <div>
-            <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold mb-4">
-              Períodos Académicos — {facActual?.nombre}
-            </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {getFiltrados(facActual?.periodos).map(p => (
-                <CarpetaCard
-                  key={p.id}
-                  nombre={p.nombre}
-                  descripcion={`${p.carreras?.length || 0} carreras habilitadas`}
-                  onClick={() => handleSelectRapidoPer(p.id)}
-                  onEdit={esAdmin ? () => abrirEditar('periodo', p.id, p.nombre, { univId: selUniId, facId: selFacId }) : null}
-                  onDelete={esAdmin ? () => handleEliminar('periodo', p.id, p.nombre, { univId: selUniId, facId: selFacId }) : null}
-                />
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Nivel 4: Carreras */}
+        {/* Nivel 3: Carreras (Primero Carrera) */}
         {nivel === 'carreras' && (
           <div>
             <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold mb-4">
-              Seleccione una Carrera — {periActual?.nombre} ({facActual?.nombre})
+              Seleccione una Carrera — {facActual?.nombre}
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {getFiltrados(periActual?.carreras || facActual?.carreras).map(c => {
-                const subs = (c.criterios || []).flatMap(cr => cr.subcriterios || cr.indicadores || []);
-                const conDoc = subs.filter(s => (typeof s.cantidadDocumentos === 'number' ? s.cantidadDocumentos : (s.documentos?.length || 0)) > 0).length;
+              {getFiltrados(facActual?.carreras).map(c => {
+                const periodosDeCarrera = c.periodos || facActual?.periodos || [];
                 return (
                   <CarpetaCard
                     key={c.id}
                     nombre={c.nombre}
-                    descripcion={`${c.criterios?.length || 0} criterios · ${subs.length} subcriterios`}
-                    badgeText={`${conDoc} / ${subs.length} subcriterios con PDF`}
-                    badgeColor={conDoc > 0 ? 'green' : 'amber'}
+                    descripcion={c.descripcion || `${periodosDeCarrera.length} períodos académicos`}
+                    badgeText={`${periodosDeCarrera.length} período${periodosDeCarrera.length === 1 ? '' : 's'}`}
+                    badgeColor="blue"
                     onClick={() => handleSelectRapidoCarr(c.id)}
                     onEdit={esAdmin ? () => abrirEditar('carrera', c.id, c.nombre, { univId: selUniId, facId: selFacId }) : null}
                     onDelete={esAdmin ? () => handleEliminar('carrera', c.id, c.nombre, { univId: selUniId, facId: selFacId }) : null}
@@ -977,10 +956,38 @@ export default function ExploradorDeArchivos() {
           </div>
         )}
 
+        {/* Nivel 4: Períodos (Después de Carrera) */}
+        {nivel === 'periodos' && (
+          <div>
+            <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold mb-4">
+              Períodos Académicos — {carrActual?.nombre} ({facActual?.nombre})
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {getFiltrados(carrActual?.periodos || facActual?.periodos).map(p => {
+                const crits = p.criterios || p.carreras?.find(ca => ca.id === Number(selCarrId))?.criterios || [];
+                const subs = crits.flatMap(cr => cr.subcriterios || cr.indicadores || []);
+                const conDoc = subs.filter(s => (typeof s.cantidadDocumentos === 'number' ? s.cantidadDocumentos : (s.documentos?.length || 0)) > 0).length;
+                return (
+                  <CarpetaCard
+                    key={p.id}
+                    nombre={p.nombre}
+                    descripcion={`${crits.length} criterios · ${subs.length} subcriterios`}
+                    badgeText={`${conDoc} / ${subs.length} subcriterios con PDF`}
+                    badgeColor={conDoc > 0 ? 'green' : 'amber'}
+                    onClick={() => handleSelectRapidoPer(p.id)}
+                    onEdit={esAdmin ? () => abrirEditar('periodo', p.id, p.nombre, { univId: selUniId, facId: selFacId, carrId: selCarrId }) : null}
+                    onDelete={esAdmin ? () => handleEliminar('periodo', p.id, p.nombre, { univId: selUniId, facId: selFacId, carrId: selCarrId }) : null}
+                  />
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* ══════════════════════════════════════════════════════════════════
-            VISTA UNIFICADA DE CARRERA (Criterios + 31 Subcriterios en 1 paso)
+            VISTA UNIFICADA DE CARRERA Y PERÍODO (Criterios + 31 Subcriterios en 1 paso)
            ══════════════════════════════════════════════════════════════════ */}
-        {(nivel === 'criterios' || nivel === 'subcriterios' || nivel === 'indicadores') && carrActual && (
+        {(nivel === 'criterios' || nivel === 'subcriterios' || nivel === 'indicadores') && carrActual && periActual && (
           <div className="space-y-4">
             {/* Cabecera resumen de la Carrera + Progreso */}
             <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-2xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
@@ -989,8 +996,11 @@ export default function ExploradorDeArchivos() {
                   <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
                     {carrActual.nombre}
                   </span>
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-navy-50 text-navy-700 border border-navy-200">
+                    {periActual?.nombre}
+                  </span>
                   <span className="text-xs text-gray-500">
-                    {periActual?.nombre} · {facActual?.nombre}
+                    · {facActual?.nombre}
                   </span>
                 </div>
                 <p className="text-xs text-gray-500 mt-1">
@@ -1060,7 +1070,7 @@ export default function ExploradorDeArchivos() {
                 >
                   Todos ({totalSubsCarrera})
                 </button>
-                {(carrActual.criterios || []).map(c => {
+                {criteriosActivos.map(c => {
                   const cant = (c.subcriterios || c.indicadores || []).length;
                   const activo = String(filtroCriterioId) === String(c.id);
                   return (

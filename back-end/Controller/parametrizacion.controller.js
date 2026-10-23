@@ -511,10 +511,56 @@ async function estructura(req, res) {
             id: f.id,
             nombre: f.nombre,
             descripcion: f.descripcion,
+            // Flujo principal: Facultad → Carrera → Período → Criterio → Subcriterio
             carreras: facCarreras.map(ca => ({
               id: ca.id,
               nombre: ca.nombre,
               descripcion: ca.descripcion,
+              facultad_id: f.id,
+              periodos: facPeriodos.map(p => {
+                const carrCriterios = criterios.filter(c =>
+                  c.periodo_id === p.id && (c.carrera_id === ca.id || (!c.carrera_id && p.carrera_id === ca.id))
+                );
+                return {
+                  id: p.id,
+                  nombre: p.nombre,
+                  facultad_id: f.id,
+                  carrera_id: ca.id,
+                  criterios: carrCriterios.map(c => {
+                    const critSubcriteriosDB = subcriterios.filter(s => s.criterio_id === c.id);
+                    const critIndicadoresDB  = indicadores.filter(i => i.criterio_id === c.id);
+                    const listaBase = critSubcriteriosDB.length > 0 ? critSubcriteriosDB : critIndicadoresDB;
+                    const itemsMapeados = listaBase.map(item => {
+                      const cantDocs = parseInt(
+                        item.get?.('cantidadDocumentos') ?? item.dataValues?.cantidadDocumentos ?? item.cantidadDocumentos ?? 0,
+                        10
+                      );
+                      return {
+                        id: item.id,
+                        numero: item.numero,
+                        nombre: item.nombre,
+                        descripcion: item.descripcion || '',
+                        informacion_ayuda: item.descripcion || '',
+                        requiere_firma: item.requiere_firma ?? true,
+                        flujo_id: item.flujo_id || null,
+                        responsable_nombre: item.responsable_nombre || '',
+                        responsables: item.responsables || [],
+                        cantidadDocumentos: isNaN(cantDocs) ? 0 : cantDocs,
+                        documentos: [],
+                      };
+                    });
+                    return {
+                      id: c.id,
+                      nombre: c.nombre,
+                      descripcion: c.descripcion,
+                      requiere_firma: c.requiere_firma,
+                      flujo_id: c.flujo_id || null,
+                      subcriterios: itemsMapeados,
+                      indicadores: itemsMapeados,
+                    };
+                  }),
+                };
+              }),
             })),
             periodos: facPeriodos.map(p => ({
               id: p.id,

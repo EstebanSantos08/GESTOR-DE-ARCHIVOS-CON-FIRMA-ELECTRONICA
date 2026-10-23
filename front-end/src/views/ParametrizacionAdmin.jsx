@@ -124,7 +124,7 @@ export default function ParametrizacionAdmin() {
   const [fUniv, setFUniv] = useState({ nombre: '', siglas: '' });
   const [fFac,  setFfac]  = useState({ nombre: '', univId: '' });
   const [fCarr, setFCarr] = useState({ nombre: '', descripcion: '', univId: '', facId: '' });
-  const [fPer,  setFPer]  = useState({ nombre: '', univId: '', facId: '' });
+  const [fPer,  setFPer]  = useState({ nombre: '', univId: '', facId: '', carrId: '' });
   const [fCrit, setFCrit] = useState({ nombre: '', univId: '', facId: '', perId: '', carrId: '', requiere_firma: true });
   const [fInd,  setFInd]  = useState({
     nombre: '',
@@ -228,9 +228,14 @@ export default function ParametrizacionAdmin() {
     e.preventDefault();
     if (!fPer.nombre || !fPer.univId || !fPer.facId) return;
     try {
-      await agregarPeriodo(Number(fPer.univId), Number(fPer.facId), { nombre: fPer.nombre });
-      setFPer({ nombre: '', univId: '', facId: '' });
-      mostrarExito('Período creado exitosamente con sus carreras, criterios y subcriterios');
+      await agregarPeriodo(
+        Number(fPer.univId),
+        Number(fPer.facId),
+        fPer.carrId ? Number(fPer.carrId) : null,
+        { nombre: fPer.nombre }
+      );
+      setFPer(prev => ({ ...prev, nombre: '' }));
+      mostrarExito('Período creado exitosamente con sus 5 Criterios y 31 Subcriterios');
     } catch (err) { mostrarError(err.message); }
   }
 
@@ -380,27 +385,34 @@ export default function ParametrizacionAdmin() {
   const TABS = [
     { id: 'universidad', label: 'Universidad', icon: Building2 },
     { id: 'facultad',    label: 'Facultad',    icon: BookOpen },
-    { id: 'periodo',     label: 'Período',     icon: CalendarDays },
     { id: 'carrera',     label: 'Carrera',     icon: GraduationCap },
+    { id: 'periodo',     label: 'Período',     icon: CalendarDays },
     { id: 'criterio',    label: 'Criterio',    icon: Microscope },
     { id: 'subcriterio', label: 'Subcriterio', icon: Target },
     { id: 'docentes',    label: 'Docentes',    icon: UserCheck },
     { id: 'flujos',      label: 'Flujos Firma', icon: Pencil },
   ];
 
-  // Helper getters for dropdowns
+  // Helper getters for dropdowns (Orden jerárquico: Universidad → Facultad → Carrera → Período → Criterio)
   const univSelPer  = universidades.find(u => u.id === Number(fPer.univId));
+  const facSelPer   = univSelPer?.facultades?.find(f => f.id === Number(fPer.facId));
   const univSelCarr = universidades.find(u => u.id === Number(fCarr.univId));
 
   const univSelCrit = universidades.find(u => u.id === Number(fCrit.univId));
   const facSelCrit  = univSelCrit?.facultades.find(f => f.id === Number(fCrit.facId));
-  const perSelCrit  = facSelCrit?.periodos?.find(p => p.id === Number(fCrit.perId));
+  const carrSelCrit = facSelCrit?.carreras?.find(c => c.id === Number(fCrit.carrId));
+  const perSelCrit  = (carrSelCrit?.periodos || facSelCrit?.periodos || []).find(p => p.id === Number(fCrit.perId));
 
   const univSelInd  = universidades.find(u => u.id === Number(fInd.univId));
   const facSelInd   = univSelInd?.facultades.find(f => f.id === Number(fInd.facId));
-  const perSelInd   = facSelInd?.periodos?.find(p => p.id === Number(fInd.perId));
-  const carrSelInd  = perSelInd?.carreras?.find(c => c.id === Number(fInd.carrId)) || facSelInd?.carreras?.find(c => c.id === Number(fInd.carrId));
-  const critSelInd  = carrSelInd?.criterios?.find(c => String(c.id) === String(fInd.critId));
+  const carrSelInd  = facSelInd?.carreras?.find(c => c.id === Number(fInd.carrId));
+  const perSelInd   = (carrSelInd?.periodos || facSelInd?.periodos || []).find(p => p.id === Number(fInd.perId));
+  const criteriosDisponiblesInd =
+    perSelInd?.criterios ||
+    perSelInd?.carreras?.find(c => c.id === Number(fInd.carrId))?.criterios ||
+    carrSelInd?.criterios ||
+    [];
+  const critSelInd  = criteriosDisponiblesInd.find(c => String(c.id) === String(fInd.critId));
 
   const indicadoresFiltrados = critSelInd
     ? INDICADORES_PREDEFINIDOS.filter(
@@ -408,27 +420,46 @@ export default function ParametrizacionAdmin() {
       )
     : [];
 
+  // Helper para recorrer Carrera → Período (con fallback a Período → Carrera)
+  const obtenerParesCarreraPeriodo = (f) => {
+    const pares = [];
+    const carrerasFac = f.carreras || [];
+    const tienePeriodosEnCarrera = carrerasFac.some(ca => Array.isArray(ca.periodos) && ca.periodos.length > 0);
+    if (tienePeriodosEnCarrera) {
+      for (const ca of carrerasFac) {
+        for (const p of (ca.periodos || [])) {
+          pares.push({ ca, p, criterios: p.criterios || [] });
+        }
+      }
+    } else {
+      for (const p of (f.periodos || [])) {
+        for (const ca of (p.carreras || [])) {
+          pares.push({ ca, p, criterios: ca.criterios || [] });
+        }
+      }
+    }
+    return pares;
+  };
+
   // ── Filas aplanadas y filtradas para Tabla de Criterios ─────────────────
   const filasCriterios = universidades.flatMap(u =>
     (u.facultades || []).flatMap(f =>
-      (f.periodos || []).flatMap(p =>
-        (p.carreras || []).flatMap(ca =>
-          (ca.criterios || []).map(c => ({
-            u,
-            f,
-            p,
-            ca,
-            c,
-            totalSubcriterios: (c.subcriterios || c.indicadores || []).length,
-          }))
-        )
+      obtenerParesCarreraPeriodo(f).flatMap(({ ca, p, criterios }) =>
+        (criterios || []).map(c => ({
+          u,
+          f,
+          p,
+          ca,
+          c,
+          totalSubcriterios: (c.subcriterios || c.indicadores || []).length,
+        }))
       )
     )
   ).filter(row => {
     if (fCrit.univId && row.u.id !== Number(fCrit.univId)) return false;
     if (fCrit.facId && row.f.id !== Number(fCrit.facId)) return false;
-    if (fCrit.perId && row.p.id !== Number(fCrit.perId)) return false;
     if (fCrit.carrId && row.ca.id !== Number(fCrit.carrId)) return false;
+    if (fCrit.perId && row.p.id !== Number(fCrit.perId)) return false;
     if (busquedaCriterio.trim()) {
       const q = busquedaCriterio.toLowerCase();
       return (
@@ -444,26 +475,24 @@ export default function ParametrizacionAdmin() {
   // ── Filas aplanadas y filtradas para Tabla de Subcriterios ──────────────
   const filasSubcriterios = universidades.flatMap(u =>
     (u.facultades || []).flatMap(f =>
-      (f.periodos || []).flatMap(p =>
-        (p.carreras || []).flatMap(ca =>
-          (ca.criterios || []).flatMap(c =>
-            (c.subcriterios || c.indicadores || []).map(i => ({
-              u,
-              f,
-              p,
-              ca,
-              c,
-              i,
-            }))
-          )
+      obtenerParesCarreraPeriodo(f).flatMap(({ ca, p, criterios }) =>
+        (criterios || []).flatMap(c =>
+          (c.subcriterios || c.indicadores || []).map(i => ({
+            u,
+            f,
+            p,
+            ca,
+            c,
+            i,
+          }))
         )
       )
     )
   ).filter(row => {
     if (fInd.univId && row.u.id !== Number(fInd.univId)) return false;
     if (fInd.facId && row.f.id !== Number(fInd.facId)) return false;
-    if (fInd.perId && row.p.id !== Number(fInd.perId)) return false;
     if (fInd.carrId && row.ca.id !== Number(fInd.carrId)) return false;
+    if (fInd.perId && row.p.id !== Number(fInd.perId)) return false;
     if (fInd.critId && String(row.c.id) !== String(fInd.critId)) return false;
     if (busquedaSubcriterio.trim()) {
       const q = busquedaSubcriterio.toLowerCase();
@@ -733,19 +762,25 @@ export default function ParametrizacionAdmin() {
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-800 flex items-start space-x-2">
                     <Info size={16} className="text-blue-600 mt-0.5 flex-shrink-0" />
                     <span>
-                      Al crear el período se generarán automáticamente los 5 Criterios y 31 Subcriterios por separado para cada carrera de la facultad escogida.
+                      Al crear el período se generarán automáticamente los 5 Criterios y 31 Subcriterios para las carreras de la facultad.
                     </span>
                   </div>
                   <FormField label="Universidad">
-                    <select value={fPer.univId} onChange={e => setFPer({...fPer, univId: e.target.value, facId: ''})} className={selectCls}>
+                    <select value={fPer.univId} onChange={e => setFPer({...fPer, univId: e.target.value, facId: '', carrId: ''})} className={selectCls}>
                       <option value="">Seleccionar...</option>
                       {universidades.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
                     </select>
                   </FormField>
                   <FormField label="Facultad">
-                    <select value={fPer.facId} onChange={e => setFPer({...fPer, facId: e.target.value})} className={selectCls} disabled={!fPer.univId}>
+                    <select value={fPer.facId} onChange={e => setFPer({...fPer, facId: e.target.value, carrId: ''})} className={selectCls} disabled={!fPer.univId}>
                       <option value="">Seleccionar...</option>
                       {univSelPer?.facultades.map(f => <option key={f.id} value={f.id}>{f.nombre}</option>)}
+                    </select>
+                  </FormField>
+                  <FormField label="Carrera">
+                    <select value={fPer.carrId || ''} onChange={e => setFPer({...fPer, carrId: e.target.value})} className={selectCls} disabled={!fPer.facId}>
+                      <option value="">Todas las carreras de la facultad</option>
+                      {(facSelPer?.carreras || []).map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
                     </select>
                   </FormField>
                   <FormField label="Nombre del Período">
@@ -817,12 +852,12 @@ export default function ParametrizacionAdmin() {
                   </div>
                 </div>
 
-                {/* Selectores de Contexto Sincronizados */}
+                {/* Selectores de Contexto Sincronizados (Universidad → Facultad → Carrera → Período) */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                   <FormField label="Universidad">
                     <select
                       value={fCrit.univId}
-                      onChange={e => sincronizarContexto({ univId: e.target.value, facId: '', perId: '', carrId: '' })}
+                      onChange={e => sincronizarContexto({ univId: e.target.value, facId: '', carrId: '', perId: '' })}
                       className={selectCls}
                     >
                       <option value="">Todas las universidades...</option>
@@ -832,7 +867,7 @@ export default function ParametrizacionAdmin() {
                   <FormField label="Facultad">
                     <select
                       value={fCrit.facId}
-                      onChange={e => sincronizarContexto({ univId: fCrit.univId, facId: e.target.value, perId: '', carrId: '' })}
+                      onChange={e => sincronizarContexto({ univId: fCrit.univId, facId: e.target.value, carrId: '', perId: '' })}
                       className={selectCls}
                       disabled={!fCrit.univId}
                     >
@@ -840,26 +875,26 @@ export default function ParametrizacionAdmin() {
                       {univSelCrit?.facultades.map(f => <option key={f.id} value={f.id}>{f.nombre}</option>)}
                     </select>
                   </FormField>
+                  <FormField label="Carrera">
+                    <select
+                      value={fCrit.carrId}
+                      onChange={e => sincronizarContexto({ univId: fCrit.univId, facId: fCrit.facId, carrId: e.target.value, perId: '' })}
+                      className={selectCls}
+                      disabled={!fCrit.facId}
+                    >
+                      <option value="">Todas las carreras...</option>
+                      {(facSelCrit?.carreras || []).map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                    </select>
+                  </FormField>
                   <FormField label="Período">
                     <select
                       value={fCrit.perId}
-                      onChange={e => sincronizarContexto({ univId: fCrit.univId, facId: fCrit.facId, perId: e.target.value, carrId: '' })}
+                      onChange={e => sincronizarContexto({ univId: fCrit.univId, facId: fCrit.facId, carrId: fCrit.carrId, perId: e.target.value })}
                       className={selectCls}
                       disabled={!fCrit.facId}
                     >
                       <option value="">Todos los períodos...</option>
-                      {(facSelCrit?.periodos || []).map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-                    </select>
-                  </FormField>
-                  <FormField label="Carrera">
-                    <select
-                      value={fCrit.carrId}
-                      onChange={e => sincronizarContexto({ univId: fCrit.univId, facId: fCrit.facId, perId: fCrit.perId, carrId: e.target.value })}
-                      className={selectCls}
-                      disabled={!fCrit.perId}
-                    >
-                      <option value="">Todas las carreras...</option>
-                      {(perSelCrit?.carreras || facSelCrit?.carreras || []).map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                      {(carrSelCrit?.periodos || facSelCrit?.periodos || []).map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
                     </select>
                   </FormField>
                 </div>
@@ -1088,12 +1123,12 @@ export default function ParametrizacionAdmin() {
                   </div>
                 </div>
 
-                {/* Selectores de Contexto Sincronizados */}
+                {/* Selectores de Contexto Sincronizados (Universidad → Facultad → Carrera → Período → Criterio) */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
                   <FormField label="Universidad">
                     <select
                       value={fInd.univId}
-                      onChange={e => sincronizarContexto({ univId: e.target.value, facId: '', perId: '', carrId: '', critId: '' })}
+                      onChange={e => sincronizarContexto({ univId: e.target.value, facId: '', carrId: '', perId: '', critId: '' })}
                       className={selectCls}
                     >
                       <option value="">Todas...</option>
@@ -1103,7 +1138,7 @@ export default function ParametrizacionAdmin() {
                   <FormField label="Facultad">
                     <select
                       value={fInd.facId}
-                      onChange={e => sincronizarContexto({ univId: fInd.univId, facId: e.target.value, perId: '', carrId: '', critId: '' })}
+                      onChange={e => sincronizarContexto({ univId: fInd.univId, facId: e.target.value, carrId: '', perId: '', critId: '' })}
                       className={selectCls}
                       disabled={!fInd.univId}
                     >
@@ -1111,26 +1146,26 @@ export default function ParametrizacionAdmin() {
                       {univSelInd?.facultades.map(f => <option key={f.id} value={f.id}>{f.nombre}</option>)}
                     </select>
                   </FormField>
+                  <FormField label="Carrera">
+                    <select
+                      value={fInd.carrId}
+                      onChange={e => sincronizarContexto({ univId: fInd.univId, facId: fInd.facId, carrId: e.target.value, perId: '', critId: '' })}
+                      className={selectCls}
+                      disabled={!fInd.facId}
+                    >
+                      <option value="">Todas...</option>
+                      {(facSelInd?.carreras || []).map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                    </select>
+                  </FormField>
                   <FormField label="Período">
                     <select
                       value={fInd.perId}
-                      onChange={e => sincronizarContexto({ univId: fInd.univId, facId: fInd.facId, perId: e.target.value, carrId: '', critId: '' })}
+                      onChange={e => sincronizarContexto({ univId: fInd.univId, facId: fInd.facId, carrId: fInd.carrId, perId: e.target.value, critId: '' })}
                       className={selectCls}
                       disabled={!fInd.facId}
                     >
                       <option value="">Todos...</option>
-                      {(facSelInd?.periodos || []).map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-                    </select>
-                  </FormField>
-                  <FormField label="Carrera">
-                    <select
-                      value={fInd.carrId}
-                      onChange={e => sincronizarContexto({ univId: fInd.univId, facId: fInd.facId, perId: fInd.perId, carrId: e.target.value, critId: '' })}
-                      className={selectCls}
-                      disabled={!fInd.perId}
-                    >
-                      <option value="">Todas...</option>
-                      {(perSelInd?.carreras || facSelInd?.carreras || []).map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                      {(carrSelInd?.periodos || facSelInd?.periodos || []).map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
                     </select>
                   </FormField>
                   <FormField label="Criterio">
@@ -1144,10 +1179,10 @@ export default function ParametrizacionAdmin() {
                         responsable_nombre: '',
                       })}
                       className={selectCls}
-                      disabled={!fInd.carrId}
+                      disabled={!fInd.carrId || !fInd.perId}
                     >
                       <option value="">Todos los criterios...</option>
-                      {(carrSelInd?.criterios || []).map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                      {criteriosDisponiblesInd.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
                     </select>
                   </FormField>
                 </div>

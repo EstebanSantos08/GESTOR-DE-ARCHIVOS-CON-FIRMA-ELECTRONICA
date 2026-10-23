@@ -19,9 +19,8 @@ export default function ModalDocenteForm({
   onSuccess,
 }) {
   const {
-    token,
+    universidades,
     listarFacultadesCatalogo,
-    listarActividadesCatalogo,
     listarCarreras,
     listarRoles,
     crearDocente,
@@ -31,12 +30,11 @@ export default function ModalDocenteForm({
   const esEdicion = Boolean(docente && docente.id);
 
   // ─── 1. Estado de Catálogos ────────────────────────────────────────────────
-  const [catalogoFacultades, setCatalogoFacultades]   = useState([]);
-  const [catalogoCarreras, setCatalogoCarreras]       = useState([]);
-  const [catalogoActividades, setCatalogoActividades] = useState([]);
-  const [catalogoRoles, setCatalogoRoles]             = useState([]);
-  const [cargandoCatalogos, setCargandoCatalogos]     = useState(false);
-  const [errorCatalogos, setErrorCatalogos]           = useState('');
+  const [catalogoFacultades, setCatalogoFacultades] = useState([]);
+  const [catalogoCarreras, setCatalogoCarreras]     = useState([]);
+  const [catalogoRoles, setCatalogoRoles]           = useState([]);
+  const [cargandoCatalogos, setCargandoCatalogos]   = useState(false);
+  const [errorCatalogos, setErrorCatalogos]         = useState('');
 
   // ─── 2. Estado del Formulario ──────────────────────────────────────────────
   const [formData, setFormData] = useState({
@@ -46,14 +44,13 @@ export default function ModalDocenteForm({
     roles: [],
     facultades: [],  // Arreglo de IDs numéricos [1, 2]
     carreras: [],    // Arreglo de IDs numéricos [3, 4]
-    actividades: [], // Arreglo de IDs numéricos [5, 6, 7]
   });
 
   const [guardando, setGuardando] = useState(false);
   const [errorSubmit, setErrorSubmit] = useState('');
   const [exitoSubmit, setExitoSubmit] = useState(false);
 
-  // ─── 3. Carga de Catálogos (Requerimiento 1) ───────────────────────────────
+  // ─── 3. Carga de Catálogos (Solo registros vigentes de la jerarquía activa) ─
   useEffect(() => {
     if (!isOpen) return;
 
@@ -62,17 +59,49 @@ export default function ModalDocenteForm({
       setCargandoCatalogos(true);
       setErrorCatalogos('');
       try {
-        const [facs, carrs, acts, rls] = await Promise.all([
+        const [facsApi, carrsApi, rls] = await Promise.all([
           listarFacultadesCatalogo ? listarFacultadesCatalogo() : Promise.resolve([]),
           listarCarreras ? listarCarreras() : Promise.resolve([]),
-          listarActividadesCatalogo ? listarActividadesCatalogo() : Promise.resolve([]),
           listarRoles ? listarRoles() : Promise.resolve([]),
         ]);
 
         if (!cancelado) {
-          setCatalogoFacultades(Array.isArray(facs) ? facs : []);
-          setCatalogoCarreras(Array.isArray(carrs) ? carrs : []);
-          setCatalogoActividades(Array.isArray(acts) ? acts : []);
+          // Construir facultades y carreras vigentes desde el árbol activo de universidades
+          const facultadesArbol = (universidades || []).flatMap(u =>
+            (u.facultades || []).map(f => ({
+              id: f.id,
+              nombre: f.nombre,
+              descripcion: u.nombre,
+              universidad: { id: u.id, nombre: u.nombre },
+            }))
+          );
+          const idsFacultadesActivas = new Set(facultadesArbol.map(f => Number(f.id)));
+
+          const carrerasArbol = (universidades || []).flatMap(u =>
+            (u.facultades || []).flatMap(f =>
+              (f.carreras || []).map(c => ({
+                id: c.id,
+                nombre: c.nombre,
+                descripcion: c.descripcion || '',
+                facultad_id: f.id,
+                facultad: { id: f.id, nombre: f.nombre },
+              }))
+            )
+          );
+
+          // Priorizar el árbol activo para evitar registros huérfanos de universidades/facultades eliminadas
+          const facultadesLimpias = facultadesArbol.length > 0
+            ? facultadesArbol
+            : (Array.isArray(facsApi) ? facsApi.filter(f => f.universidad?.id) : []);
+
+          const carrerasLimpias = carrerasArbol.length > 0
+            ? carrerasArbol
+            : (Array.isArray(carrsApi)
+                ? carrsApi.filter(c => c.facultad?.id && (idsFacultadesActivas.size === 0 || idsFacultadesActivas.has(Number(c.facultad.id))))
+                : []);
+
+          setCatalogoFacultades(facultadesLimpias);
+          setCatalogoCarreras(carrerasLimpias);
           setCatalogoRoles(Array.isArray(rls) ? rls : []);
         }
       } catch (err) {
@@ -86,14 +115,13 @@ export default function ModalDocenteForm({
 
     cargarCatalogos();
     return () => { cancelado = true; };
-  }, [isOpen]);
+  }, [isOpen, universidades]);
 
-  // ─── 4. Pre-población de Estado en Edición (Requerimiento 3 y 4) ───────────
+  // ─── 4. Pre-población de Estado en Edición ─────────────────────────────────
   useEffect(() => {
     if (!isOpen) return;
 
     if (docente) {
-      // Mapear arreglos de objetos que devuelve el GET a arrays de IDs
       const facultadesIds = Array.isArray(docente.facultades)
         ? docente.facultades.map(f => (typeof f === 'object' && f !== null ? Number(f.id) : Number(f)))
         : (docente.facultad_id ? [Number(docente.facultad_id)] : []);
@@ -102,10 +130,6 @@ export default function ModalDocenteForm({
         ? docente.carreras.map(c => (typeof c === 'object' && c !== null ? Number(c.id) : Number(c)))
         : (docente.carrera_id ? [Number(docente.carrera_id)] : []);
 
-      const actividadesIds = Array.isArray(docente.actividades)
-        ? docente.actividades.map(a => (typeof a === 'object' && a !== null ? Number(a.id) : Number(a)))
-        : [];
-
       const rolesIds = Array.isArray(docente.roles)
         ? docente.roles.map(r => (typeof r === 'object' && r !== null ? Number(r.id) : Number(r)))
         : (docente.rol_id ? [Number(docente.rol_id)] : []);
@@ -113,14 +137,12 @@ export default function ModalDocenteForm({
       setFormData({
         nombre: docente.nombre || '',
         email: docente.email || '',
-        password: '', // En edición no se pre-puebla password
+        password: '',
         roles: rolesIds,
         facultades: facultadesIds,
         carreras: carrerasIds,
-        actividades: actividadesIds,
       });
     } else {
-      // Estado inicial vacío para creación
       setFormData({
         nombre: '',
         email: '',
@@ -128,7 +150,6 @@ export default function ModalDocenteForm({
         roles: [],
         facultades: [],
         carreras: [],
-        actividades: [],
       });
     }
 
@@ -136,13 +157,47 @@ export default function ModalDocenteForm({
     setExitoSubmit(false);
   }, [docente, isOpen]);
 
-  // ─── 5. Manejadores de Estado (Requerimiento 3) ────────────────────────────
+  // ─── 5. Manejadores de Estado ──────────────────────────────────────────────
   const handleChange = (campo, valor) => {
-    setFormData(prev => ({
-      ...prev,
-      [campo]: valor,
-    }));
+    setFormData(prev => {
+      if (campo === 'facultades') {
+        const facSet = new Set((valor || []).map(Number));
+        // Mantener solo las carreras que pertenezcan a las facultades seleccionadas (si hay alguna seleccionada)
+        const carrerasValidas = facSet.size > 0
+          ? (prev.carreras || []).filter(cId => {
+              const carr = catalogoCarreras.find(x => Number(x.id) === Number(cId));
+              const facId = Number(carr?.facultad_id || carr?.facultad?.id);
+              return !facId || facSet.has(facId);
+            })
+          : prev.carreras;
+        return { ...prev, facultades: valor, carreras: carrerasValidas };
+      }
+
+      if (campo === 'carreras') {
+        // Si selecciona una carrera y su facultad no estaba marcada, marcar automáticamente la facultad
+        const nuevasFacs = new Set((prev.facultades || []).map(Number));
+        (valor || []).forEach(cId => {
+          const carr = catalogoCarreras.find(x => Number(x.id) === Number(cId));
+          const facId = Number(carr?.facultad_id || carr?.facultad?.id);
+          if (facId) nuevasFacs.add(facId);
+        });
+        return { ...prev, carreras: valor, facultades: Array.from(nuevasFacs) };
+      }
+
+      return {
+        ...prev,
+        [campo]: valor,
+      };
+    });
   };
+
+  // Filtrar carreras mostradas según las facultades seleccionadas arriba
+  const carrerasDisponibles = (formData.facultades || []).length > 0
+    ? catalogoCarreras.filter(c => {
+        const facId = Number(c.facultad_id || c.facultad?.id);
+        return (formData.facultades || []).map(Number).includes(facId);
+      })
+    : catalogoCarreras;
 
   const handleToggleRol = (rolId) => {
     const numId = Number(rolId);
@@ -182,7 +237,6 @@ export default function ModalDocenteForm({
         email: formData.email.trim(),
         facultades: (formData.facultades || []).map(Number),
         carreras: (formData.carreras || []).map(Number),
-        actividades: (formData.actividades || []).map(Number),
         roles: (formData.roles || []).map(Number),
       };
 
@@ -234,8 +288,8 @@ export default function ModalDocenteForm({
               </h3>
               <p className="text-xs text-navy-200">
                 {esEdicion
-                  ? 'Modifica las facultades, carreras y actividades asignadas en relaciones N:M'
-                  : 'Registra un docente y asígnale múltiples facultades, carreras y actividades'}
+                  ? 'Modifica los roles, facultades y carreras asignadas al usuario'
+                  : 'Registra un docente y asígnale sus roles, facultades y carreras'}
               </p>
             </div>
           </div>
@@ -395,15 +449,22 @@ export default function ModalDocenteForm({
 
               {/* ─── Selector Múltiple: Carreras Asignadas (N:M) ─── */}
               <div className="bg-slate-50/70 p-3.5 rounded-xl border border-slate-200/80">
-                <div className="flex items-center space-x-2 mb-2">
-                  <GraduationCap size={16} className="text-indigo-600" />
-                  <h4 className="text-xs font-bold text-gray-800 uppercase tracking-wide">
-                    Carreras Asignadas (N:M)
-                  </h4>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center space-x-2">
+                    <GraduationCap size={16} className="text-indigo-600" />
+                    <h4 className="text-xs font-bold text-gray-800 uppercase tracking-wide">
+                      Carreras Asignadas (N:M)
+                    </h4>
+                  </div>
+                  {(formData.facultades || []).length > 0 && (
+                    <span className="text-[11px] text-indigo-600 font-medium">
+                      Filtrado por {formData.facultades.length} facultad{formData.facultades.length === 1 ? '' : 'es'} seleccionada{formData.facultades.length === 1 ? '' : 's'}
+                    </span>
+                  )}
                 </div>
                 <MultiSelect
                   label="Seleccionar Carreras"
-                  options={catalogoCarreras.map(c => ({
+                  options={carrerasDisponibles.map(c => ({
                     id: c.id,
                     nombre: c.nombre,
                     descripcion: c.facultad?.nombre ? `Facultad: ${c.facultad.nombre}` : (c.descripcion || ''),
@@ -412,30 +473,11 @@ export default function ModalDocenteForm({
                   onChange={(nuevosIds) => handleChange('carreras', nuevosIds)}
                   placeholder="Buscar carrera por nombre..."
                   badgeColor="bg-indigo-50 text-indigo-800 border-indigo-200"
-                  emptyText="No hay carreras registradas en el sistema"
-                />
-              </div>
-
-              {/* ─── Selector Múltiple: Actividades (Requerimiento 2) ─── */}
-              <div className="bg-slate-50/70 p-3.5 rounded-xl border border-slate-200/80">
-                <div className="flex items-center space-x-2 mb-2">
-                  <ClipboardList size={16} className="text-emerald-600" />
-                  <h4 className="text-xs font-bold text-gray-800 uppercase tracking-wide">
-                    Actividades Asignadas (N:M)
-                  </h4>
-                </div>
-                <MultiSelect
-                  label="Seleccionar Actividades"
-                  options={catalogoActividades.map(a => ({
-                    id: a.id,
-                    nombre: a.nombre,
-                    descripcion: a.indicador?.nombre ? `Indicador: ${a.indicador.nombre}` : (a.descripcion || ''),
-                  }))}
-                  selectedIds={formData.actividades}
-                  onChange={(nuevosIds) => handleChange('actividades', nuevosIds)}
-                  placeholder="Buscar actividad..."
-                  badgeColor="bg-emerald-50 text-emerald-800 border-emerald-200"
-                  emptyText="No hay actividades registradas en el sistema"
+                  emptyText={
+                    (formData.facultades || []).length > 0
+                      ? 'No hay carreras en la facultad seleccionada'
+                      : 'No hay carreras registradas en el sistema'
+                  }
                 />
               </div>
             </>

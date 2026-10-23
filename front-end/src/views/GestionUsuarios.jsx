@@ -229,20 +229,14 @@ export default function GestionUsuarios() {
                   <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase">Roles</th>
                   <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase">
                     <div className="flex items-center gap-1">
+                      <Building2 size={13} />
+                      <span>Facultades</span>
+                    </div>
+                  </th>
+                  <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase">
+                    <div className="flex items-center gap-1">
                       <GraduationCap size={13} />
                       <span>Carreras</span>
-                    </div>
-                  </th>
-                  <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase">
-                    <div className="flex items-center gap-1">
-                      <Building2 size={13} />
-                      <span>Facultades </span>
-                    </div>
-                  </th>
-                  <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase">
-                    <div className="flex items-center gap-1">
-                      <ClipboardList size={13} />
-                      <span>Actividades </span>
                     </div>
                   </th>
                   <th className="text-center px-5 py-3 text-xs font-semibold text-gray-500 uppercase">Acciones</th>
@@ -292,23 +286,6 @@ export default function GestionUsuarios() {
                         </div>
                       </td>
 
-                      {/* Carreras — badges M:N */}
-                      <td className="px-5 py-3">
-                        <div className="flex flex-wrap gap-1">
-                          {userCarreras.map(c => (
-                            <span
-                              key={c.id}
-                              className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${CARRERA_COLOR}`}
-                            >
-                              {c.nombre}
-                            </span>
-                          ))}
-                          {userCarreras.length === 0 && (
-                            <span className="text-gray-400 text-xs">—</span>
-                          )}
-                        </div>
-                      </td>
-
                       {/* Facultades — badges M:N */}
                       <td className="px-5 py-3">
                         <div className="flex flex-wrap gap-1 max-w-xs">
@@ -331,19 +308,18 @@ export default function GestionUsuarios() {
                         </div>
                       </td>
 
-                      {/* Actividades — badges M:N */}
+                      {/* Carreras — badges M:N */}
                       <td className="px-5 py-3">
-                        <div className="flex flex-wrap gap-1 max-w-xs">
-                          {u.actividades && u.actividades.length > 0 ? (
-                            u.actividades.map(a => (
-                              <span
-                                key={a.id}
-                                className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border bg-emerald-50 text-emerald-800 border-emerald-200"
-                              >
-                                {a.nombre}
-                              </span>
-                            ))
-                          ) : (
+                        <div className="flex flex-wrap gap-1">
+                          {userCarreras.map(c => (
+                            <span
+                              key={c.id}
+                              className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${CARRERA_COLOR}`}
+                            >
+                              {c.nombre}
+                            </span>
+                          ))}
+                          {userCarreras.length === 0 && (
                             <span className="text-gray-400 text-xs">—</span>
                           )}
                         </div>

@@ -698,9 +698,10 @@ export function AppProvider({ children }) {
     }
   }
 
-  async function listarDocentesElegibles({ facultadId, actividadId, rol } = {}) {
+  async function listarDocentesElegibles({ facultadId, carreraId, actividadId, rol } = {}) {
     const params = new URLSearchParams();
     if (facultadId) params.append('facultadId', facultadId);
+    if (carreraId) params.append('carreraId', carreraId);
     if (actividadId) params.append('actividadId', actividadId);
     if (rol) params.append('rol', rol);
 
@@ -1008,9 +1009,9 @@ export function AppProvider({ children }) {
 
   const todosLosDocs = (universidades ?? []).flatMap(u =>
     (u?.facultades ?? []).flatMap(f =>
-      (f?.periodos ?? []).flatMap(p =>
-        (p?.carreras ?? []).flatMap(ca =>
-          (ca?.criterios ?? []).flatMap(c =>
+      (f?.carreras ?? []).flatMap(ca =>
+        (ca?.periodos ?? []).flatMap(p =>
+          (p?.criterios ?? []).flatMap(c =>
             (c?.subcriterios ?? c?.indicadores ?? []).flatMap(i => i?.documentos ?? [])
           )
         )

@@ -73,14 +73,61 @@ function crearCRUD(Modelo, includeOpts = []) {
 }
 
 // ─── Controladores específicos ─────────────────────────────────────────────
-const universidadCtrl = crearCRUD(Universidad);
+const _universidadBase = crearCRUD(Universidad);
+const universidadCtrl = {
+  ..._universidadBase,
+  async eliminar(req, res) {
+    try {
+      const registro = await Universidad.findOne({ where: { id: req.params.id, activo: true } });
+      if (!registro) return res.status(404).json({ error: 'Registro no encontrado' });
+      await registro.update({ activo: false });
+      try {
+        const facultadesHijas = await Facultad.findAll({ where: { universidad_id: registro.id }, attributes: ['id'] });
+        const facIds = (facultadesHijas || []).map(f => f.id);
+        if (facIds.length > 0) {
+          await Facultad.update({ activo: false }, { where: { id: facIds } });
+          await Carrera.update({ activo: false }, { where: { facultad_id: facIds } });
+          await Periodo.update({ activo: false }, { where: { facultad_id: facIds } });
+        }
+      } catch {}
+      res.json({ mensaje: 'Registro eliminado correctamente' });
+    } catch {
+      res.status(500).json({ error: 'Error al eliminar registro' });
+    }
+  },
+};
 
-const facultadCtrl = crearCRUD(Facultad, [
-  { model: Universidad, as: 'universidad', attributes: ['id', 'nombre'] },
+const _facultadBase = crearCRUD(Facultad, [
+  { model: Universidad, as: 'universidad', attributes: ['id', 'nombre'], where: { activo: true }, required: true },
 ]);
 
+const facultadCtrl = {
+  ..._facultadBase,
+  async eliminar(req, res) {
+    try {
+      const registro = await Facultad.findOne({ where: { id: req.params.id, activo: true } });
+      if (!registro) return res.status(404).json({ error: 'Registro no encontrado' });
+      await registro.update({ activo: false });
+      try {
+        await Carrera.update({ activo: false }, { where: { facultad_id: registro.id } });
+        await Periodo.update({ activo: false }, { where: { facultad_id: registro.id } });
+      } catch {}
+      res.json({ mensaje: 'Registro eliminado correctamente' });
+    } catch {
+      res.status(500).json({ error: 'Error al eliminar registro' });
+    }
+  },
+};
+
 const _carreraBase = crearCRUD(Carrera, [
-  { model: Facultad, as: 'facultad', attributes: ['id', 'nombre'] },
+  {
+    model: Facultad,
+    as: 'facultad',
+    attributes: ['id', 'nombre', 'universidad_id'],
+    where: { activo: true },
+    required: true,
+    include: [{ model: Universidad, as: 'universidad', attributes: ['id', 'nombre'], where: { activo: true }, required: true }],
+  },
 ]);
 
 const carreraCtrl = {
@@ -697,18 +744,33 @@ const asignarResponsablesSubcriterio = async (req, res) => {
 };
 
 // ─── Controlador de Docentes / Usuarios con asignación N:M ─────────────────
+const _docenteInclude = [
+  { model: Rol, as: 'roles' },
+  {
+    model: Carrera,
+    as: 'carreras',
+    attributes: ['id', 'nombre', 'facultad_id'],
+    where: { activo: true },
+    required: false,
+    through: { attributes: [] },
+  },
+  {
+    model: Facultad,
+    as: 'facultades',
+    where: { activo: true },
+    required: false,
+    through: { attributes: [] },
+  },
+  { model: Actividad, as: 'actividades', where: { activo: true }, required: false, through: { attributes: [] } },
+];
+
 const docenteCtrl = {
   async listar(req, res) {
     try {
       const docentes = await Usuario.findAll({
         where: { activo: true },
         attributes: { exclude: ['password_hash'] },
-        include: [
-          { model: Rol, as: 'roles' },
-          { model: Carrera, as: 'carreras', attributes: ['id', 'nombre'], through: { attributes: [] } },
-          { model: Facultad, as: 'facultades', through: { attributes: [] } },
-          { model: Actividad, as: 'actividades', through: { attributes: [] } },
-        ],
+        include: _docenteInclude,
         order: [['id', 'ASC']],
       });
       res.json(docentes);
@@ -722,12 +784,7 @@ const docenteCtrl = {
       const docente = await Usuario.findOne({
         where: { id: req.params.id, activo: true },
         attributes: { exclude: ['password_hash'] },
-        include: [
-          { model: Rol, as: 'roles' },
-          { model: Carrera, as: 'carreras', attributes: ['id', 'nombre'], through: { attributes: [] } },
-          { model: Facultad, as: 'facultades', through: { attributes: [] } },
-          { model: Actividad, as: 'actividades', through: { attributes: [] } },
-        ],
+        include: _docenteInclude,
       });
       if (!docente) return res.status(404).json({ error: 'Docente no encontrado' });
       res.json(docente);
@@ -772,12 +829,7 @@ const docenteCtrl = {
 
       const resultado = await Usuario.findByPk(nuevoDocente.id, {
         attributes: { exclude: ['password_hash'] },
-        include: [
-          { model: Rol, as: 'roles' },
-          { model: Carrera, as: 'carreras', attributes: ['id', 'nombre'], through: { attributes: [] } },
-          { model: Facultad, as: 'facultades', through: { attributes: [] } },
-          { model: Actividad, as: 'actividades', through: { attributes: [] } },
-        ],
+        include: _docenteInclude,
       });
 
       res.status(201).json(resultado);
@@ -823,12 +875,7 @@ const docenteCtrl = {
 
       const actualizado = await Usuario.findByPk(usuario.id, {
         attributes: { exclude: ['password_hash'] },
-        include: [
-          { model: Rol, as: 'roles' },
-          { model: Carrera, as: 'carreras', attributes: ['id', 'nombre'], through: { attributes: [] } },
-          { model: Facultad, as: 'facultades', through: { attributes: [] } },
-          { model: Actividad, as: 'actividades', through: { attributes: [] } },
-        ],
+        include: _docenteInclude,
       });
 
       res.json(actualizado);
@@ -850,7 +897,7 @@ const docenteCtrl = {
 
   async elegibles(req, res) {
     try {
-      const { facultadId, actividadId, rol, rolId } = req.query;
+      const { facultadId, carreraId, actividadId, rol, rolId } = req.query;
       const whereUsuario = { activo: true };
       const include = [];
 
@@ -890,6 +937,25 @@ const docenteCtrl = {
         include.push({
           model: Facultad,
           as: 'facultades',
+          attributes: ['id', 'nombre'],
+          through: { attributes: [] },
+          required: false,
+        });
+      }
+
+      if (carreraId) {
+        include.push({
+          model: Carrera,
+          as: 'carreras',
+          where: { id: parseInt(carreraId, 10) },
+          attributes: ['id', 'nombre'],
+          through: { attributes: [] },
+          required: true,
+        });
+      } else {
+        include.push({
+          model: Carrera,
+          as: 'carreras',
           attributes: ['id', 'nombre'],
           through: { attributes: [] },
           required: false,

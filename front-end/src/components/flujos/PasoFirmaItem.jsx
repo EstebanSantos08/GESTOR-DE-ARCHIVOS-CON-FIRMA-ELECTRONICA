@@ -1,18 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { X, User, Building2, ClipboardList, RefreshCw, CheckCircle2, Shield } from 'lucide-react';
+import { X, User, Building2, GraduationCap, RefreshCw, CheckCircle2 } from 'lucide-react';
 import { useApp } from '../../context/useApp';
 
 /**
  * PasoFirmaItem: Componente para configurar un paso individual de un Flujo de Firma
- * con filtros inteligentes por Facultad y Actividad para seleccionar firmantes elegibles.
- *
- * @param {number} index        - Índice del paso (0-based)
- * @param {object} paso         - Objeto de configuración { orden, rol_id, usuario_id, facultad_id, actividad_id }
- * @param {function} onChange   - Callback al actualizar el paso (nuevoPaso) => void
- * @param {function} onRemove   - Callback para eliminar el paso () => void
- * @param {Array} facultades    - Lista de facultades [{ id, nombre }]
- * @param {Array} actividades   - Lista de actividades [{ id, nombre }]
- * @param {Array} roles         - Lista de roles [{ id, nombre }]
+ * con filtros inteligentes por Facultad y Carrera para seleccionar firmantes elegibles.
  */
 export default function PasoFirmaItem({
   index,
@@ -20,14 +12,24 @@ export default function PasoFirmaItem({
   onChange,
   onRemove,
   facultades = [],
-  actividades = [],
   roles = [],
 }) {
-  const { listarDocentesElegibles } = useApp();
+  const { listarDocentesElegibles, universidades } = useApp();
 
   const [candidatos, setCandidatos] = useState([]);
   const [cargando, setCargando] = useState(false);
   const [errorCandidatos, setErrorCandidatos] = useState('');
+
+  // Facultades y Carreras activas obtenidas de la estructura actual
+  const facultadesActivas = (universidades || []).length > 0
+    ? (universidades || []).flatMap(u => u.facultades || [])
+    : facultades;
+
+  const carrerasActivas = (universidades || []).flatMap(u =>
+    (u.facultades || [])
+      .filter(f => !paso.facultad_id || Number(f.id) === Number(paso.facultad_id))
+      .flatMap(f => f.carreras || [])
+  );
 
   // Efecto: Cargar firmantes candidatos cuando cambian los filtros
   useEffect(() => {
@@ -39,14 +41,14 @@ export default function PasoFirmaItem({
       try {
         const resultado = await listarDocentesElegibles({
           facultadId: paso.facultad_id || undefined,
-          actividadId: paso.actividad_id || undefined,
+          carreraId: paso.carrera_id || undefined,
           rol: paso.rol_id || undefined,
         });
 
         if (!cancelado) {
           setCandidatos(Array.isArray(resultado) ? resultado : []);
         }
-      } catch (err) {
+      } catch {
         if (!cancelado) {
           setErrorCandidatos('Error al cargar candidatos');
           setCandidatos([]);
@@ -58,7 +60,7 @@ export default function PasoFirmaItem({
 
     buscarCandidatos();
     return () => { cancelado = true; };
-  }, [paso.facultad_id, paso.actividad_id, paso.rol_id]);
+  }, [paso.facultad_id, paso.carrera_id, paso.rol_id]);
 
   // Manejar cambio en filtros
   const handleFiltroChange = (campo, valor) => {
@@ -66,7 +68,7 @@ export default function PasoFirmaItem({
     const nuevoPaso = {
       ...paso,
       [campo]: nuevoValor,
-      // Si el docente seleccionado actualmente ya no coincide, se puede mantener o reevaluar
+      ...(campo === 'facultad_id' ? { carrera_id: null } : {}),
     };
     onChange(nuevoPaso);
   };
@@ -130,26 +132,26 @@ export default function PasoFirmaItem({
             className="w-full text-xs border border-gray-200 rounded-lg p-2 bg-gray-50/70 focus:bg-white focus:ring-1 focus:ring-navy-500"
           >
             <option value="">-- Todas las Facultades --</option>
-            {facultades.map(f => (
+            {facultadesActivas.map(f => (
               <option key={f.id} value={f.id}>{f.nombre}</option>
             ))}
           </select>
         </div>
 
-        {/* Filtro por Actividad */}
+        {/* Filtro por Carrera */}
         <div>
           <label className="block text-[11px] font-semibold text-gray-600 mb-1 flex items-center gap-1">
-            <ClipboardList size={12} className="text-emerald-500" />
-            <span>Filtrar por Actividad</span>
+            <GraduationCap size={12} className="text-indigo-500" />
+            <span>Filtrar por Carrera</span>
           </label>
           <select
-            value={paso.actividad_id || ''}
-            onChange={e => handleFiltroChange('actividad_id', e.target.value)}
+            value={paso.carrera_id || ''}
+            onChange={e => handleFiltroChange('carrera_id', e.target.value)}
             className="w-full text-xs border border-gray-200 rounded-lg p-2 bg-gray-50/70 focus:bg-white focus:ring-1 focus:ring-navy-500"
           >
-            <option value="">-- Todas las Actividades --</option>
-            {actividades.map(a => (
-              <option key={a.id} value={a.id}>{a.nombre}</option>
+            <option value="">-- Todas las Carreras --</option>
+            {carrerasActivas.map(c => (
+              <option key={c.id} value={c.id}>{c.nombre}</option>
             ))}
           </select>
         </div>

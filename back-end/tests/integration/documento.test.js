@@ -28,6 +28,7 @@ jest.mock('../../Services/auth.service', () => ({
 
 jest.mock('../../Services/firma.service', () => ({
   calcularHash: jest.fn().mockReturnValue('a'.repeat(64)),
+  normalizarPdfOriginal: jest.fn().mockImplementation(buf => Promise.resolve(buf)),
   prepararDocumento: jest.fn().mockImplementation(buf => Promise.resolve(buf)),
   firmarDocumento: jest.fn(),
 }));

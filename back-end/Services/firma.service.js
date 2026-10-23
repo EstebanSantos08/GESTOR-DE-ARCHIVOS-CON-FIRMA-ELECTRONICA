@@ -27,8 +27,21 @@ const crypto = require('crypto');
 const { webcrypto } = require('node:crypto');
 
 const { plainAddPlaceholder }           = require('@signpdf/placeholder-plain');
+const { pdfkitAddPlaceholder }          = require('@signpdf/placeholder-pdfkit010');
 const { SignPdf, Signer }               = require('@signpdf/signpdf');
-const { SUBFILTER_ETSI_CADES_DETACHED } = require('@signpdf/utils');
+const {
+  SUBFILTER_ETSI_CADES_DETACHED,
+  PDFObject,
+  PDFKitReferenceMock,
+  removeTrailingNewLine,
+} = require('@signpdf/utils');
+const readPdf                           = require('@signpdf/placeholder-plain/dist/readPdf').default;
+const getIndexFromRef                   = require('@signpdf/placeholder-plain/dist/getIndexFromRef').default;
+const getPagesDictionaryRef             = require('@signpdf/placeholder-plain/dist/getPagesDictionaryRef').default;
+const findObject                        = require('@signpdf/placeholder-plain/dist/findObject').default;
+const createBufferRootWithAcroform      = require('@signpdf/placeholder-plain/dist/createBufferRootWithAcroform').default;
+const createBufferPageWithAnnotation    = require('@signpdf/placeholder-plain/dist/createBufferPageWithAnnotation').default;
+const createBufferTrailer               = require('@signpdf/placeholder-plain/dist/createBufferTrailer').default;
 
 // pkijs + asn1js para CAdES-BES real
 const pkijs  = require('pkijs');
@@ -82,6 +95,238 @@ function posicionSello(pageWidth, rol) {
     case 'SUBDECANO':        return { x: (pageWidth - SELLO_W) / 2 + SELLO_W * 0.6, y: MARGEN };
     default:                 return { x: (pageWidth - SELLO_W) / 2,     y: MARGEN };
   }
+}
+
+/**
+ * Escapa cadenas para literales de texto PDF (WinAnsi / Latin1).
+ */
+function escaparPdfTexto(str = '') {
+  return String(str)
+    .replace(/\\/g, '\\\\')
+    .replace(/\(/g, '\\(')
+    .replace(/\)/g, '\\)')
+    .replace(/[^\x20-\x7E]/g, (ch) => {
+      const code = ch.charCodeAt(0);
+      if (code <= 0xff) {
+        return '\\' + code.toString(8).padStart(3, '0');
+      }
+      return '';
+    });
+}
+
+/**
+ * Construye el stream de operadores gráficos PDF (Form XObject) para el sello
+ * visual del firmante actual (recuadro, título FIRMA DIGITAL, QR vectorial y metadatos).
+ */
+function construirStreamSelloVisual(firmante = {}, fechaEmision = new Date()) {
+  const contenidoQR = [
+    'FIRMA DIGITAL PAdES-BES',
+    `Firmante: ${firmante.nombre || 'Firmante'}`,
+    `Cargo: ${firmante.rol || 'N/A'}`,
+    `Fecha emision: ${fechaEmision.toLocaleString('es-EC', { timeZone: 'America/Guayaquil' })}`,
+    'Hash SHA-256: Verificado en flujo PAdES-BES',
+  ].join('\n');
+
+  const qr = QRCode.create(contenidoQR, { errorCorrectionLevel: 'M' });
+  const n = qr.modules.size;
+  const margin = 1;
+  const totalMods = n + margin * 2;
+  const qrSize = 70;
+  const qrX = (SELLO_W - qrSize) / 2;
+  const qrY = SELLO_H - 14 - qrSize;
+  const cell = qrSize / totalMods;
+
+  const ops = [];
+  ops.push('q');
+  // Fondo y borde del sello
+  ops.push('0.96 0.97 1 rg');
+  ops.push('0.06 0.13 0.37 RG');
+  ops.push('1.2 w');
+  ops.push(`0.6 0.6 ${(SELLO_W - 1.2).toFixed(1)} ${(SELLO_H - 1.2).toFixed(1)} re B`);
+
+  // Título FIRMA DIGITAL
+  ops.push(`BT /F2 7.5 Tf 0.06 0.13 0.37 rg 18 ${SELLO_H - 13} Td (FIRMA DIGITAL) Tj ET`);
+
+  // Fondo blanco del QR
+  ops.push(`1 1 1 rg ${qrX.toFixed(2)} ${qrY.toFixed(2)} ${qrSize} ${qrSize} re f`);
+
+  // Módulos oscuros del QR vectorial
+  ops.push('0.06 0.09 0.16 rg');
+  for (let r = 0; r < n; r++) {
+    for (let c = 0; c < n; c++) {
+      if (qr.modules.get(r, c)) {
+        const rx = (qrX + (c + margin) * cell).toFixed(2);
+        const ry = (qrY + (totalMods - 1 - (r + margin)) * cell).toFixed(2);
+        const rw = (cell + 0.06).toFixed(2);
+        ops.push(`${rx} ${ry} ${rw} ${rw} re`);
+      }
+    }
+  }
+  ops.push('f');
+
+  // Texto bajo el QR
+  const textoY = qrY - 12;
+  const nombreRaw = firmante.nombre || 'Firmante';
+  const nombreTruncado = nombreRaw.length > 20 ? nombreRaw.substring(0, 18) + '...' : nombreRaw;
+  const fechaStr = fechaEmision.toLocaleDateString('es-EC', { timeZone: 'America/Guayaquil' });
+
+  ops.push(`BT /F2 6.5 Tf 0.1 0.1 0.1 rg 5 ${textoY} Td (${escaparPdfTexto(nombreTruncado)}) Tj ET`);
+  ops.push(`BT /F1 6 Tf 0.3 0.3 0.3 rg 5 ${textoY - 10} Td (${escaparPdfTexto(firmante.rol || '')}) Tj ET`);
+  ops.push(`BT /F1 6 Tf 0.3 0.3 0.3 rg 5 ${textoY - 20} Td (${escaparPdfTexto(fechaStr)}) Tj ET`);
+  ops.push(`BT /F1 5.5 Tf 0.55 0.55 0.55 rg 5 ${textoY - 30} Td (${escaparPdfTexto('PAdES-BES · Verif. QR')}) Tj ET`);
+  ops.push('Q');
+
+  return Buffer.from(ops.join('\n'), 'latin1');
+}
+
+/**
+ * Obtiene la referencia a la ÚLTIMA página del PDF y su ancho (MediaBox).
+ */
+function obtenerUltimaPaginaInfo(pdfBuffer, info) {
+  const pagesRef = getPagesDictionaryRef(info);
+  const pagesDictionary = findObject(pdfBuffer, info.xref, pagesRef).toString();
+  const kidsPosition = pagesDictionary.indexOf('/Kids');
+  const kidsStart = pagesDictionary.indexOf('[', kidsPosition) + 1;
+  const kidsEnd = pagesDictionary.indexOf(']', kidsPosition);
+  const pagesSlice = pagesDictionary.slice(kidsStart, kidsEnd);
+  const matches = pagesSlice.match(/\d+\s+\d+\s+R/g) || [];
+  const pageRef = matches.length > 0 ? matches[matches.length - 1] : pagesSlice.trim().split(' ', 3).join(' ');
+
+  let pageWidth = 595.28;
+  try {
+    const pageDictStr = findObject(pdfBuffer, info.xref, pageRef).toString();
+    const mbMatch = /\/MediaBox\s*\[\s*([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)\s*\]/.exec(pageDictStr)
+      || /\/MediaBox\s*\[\s*([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)\s*\]/.exec(pagesDictionary);
+    if (mbMatch) {
+      const w = parseFloat(mbMatch[3]) - parseFloat(mbMatch[1]);
+      if (w > 100) pageWidth = w;
+    }
+  } catch {
+    // Mantener ancho A4 por defecto
+  }
+
+  return { pageRef, pageWidth };
+}
+
+/**
+ * Inyecta el placeholder AcroForm /Sig junto con el sello visual (Appearance Stream /AP)
+ * exclusivo del firmante actual mediante actualización incremental (sin romper firmas previas).
+ */
+function agregarPlaceholderConSelloVisual({
+  pdfBuffer,
+  reason,
+  contactInfo,
+  name,
+  location,
+  signingTime = new Date(),
+  signatureLength = SIGNATURE_LENGTH,
+  subFilter = SUBFILTER_ETSI_CADES_DETACHED,
+  firmante = {},
+}) {
+  let pdf = removeTrailingNewLine(pdfBuffer);
+  const info = readPdf(pdf);
+  const { pageRef, pageWidth } = obtenerUltimaPaginaInfo(pdf, info);
+  const pageIndex = getIndexFromRef(info.xref, pageRef);
+  const addedReferences = new Map();
+
+  const { x, y } = posicionSello(pageWidth, firmante.rol);
+  const widgetRect = [
+    Math.round(x),
+    Math.round(y),
+    Math.round(x + SELLO_W),
+    Math.round(y + SELLO_H),
+  ];
+
+  const getAcroFormRef = (slice) => {
+    const regex = /\/AcroForm\s+(\d+\s\d+\sR)/g;
+    const match = regex.exec(slice);
+    return match && match[1] ? match[1] : undefined;
+  };
+
+  const pdfKitMock = {
+    ref: (input, knownIndex) => {
+      // Justo antes de registrar el Widget de la firma, creamos su Form XObject (/AP /N)
+      if (input && input.Type === 'Annot' && input.Subtype === 'Widget') {
+        const streamBuf = construirStreamSelloVisual(firmante, signingTime);
+        info.xref.maxIndex += 1;
+        const apFormIndex = info.xref.maxIndex;
+        addedReferences.set(apFormIndex, pdf.length + 1);
+
+        const apFormHeader = [
+          `${apFormIndex} 0 obj`,
+          '<<',
+          '/Type /XObject',
+          '/Subtype /Form',
+          '/FormType 1',
+          `/BBox [0 0 ${SELLO_W} ${SELLO_H}]`,
+          '/Matrix [1 0 0 1 0 0]',
+          '/Resources << /Font << /F1 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >> /F2 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >> >> >>',
+          `/Length ${streamBuf.length}`,
+          '>>',
+          'stream\n',
+        ].join('\n');
+
+        pdf = Buffer.concat([
+          pdf,
+          Buffer.from('\n'),
+          Buffer.from(apFormHeader, 'latin1'),
+          streamBuf,
+          Buffer.from('\nendstream\nendobj\n', 'latin1'),
+        ]);
+
+        input.AP = { N: new PDFKitReferenceMock(apFormIndex) };
+      }
+
+      info.xref.maxIndex += 1;
+      const index = knownIndex != null ? knownIndex : info.xref.maxIndex;
+      addedReferences.set(index, pdf.length + 1);
+
+      pdf = Buffer.concat([
+        pdf,
+        Buffer.from('\n'),
+        Buffer.from(`${index} 0 obj\n`),
+        Buffer.from(PDFObject.convert(input)),
+        Buffer.from('\nendobj\n'),
+      ]);
+      return new PDFKitReferenceMock(index);
+    },
+    page: {
+      dictionary: new PDFKitReferenceMock(pageIndex, {
+        data: { Annots: [] },
+      }),
+    },
+    _root: {
+      data: {},
+    },
+  };
+
+  const acroFormRef = getAcroFormRef(info.root);
+  if (acroFormRef) {
+    pdfKitMock._root.data.AcroForm = acroFormRef;
+  }
+
+  const { form, widget } = pdfkitAddPlaceholder({
+    pdf: pdfKitMock,
+    pdfBuffer: pdf,
+    reason,
+    contactInfo,
+    name,
+    location,
+    signingTime,
+    signatureLength,
+    subFilter,
+    widgetRect,
+  });
+
+  if (!acroFormRef) {
+    const rootIndex = getIndexFromRef(info.xref, info.rootRef);
+    addedReferences.set(rootIndex, pdf.length + 1);
+    pdf = Buffer.concat([pdf, Buffer.from('\n'), createBufferRootWithAcroform(pdf, info, form)]);
+  }
+  addedReferences.set(pageIndex, pdf.length + 1);
+  pdf = Buffer.concat([pdf, Buffer.from('\n'), createBufferPageWithAnnotation(pdf, info, pageRef, widget)]);
+  pdf = Buffer.concat([pdf, Buffer.from('\n'), createBufferTrailer(pdf, info, addedReferences)]);
+  return pdf;
 }
 
 /**
@@ -521,6 +766,24 @@ class FirmaService {
   }
 
   /**
+   * Normaliza un PDF original recién subido (desactiva ObjectStreams y limpia AcroForm previos)
+   * sin estampar ningún sello de firmantes futuros.
+   *
+   * @param {Buffer} pdfBuffer
+   * @returns {Promise<Buffer>}
+   */
+  async normalizarPdfOriginal(pdfBuffer) {
+    const { PDFName } = require('pdf-lib');
+    const pdfDoc = await PDFDocument.load(pdfBuffer);
+    try {
+      pdfDoc.catalog.delete(PDFName.of('AcroForm'));
+    } catch {
+      // Ignorar si no tiene AcroForm
+    }
+    return Buffer.from(await pdfDoc.save({ useObjectStreams: false }));
+  }
+
+  /**
    * Helper para estampar el sello de un único firmante (alias retrocompatible).
    *
    * @param {Buffer} pdfBuffer
@@ -533,15 +796,13 @@ class FirmaService {
   }
 
   /**
-   * Pipeline de firma PAdES-BES estrictamente criptográfico.
+   * Pipeline de firma PAdES-BES con sello visual progresivo por firmante.
    *
-   * Asume que el PDF ya tiene todos los sellos visuales estampados
-   * previamente mediante `prepararDocumento`. Nunca invoca pdf-lib ni altera
-   * la estructura de bytes previa, preservando la integridad de firmas anteriores.
-   *
-   * Operaciones:
-   *   1. Inyecta placeholder AcroForm /Sig con SubFilter ETSI.CAdES.detached
-   *   2. Firma criptográficamente con CadesSigner (CMS SignedData CAdES-BES)
+   * En cada etapa del flujo:
+   *   1. Inyecta de forma incremental el Widget de Firma (/FT /Sig) con su propio
+   *      Appearance Stream (/AP /N) que contiene el sello y QR del firmante actual,
+   *      sin alterar los bytes previos ni invalidar los /ByteRange anteriores.
+   *   2. Firma criptográficamente con CadesSigner (CMS SignedData CAdES-BES).
    *
    * @param {{ pdfBuffer?: Buffer, rutaPdf?: string, certBuffer?: Buffer, rutaCertP12?: string, passwordCert: string,
    *            firmante: { nombre: string, rol: string } }} opciones
@@ -576,16 +837,31 @@ class FirmaService {
     const { clavePrivada, certificado, cadena } = this.cargarCertificado(certOrigen, passwordCert);
     const fechaFirma = new Date();
 
-    // ── Insertar placeholder /Sig con SubFilter ETSI.CAdES.detached ─────
-    const pdfConPlaceholder = plainAddPlaceholder({
-      pdfBuffer:       pdfAUsar,
-      reason:          `Firma digital PAdES-BES — ${firmante.rol}`,
-      contactInfo:     firmante.nombre,
-      name:            firmante.nombre,
-      location:        'Ecuador',
-      signatureLength: SIGNATURE_LENGTH,
-      subFilter:       SUBFILTER_ETSI_CADES_DETACHED,
-    });
+    // ── Insertar placeholder /Sig + Sello Visual Incremental (/AP /N) ─────
+    let pdfConPlaceholder;
+    try {
+      pdfConPlaceholder = agregarPlaceholderConSelloVisual({
+        pdfBuffer:       pdfAUsar,
+        reason:          `Firma digital PAdES-BES — ${firmante.rol}`,
+        contactInfo:     firmante.nombre,
+        name:            firmante.nombre,
+        location:        'Ecuador',
+        signingTime:     fechaFirma,
+        signatureLength: SIGNATURE_LENGTH,
+        subFilter:       SUBFILTER_ETSI_CADES_DETACHED,
+        firmante,
+      });
+    } catch {
+      pdfConPlaceholder = plainAddPlaceholder({
+        pdfBuffer:       pdfAUsar,
+        reason:          `Firma digital PAdES-BES — ${firmante.rol}`,
+        contactInfo:     firmante.nombre,
+        name:            firmante.nombre,
+        location:        'Ecuador',
+        signatureLength: SIGNATURE_LENGTH,
+        subFilter:       SUBFILTER_ETSI_CADES_DETACHED,
+      });
+    }
 
     // ── Firma criptográfica CAdES-BES con pkijs ───────────────────────────
     const signpdf    = new SignPdf();

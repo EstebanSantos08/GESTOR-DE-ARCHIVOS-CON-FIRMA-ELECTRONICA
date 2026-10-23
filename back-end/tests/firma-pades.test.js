@@ -182,14 +182,9 @@ describe('PAdES-BES — firma.service.js (4 Firmantes: Director, Subdecano, Deca
     passDir4    = cert4.password;
     certPemDir4 = cert4.certPem;
 
-    // PDF mínimo preparado visualmente con los 4 sellos
+    // PDF mínimo normalizado SIN sellos pre-estampados (los sellos se estampan progresivamente en cada firma)
     const pdfBuf = await crearPdfMinimo();
-    const pdfPreparado = await firmaService.prepararDocumento(pdfBuf, [
-      { nombre: 'Director Carrera Test', rol: 'DIRECTOR_CARRERA' },
-      { nombre: 'Subdecano Test', rol: 'SUBDECANO' },
-      { nombre: 'Decano Test', rol: 'DECANO' },
-      { nombre: 'Rector Test', rol: 'RECTOR' },
-    ]);
+    const pdfPreparado = await firmaService.normalizarPdfOriginal(pdfBuf);
     fs.writeFileSync(PDF_PRUEBA, pdfPreparado);
   });
 
@@ -206,11 +201,14 @@ describe('PAdES-BES — firma.service.js (4 Firmantes: Director, Subdecano, Deca
     }
   });
 
-  // ── Preparación visual ──────────────────────────────────────────────────
-  describe('Preparación visual de los 4 sellos', () => {
-    test('prepararDocumento estampa los 4 sellos visuales antes de firmar', async () => {
+  // ── Preparación inicial sin sellos adelantados ──────────────────────────
+  describe('Preparación inicial sin sellos futuros', () => {
+    test('normalizarPdfOriginal prepara el PDF sin estampar sellos de firmantes que aún no firman', async () => {
       const pdfPreparado = fs.readFileSync(PDF_PRUEBA);
-      expect(pdfPreparado.length).toBeGreaterThan(1000);
+      expect(pdfPreparado.length).toBeGreaterThan(100);
+      const texto = pdfPreparado.toString('latin1');
+      expect(texto).not.toContain('Director Carrera Test');
+      expect(texto).not.toContain('Subdecano Test');
       const pdfDoc = await PDFDocument.load(pdfPreparado);
       expect(pdfDoc.getPageCount()).toBe(1);
     });
@@ -231,9 +229,13 @@ describe('PAdES-BES — firma.service.js (4 Firmantes: Director, Subdecano, Deca
       fs.writeFileSync(PDF_FIRMADO1, pdfFirmado1);
     });
 
-    test('devuelve un Buffer no vacío', () => {
+    test('devuelve un Buffer no vacío y estampa SOLO el sello visual del Director (no el del Subdecano)', () => {
       expect(Buffer.isBuffer(pdfFirmado1)).toBe(true);
       expect(pdfFirmado1.length).toBeGreaterThan(100);
+      const texto1 = pdfFirmado1.toString('latin1');
+      expect(texto1).toContain('Director Carrera');
+      expect(texto1).not.toContain('Subdecano Test');
+      expect(texto1).not.toContain('Decano Test');
     });
 
     test('el PDF contiene exactamente 1 firma', () => {

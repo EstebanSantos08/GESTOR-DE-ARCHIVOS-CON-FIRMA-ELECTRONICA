@@ -261,8 +261,9 @@ async function firmarDocumento(req, res) {
     let pdfBuffer = await obtenerBufferR2(documento.ruta_archivo);
 
     if (documento.ruta_archivo.startsWith('documentos/originales/')) {
-      const firmantesProgramados = await workflowService.obtenerFirmantesProgramados(documento);
-      pdfBuffer = await firmaService.prepararDocumento(pdfBuffer, firmantesProgramados, documento.creado_en);
+      if (typeof firmaService.normalizarPdfOriginal === 'function') {
+        pdfBuffer = await firmaService.normalizarPdfOriginal(pdfBuffer);
+      }
 
       const clavePrep = generarClave('preparados', documento.nombre_original);
       await subirArchivoR2(clavePrep, pdfBuffer, 'application/pdf');

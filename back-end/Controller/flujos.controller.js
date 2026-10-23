@@ -1,5 +1,27 @@
 const { FlujoFirma, PasoFirma, Rol, Usuario } = require('../Model');
 
+// Jerarquía oficial del flujo: 1=DOCENTE, 2=RESP_AREA, 3=DIRECTOR_CARRERA, 4=SUBDECANO, 5=DECANO, 6=RECTOR, 7=ADMINISTRADOR
+const JERARQUIA_ROLES = {
+  DOCENTE: 1,
+  RESPONSABLE_AREA: 2,
+  RESP_AREA: 2,
+  DIRECTOR_CARRERA: 3,
+  SUBDECANO: 4,
+  DECANO: 5,
+  RECTOR: 6,
+  ADMINISTRADOR: 7,
+};
+
+function obtenerRolMasAlto(roles = []) {
+  if (!Array.isArray(roles) || roles.length === 0) return null;
+  const ordenados = [...roles].sort((a, b) => {
+    const nivelA = JERARQUIA_ROLES[(a.nombre || '').toUpperCase()] ?? a.nivel ?? 0;
+    const nivelB = JERARQUIA_ROLES[(b.nombre || '').toUpperCase()] ?? b.nivel ?? 0;
+    return nivelB - nivelA;
+  });
+  return ordenados[0] || null;
+}
+
 async function procesarPasos(pasos, flujoId) {
   if (!pasos || !Array.isArray(pasos) || pasos.length === 0) return [];
 
@@ -19,19 +41,23 @@ async function procesarPasos(pasos, flujoId) {
           });
           if (user) {
             usuario_id = user.id;
-            rol_id = user.roles && user.roles[0] ? user.roles[0].id : null;
+            const rolMasAlto = obtenerRolMasAlto(user.roles);
+            rol_id = rolMasAlto ? rolMasAlto.id : null;
           } else {
             rol_id = val;
           }
         }
       }
 
-      if (usuario_id && !rol_id) {
+      if (usuario_id) {
         const user = await Usuario.findByPk(usuario_id, {
           include: [{ model: Rol, as: 'roles' }]
         });
-        if (user && user.roles && user.roles[0]) {
-          rol_id = user.roles[0].id;
+        if (user && Array.isArray(user.roles) && user.roles.length > 0) {
+          const rolMasAlto = obtenerRolMasAlto(user.roles);
+          if (rolMasAlto) {
+            rol_id = rolMasAlto.id;
+          }
         }
       }
 

@@ -292,7 +292,22 @@ async function firmarDocumento(req, res) {
       certPassword = certInstPassword;
     }
 
-    const nombreRolFirmante = (usuarioFirmante.roles && usuarioFirmante.roles[0]?.nombre) || 'Usuario';
+    const JERARQUIA_ROLES_FIRMA = {
+      DOCENTE: 1,
+      RESPONSABLE_AREA: 2,
+      RESP_AREA: 2,
+      DIRECTOR_CARRERA: 3,
+      SUBDECANO: 4,
+      DECANO: 5,
+      RECTOR: 6,
+      ADMINISTRADOR: 7,
+    };
+    const rolesOrdenados = [...(usuarioFirmante.roles || [])].sort((a, b) => {
+      const nivelA = JERARQUIA_ROLES_FIRMA[(a.nombre || '').toUpperCase()] ?? a.nivel ?? 0;
+      const nivelB = JERARQUIA_ROLES_FIRMA[(b.nombre || '').toUpperCase()] ?? b.nivel ?? 0;
+      return nivelB - nivelA;
+    });
+    const nombreRolFirmante = rolesOrdenados[0]?.nombre || 'Usuario';
 
     const resultado = await firmaService.firmarDocumento({
       pdfBuffer,

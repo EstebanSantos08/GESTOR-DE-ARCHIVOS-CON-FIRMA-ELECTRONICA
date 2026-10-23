@@ -244,7 +244,19 @@ export default function GestionUsuarios() {
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {usuariosFiltrados.map(u => {
-                  const userRoles    = u.roles    || [];
+                  const JERARQUIA = {
+                    DOCENTE: 1,
+                    RESPONSABLE_AREA: 2,
+                    RESP_AREA: 2,
+                    DIRECTOR_CARRERA: 3,
+                    SUBDECANO: 4,
+                    DECANO: 5,
+                    RECTOR: 6,
+                    ADMINISTRADOR: 7,
+                  };
+                  const userRoles = [...(u.roles || [])].sort(
+                    (a, b) => (JERARQUIA[(b.nombre || '').toUpperCase()] ?? b.nivel ?? 0) - (JERARQUIA[(a.nombre || '').toUpperCase()] ?? a.nivel ?? 0)
+                  );
                   const userCarreras = u.carreras || [];
                   const esMismoUsuario = u.id === usuarioActual?.id;
 

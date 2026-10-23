@@ -2,6 +2,28 @@ import React, { useState, useEffect } from 'react';
 import { X, User, Building2, GraduationCap, RefreshCw, CheckCircle2 } from 'lucide-react';
 import { useApp } from '../../context/useApp';
 
+// Jerarquía oficial del flujo: 1=DOCENTE, 2=RESP_AREA, 3=DIRECTOR_CARRERA, 4=SUBDECANO, 5=DECANO, 6=RECTOR, 7=ADMINISTRADOR
+const JERARQUIA_ROLES = {
+  DOCENTE: 1,
+  RESPONSABLE_AREA: 2,
+  RESP_AREA: 2,
+  DIRECTOR_CARRERA: 3,
+  SUBDECANO: 4,
+  DECANO: 5,
+  RECTOR: 6,
+  ADMINISTRADOR: 7,
+};
+
+function obtenerRolMasAlto(roles = []) {
+  if (!Array.isArray(roles) || roles.length === 0) return null;
+  const ordenados = [...roles].sort((a, b) => {
+    const nivelA = JERARQUIA_ROLES[(a?.nombre || '').toUpperCase()] ?? a?.nivel ?? 0;
+    const nivelB = JERARQUIA_ROLES[(b?.nombre || '').toUpperCase()] ?? b?.nivel ?? 0;
+    return nivelB - nivelA;
+  });
+  return ordenados[0] || null;
+}
+
 /**
  * PasoFirmaItem: Componente para configurar un paso individual de un Flujo de Firma
  * con filtros inteligentes por Facultad y Carrera para seleccionar firmantes elegibles.
@@ -77,12 +99,13 @@ export default function PasoFirmaItem({
   const handleFirmanteChange = (usuarioIdStr) => {
     const usuarioId = usuarioIdStr ? Number(usuarioIdStr) : null;
     const seleccionado = candidatos.find(c => Number(c.id) === usuarioId);
+    const rolMasAlto = obtenerRolMasAlto(seleccionado?.roles);
 
     const nuevoPaso = {
       ...paso,
       usuario_id: usuarioId,
-      // Si el docente tiene rol asociado, sincronizamos rol_id
-      rol_id: seleccionado?.roles?.[0]?.id || paso.rol_id || null,
+      // Si el docente tiene rol asociado, sincronizamos rol_id con su rol de mayor jerarquía
+      rol_id: rolMasAlto?.id || paso.rol_id || null,
     };
 
     onChange(nuevoPaso);
@@ -188,11 +211,14 @@ export default function PasoFirmaItem({
           }`}
         >
           <option value="">-- Seleccione el Firmante --</option>
-          {candidatos.map(u => (
-            <option key={u.id} value={u.id}>
-              {u.nombre} ({u.email}) {u.roles?.[0]?.nombre ? `— [${u.roles[0].nombre}]` : ''}
-            </option>
-          ))}
+          {candidatos.map(u => {
+            const rolMasAlto = obtenerRolMasAlto(u.roles);
+            return (
+              <option key={u.id} value={u.id}>
+                {u.nombre} ({u.email}) {rolMasAlto?.nombre ? `— [${rolMasAlto.nombre}]` : ''}
+              </option>
+            );
+          })}
         </select>
 
         {errorCandidatos && (

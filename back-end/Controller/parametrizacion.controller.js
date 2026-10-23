@@ -744,6 +744,32 @@ const asignarResponsablesSubcriterio = async (req, res) => {
 };
 
 // ─── Controlador de Docentes / Usuarios con asignación N:M ─────────────────
+// Jerarquía oficial del flujo: 1=DOCENTE, 2=RESP_AREA, 3=DIRECTOR_CARRERA, 4=SUBDECANO, 5=DECANO, 6=RECTOR, 7=ADMINISTRADOR
+const JERARQUIA_ROLES = {
+  DOCENTE: 1,
+  RESPONSABLE_AREA: 2,
+  RESP_AREA: 2,
+  DIRECTOR_CARRERA: 3,
+  SUBDECANO: 4,
+  DECANO: 5,
+  RECTOR: 6,
+  ADMINISTRADOR: 7,
+};
+
+function _ordenarRolesUsuario(usuario) {
+  if (!usuario) return usuario;
+  const plain = typeof usuario.toJSON === 'function' ? usuario.toJSON() : { ...usuario };
+  if (Array.isArray(plain.roles)) {
+    plain.roles = [...plain.roles]
+      .map(r => ({
+        ...r,
+        nivel: JERARQUIA_ROLES[(r.nombre || '').toUpperCase()] ?? r.nivel ?? 0,
+      }))
+      .sort((a, b) => (b.nivel || 0) - (a.nivel || 0));
+  }
+  return plain;
+}
+
 const _docenteInclude = [
   { model: Rol, as: 'roles' },
   {
@@ -773,7 +799,7 @@ const docenteCtrl = {
         include: _docenteInclude,
         order: [['id', 'ASC']],
       });
-      res.json(docentes);
+      res.json(docentes.map(_ordenarRolesUsuario));
     } catch (err) {
       res.status(500).json({ error: 'Error al obtener docentes: ' + err.message });
     }
@@ -787,7 +813,7 @@ const docenteCtrl = {
         include: _docenteInclude,
       });
       if (!docente) return res.status(404).json({ error: 'Docente no encontrado' });
-      res.json(docente);
+      res.json(_ordenarRolesUsuario(docente));
     } catch (err) {
       res.status(500).json({ error: 'Error al obtener docente: ' + err.message });
     }
@@ -832,7 +858,7 @@ const docenteCtrl = {
         include: _docenteInclude,
       });
 
-      res.status(201).json(resultado);
+      res.status(201).json(_ordenarRolesUsuario(resultado));
     } catch (err) {
       res.status(400).json({ error: err.message });
     }
@@ -878,7 +904,7 @@ const docenteCtrl = {
         include: _docenteInclude,
       });
 
-      res.json(actualizado);
+      res.json(_ordenarRolesUsuario(actualizado));
     } catch (err) {
       res.status(400).json({ error: err.message });
     }
@@ -988,7 +1014,7 @@ const docenteCtrl = {
         order: [['nombre', 'ASC']],
       });
 
-      res.json(docentes);
+      res.json(docentes.map(_ordenarRolesUsuario));
     } catch (err) {
       res.status(500).json({ error: 'Error al filtrar docentes elegibles: ' + err.message });
     }

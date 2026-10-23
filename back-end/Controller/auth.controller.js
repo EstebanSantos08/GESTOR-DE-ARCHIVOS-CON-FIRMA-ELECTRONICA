@@ -1,18 +1,66 @@
 const { validationResult } = require('express-validator');
 const { sequelize } = require('../Model');
 const authService = require('../Services/auth.service');
-const { Usuario, Rol, Facultad, Carrera, Actividad } = require('../Model');
+const { Usuario, Rol, Universidad, Facultad, Carrera, Actividad } = require('../Model');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
+
+// Jerarquía oficial del flujo: 1=DOCENTE, 2=RESP_AREA, 3=DIRECTOR_CARRERA, 4=SUBDECANO, 5=DECANO, 6=RECTOR, 7=ADMINISTRADOR
+const JERARQUIA_ROLES = {
+  DOCENTE: 1,
+  RESPONSABLE_AREA: 2,
+  RESP_AREA: 2,
+  DIRECTOR_CARRERA: 3,
+  SUBDECANO: 4,
+  DECANO: 5,
+  RECTOR: 6,
+  ADMINISTRADOR: 7,
+};
+
+function _ordenarRolesUsuario(usuario) {
+  if (!usuario) return usuario;
+  const plain = typeof usuario.toJSON === 'function' ? usuario.toJSON() : { ...usuario };
+  if (Array.isArray(plain.roles)) {
+    plain.roles = [...plain.roles]
+      .map(r => ({
+        ...r,
+        nivel: JERARQUIA_ROLES[(r.nombre || '').toUpperCase()] ?? r.nivel ?? 0,
+      }))
+      .sort((a, b) => (b.nivel || 0) - (a.nivel || 0));
+  }
+  return plain;
+}
 
 // ─── Include estándar para devolver un usuario completo ───────────────────────
 // Reutilizado en perfil, listar, actualizar, etc.
 const INCLUDE_USUARIO_COMPLETO = [
   { model: Rol,    as: 'roles' },
-  { model: Facultad, as: 'facultades', through: { attributes: [] } },
-  { model: Actividad, as: 'actividades', through: { attributes: [] } },
-  { model: Facultad, as: 'facultad', attributes: ['id', 'nombre'], required: false },
-  { model: Carrera,  as: 'carreras', attributes: ['id', 'nombre'], through: { attributes: [] } },
+  {
+    model: Facultad,
+    as: 'facultades',
+    where: { activo: true },
+    required: false,
+    through: { attributes: [] },
+    include: [{ model: Universidad, as: 'universidad', attributes: ['id'], where: { activo: true }, required: true }],
+  },
+  { model: Actividad, as: 'actividades', where: { activo: true }, required: false, through: { attributes: [] } },
+  { model: Facultad, as: 'facultad', attributes: ['id', 'nombre'], where: { activo: true }, required: false },
+  {
+    model: Carrera,
+    as: 'carreras',
+    attributes: ['id', 'nombre', 'facultad_id'],
+    where: { activo: true },
+    required: false,
+    through: { attributes: [] },
+    include: [{
+      model: Facultad,
+      as: 'facultad',
+      attributes: ['id'],
+      where: { activo: true },
+      required: true,
+      include: [{ model: Universidad, as: 'universidad', attributes: ['id'], where: { activo: true }, required: true }],
+    }],
+  },
 ];
 
 // ─── Login ────────────────────────────────────────────────────────────────────
@@ -90,7 +138,7 @@ async function perfil(req, res) {
       include: INCLUDE_USUARIO_COMPLETO,
     });
     if (!usuario) return res.status(404).json({ error: 'Usuario no encontrado' });
-    res.json(usuario);
+    res.json(_ordenarRolesUsuario(usuario));
   } catch (err) {
     res.status(500).json({ error: 'Error interno del servidor' });
   }
@@ -104,7 +152,7 @@ async function listarUsuarios(req, res) {
       include: INCLUDE_USUARIO_COMPLETO,
       order: [['id', 'ASC']],
     });
-    res.json(usuarios);
+    res.json(usuarios.map(_ordenarRolesUsuario));
   } catch (err) {
     res.status(500).json({ error: 'Error al obtener usuarios' });
   }
@@ -118,7 +166,7 @@ async function obtenerUsuario(req, res) {
       include: INCLUDE_USUARIO_COMPLETO,
     });
     if (!usuario) return res.status(404).json({ error: 'Usuario no encontrado' });
-    res.json(usuario);
+    res.json(_ordenarRolesUsuario(usuario));
   } catch (err) {
     res.status(500).json({ error: 'Error al obtener usuario: ' + err.message });
   }

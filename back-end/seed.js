@@ -12,8 +12,8 @@ async function seed() {
 
     // ─── Roles (7 niveles jerárquicos) ─────────────────────────────────────
     await Rol.bulkCreate([
-      { nombre: 'RESPONSABLE_AREA',  nivel: 1, descripcion: 'Responsable de área — sube evidencia en indicadores asignados' },
-      { nombre: 'DOCENTE',           nivel: 2, descripcion: 'Docente universitario — sube documentos' },
+      { nombre: 'DOCENTE',           nivel: 1, descripcion: 'Docente universitario — sube documentos' },
+      { nombre: 'RESPONSABLE_AREA',  nivel: 2, descripcion: 'Responsable de área — sube evidencia en indicadores asignados' },
       { nombre: 'DIRECTOR_CARRERA',  nivel: 3, descripcion: 'Director de carrera — primera firma y revisión' },
       { nombre: 'SUBDECANO',         nivel: 4, descripcion: 'Subdecano — segunda firma y parametrización' },
       { nombre: 'DECANO',            nivel: 5, descripcion: 'Decano de facultad — tercera firma' },

@@ -83,7 +83,7 @@ export default function PanelLateralAuditoria() {
         blobUrlRef.current = null;
       }
     };
-  }, [doc?.id, token]);
+  }, [doc?.id, doc?.paso_actual, doc?.estado, doc?.hash_sha256, token]);
 
   if (!doc) return null;
 
@@ -252,6 +252,7 @@ export default function PanelLateralAuditoria() {
       {modalAbierto && (
         <ModalFirma
           documento={doc}
+          pdfBlobUrl={pdfBlobUrl}
           onClose={() => setModalAbierto(false)}
         />
       )}

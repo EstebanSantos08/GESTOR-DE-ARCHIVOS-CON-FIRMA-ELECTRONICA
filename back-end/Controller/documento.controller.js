@@ -312,6 +312,7 @@ async function firmarDocumento(req, res) {
       certBuffer,
       passwordCert: certPassword,
       firmante: { nombre: usuarioFirmante.nombre, rol: nombreRolFirmante },
+      posicionFirma: req.body.posicionFirma || null,
     });
 
     claveFirmada = generarClave('firmados', documento.nombre_original);

@@ -180,9 +180,10 @@ function construirStreamSelloVisual(firmante = {}, fechaEmision = new Date()) {
 }
 
 /**
- * Obtiene la referencia a la ÚLTIMA página del PDF y su ancho (MediaBox).
+ * Obtiene la referencia a la página solicitada del PDF ('ultima' o número 1-based)
+ * y sus dimensiones (MediaBox: pageWidth, pageHeight).
  */
-function obtenerUltimaPaginaInfo(pdfBuffer, info) {
+function obtenerUltimaPaginaInfo(pdfBuffer, info, paginaSolicitada = 'ultima') {
   const pagesRef = getPagesDictionaryRef(info);
   const pagesDictionary = findObject(pdfBuffer, info.xref, pagesRef).toString();
   const kidsPosition = pagesDictionary.indexOf('/Kids');
@@ -190,22 +191,40 @@ function obtenerUltimaPaginaInfo(pdfBuffer, info) {
   const kidsEnd = pagesDictionary.indexOf(']', kidsPosition);
   const pagesSlice = pagesDictionary.slice(kidsStart, kidsEnd);
   const matches = pagesSlice.match(/\d+\s+\d+\s+R/g) || [];
-  const pageRef = matches.length > 0 ? matches[matches.length - 1] : pagesSlice.trim().split(' ', 3).join(' ');
+
+  let pageRef;
+  if (matches.length > 0) {
+    if (
+      paginaSolicitada &&
+      paginaSolicitada !== 'ultima' &&
+      !Number.isNaN(Number(paginaSolicitada))
+    ) {
+      const idx = Math.max(0, Math.min(matches.length - 1, Number(paginaSolicitada) - 1));
+      pageRef = matches[idx];
+    } else {
+      pageRef = matches[matches.length - 1];
+    }
+  } else {
+    pageRef = pagesSlice.trim().split(' ', 3).join(' ');
+  }
 
   let pageWidth = 595.28;
+  let pageHeight = 841.89;
   try {
     const pageDictStr = findObject(pdfBuffer, info.xref, pageRef).toString();
     const mbMatch = /\/MediaBox\s*\[\s*([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)\s*\]/.exec(pageDictStr)
       || /\/MediaBox\s*\[\s*([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)\s*\]/.exec(pagesDictionary);
     if (mbMatch) {
       const w = parseFloat(mbMatch[3]) - parseFloat(mbMatch[1]);
+      const h = parseFloat(mbMatch[4]) - parseFloat(mbMatch[2]);
       if (w > 100) pageWidth = w;
+      if (h > 100) pageHeight = h;
     }
   } catch {
-    // Mantener ancho A4 por defecto
+    // Mantener dimensiones A4 por defecto
   }
 
-  return { pageRef, pageWidth };
+  return { pageRef, pageWidth, pageHeight, totalPaginas: matches.length || 1 };
 }
 
 /**
@@ -222,14 +241,43 @@ function agregarPlaceholderConSelloVisual({
   signatureLength = SIGNATURE_LENGTH,
   subFilter = SUBFILTER_ETSI_CADES_DETACHED,
   firmante = {},
+  posicionFirma = null,
 }) {
   let pdf = removeTrailingNewLine(pdfBuffer);
   const info = readPdf(pdf);
-  const { pageRef, pageWidth } = obtenerUltimaPaginaInfo(pdf, info);
+  const paginaObjetivo = posicionFirma?.pagina || 'ultima';
+  const { pageRef, pageWidth, pageHeight } = obtenerUltimaPaginaInfo(pdf, info, paginaObjetivo);
   const pageIndex = getIndexFromRef(info.xref, pageRef);
   const addedReferences = new Map();
 
-  const { x, y } = posicionSello(pageWidth, firmante.rol);
+  let x;
+  let y;
+  if (
+    posicionFirma &&
+    posicionFirma.modo !== 'auto' &&
+    typeof posicionFirma.xRatio === 'number' &&
+    typeof posicionFirma.yRatio === 'number'
+  ) {
+    const clamp01 = (v) => Math.max(0, Math.min(1, v));
+    const xr = clamp01(posicionFirma.xRatio);
+    const yr = clamp01(posicionFirma.yRatio);
+    x = Math.max(10, Math.min(pageWidth - SELLO_W - 10, xr * (pageWidth - SELLO_W)));
+    // En pantalla yRatio=0 es arriba y yRatio=1 es abajo; en PDF y=0 es abajo
+    y = Math.max(10, Math.min(pageHeight - SELLO_H - 10, (1 - yr) * (pageHeight - SELLO_H)));
+  } else if (
+    posicionFirma &&
+    posicionFirma.modo !== 'auto' &&
+    typeof posicionFirma.x === 'number' &&
+    typeof posicionFirma.y === 'number'
+  ) {
+    x = Math.max(0, Math.min(pageWidth - SELLO_W, posicionFirma.x));
+    y = Math.max(0, Math.min(pageHeight - SELLO_H, posicionFirma.y));
+  } else {
+    const posAuto = posicionSello(pageWidth, firmante.rol);
+    x = posAuto.x;
+    y = posAuto.y;
+  }
+
   const widgetRect = [
     Math.round(x),
     Math.round(y),
@@ -810,7 +858,7 @@ class FirmaService {
    *                     hashSha256: string, fechaFirma: Date,
    *                     firmante: string }>}
    */
-  async firmarDocumento({ pdfBuffer, rutaPdf, certBuffer, rutaCertP12, passwordCert, firmante }) {
+  async firmarDocumento({ pdfBuffer, rutaPdf, certBuffer, rutaCertP12, passwordCert, firmante, posicionFirma = null }) {
     // 1. Resolver pdfBuffer con prioridad
     let pdfAUsar = pdfBuffer;
     if (!pdfAUsar && rutaPdf) {
@@ -850,6 +898,7 @@ class FirmaService {
         signatureLength: SIGNATURE_LENGTH,
         subFilter:       SUBFILTER_ETSI_CADES_DETACHED,
         firmante,
+        posicionFirma,
       });
     } catch {
       pdfConPlaceholder = plainAddPlaceholder({

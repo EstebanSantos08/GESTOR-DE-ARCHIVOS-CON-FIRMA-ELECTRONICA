@@ -426,8 +426,11 @@ export function AppProvider({ children }) {
     cargarDocumentosGlobales();
   }
 
-  async function firmarDocumento(docId) {
+  async function firmarDocumento(docId, _nombreDoc, posicionFirma = null) {
     const body = { observaciones: '' };
+    if (posicionFirma) {
+      body.posicionFirma = posicionFirma;
+    }
     if (certBase64 && certPassword) {
       body.certBase64 = certBase64;
       body.certPassword = certPassword;
@@ -448,6 +451,7 @@ export function AppProvider({ children }) {
       firmante_actual_id: doc.firmante_actual_id,
       paso_actual: doc.paso_actual,
       firmanteActual: doc.firmanteActual || null,
+      hash_sha256: doc.hash_sha256 || undefined,
     };
     _actualizarDocumentoEnEstado(docId, cambiosDoc);
 

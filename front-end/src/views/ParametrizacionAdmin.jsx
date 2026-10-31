@@ -162,18 +162,28 @@ export default function ParametrizacionAdmin() {
   }, [universidades]);
 
   function sincronizarContexto({ univId, facId, perId, carrId, critId = '' }) {
+    let resolvedPerId = perId;
+    if (carrId && !perId) {
+      const uObj = universidades.find(u => String(u.id) === String(univId ?? fCrit.univId));
+      const fObj = uObj?.facultades?.find(f => String(f.id) === String(facId ?? fCrit.facId));
+      const cObj = fObj?.carreras?.find(c => String(c.id) === String(carrId));
+      const periodosDisp = cObj?.periodos?.length ? cObj.periodos : (fObj?.periodos || []);
+      const ultimoPer = periodosDisp[periodosDisp.length - 1] || periodosDisp[0];
+      if (ultimoPer) resolvedPerId = String(ultimoPer.id);
+    }
+
     setFCrit(prev => ({
       ...prev,
       univId: univId ?? prev.univId,
       facId: facId ?? prev.facId,
-      perId: perId ?? prev.perId,
+      perId: resolvedPerId ?? prev.perId,
       carrId: carrId ?? prev.carrId,
     }));
     setFInd(prev => ({
       ...prev,
       univId: univId ?? prev.univId,
       facId: facId ?? prev.facId,
-      perId: perId ?? prev.perId,
+      perId: resolvedPerId ?? prev.perId,
       carrId: carrId ?? prev.carrId,
       critId: critId,
     }));
@@ -241,15 +251,16 @@ export default function ParametrizacionAdmin() {
 
   async function submitCrit(e) {
     e.preventDefault();
-    if (!fCrit.nombre || !fCrit.univId || !fCrit.facId || !fCrit.perId || !fCrit.carrId) return;
+    const perIdFinal = fCrit.perId || carrSelCrit?.periodos?.[0]?.id || facSelCrit?.periodos?.[0]?.id;
+    if (!fCrit.nombre || !fCrit.univId || !fCrit.facId || !perIdFinal || !fCrit.carrId) return;
     try {
-      await agregarCriterio(Number(fCrit.univId), Number(fCrit.facId), Number(fCrit.carrId), Number(fCrit.perId), {
+      await agregarCriterio(Number(fCrit.univId), Number(fCrit.facId), Number(fCrit.carrId), Number(perIdFinal), {
         nombre: fCrit.nombre,
         requiere_firma: fCrit.requiere_firma,
         flujo_id: null,
       });
       setFCrit(prev => ({ ...prev, nombre: '', requiere_firma: true }));
-      mostrarExito('Criterio creado exitosamente');
+      mostrarExito('Criterio creado y registrado por defecto para los períodos de la carrera');
     } catch (err) { mostrarError(err.message); }
   }
 
@@ -927,7 +938,7 @@ export default function ParametrizacionAdmin() {
                     <div className="lg:col-span-2">
                       <button
                         type="submit"
-                        disabled={!fCrit.nombre || !fCrit.univId || !fCrit.facId || !fCrit.perId || !fCrit.carrId}
+                        disabled={!fCrit.nombre || !fCrit.univId || !fCrit.facId || !fCrit.carrId || !(fCrit.perId || carrSelCrit?.periodos?.length || facSelCrit?.periodos?.length)}
                         className="w-full flex items-center justify-center space-x-1.5 px-4 py-2.5 bg-navy-900 text-white rounded-lg text-sm font-medium hover:bg-navy-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                       >
                         <Plus size={16} /><span>Crear Criterio</span>

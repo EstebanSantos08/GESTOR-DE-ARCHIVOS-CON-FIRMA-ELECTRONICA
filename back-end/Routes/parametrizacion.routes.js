@@ -10,6 +10,7 @@ const {
   criterioCtrl,
   indicadorCtrl,
   subcriterioCtrl,
+  carpetaCtrl,
   actividadCtrl,
   estructura,
   asignarUsuariosActividad,
@@ -115,6 +116,17 @@ router.post('/indicadores/:id/responsables', ...soloAdmin,
   body('responsablesIds').isArray().withMessage('responsablesIds debe ser un arreglo'),
   asignarResponsablesIndicador
 );
+
+// ─── Carpeta (dentro de Subcriterio — gestión exclusiva ADMINISTRADOR) ─────
+router.get('/carpetas', autenticar, carpetaCtrl.listar);
+router.get('/carpetas/:id', autenticar, carpetaCtrl.obtener);
+router.post('/carpetas', ...soloAdmin,
+  body('nombre').notEmpty().withMessage('Nombre de carpeta requerido'),
+  body('subcriterio_id').isInt().withMessage('Subcriterio requerido'),
+  carpetaCtrl.crear
+);
+router.put('/carpetas/:id', ...soloAdmin, carpetaCtrl.actualizar);
+router.delete('/carpetas/:id', ...soloAdmin, carpetaCtrl.eliminar);
 
 // ─── Actividad ─────────────────────────────────────────────────────────────
 router.get('/actividades', autenticar, actividadCtrl.listar);

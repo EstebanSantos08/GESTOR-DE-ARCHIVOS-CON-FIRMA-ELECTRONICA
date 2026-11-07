@@ -8,6 +8,7 @@ const Periodo = require('./Periodo');
 const Criterio = require('./Criterio');
 const Indicador = require('./Indicador');
 const Subcriterio = require('./Subcriterio');
+const Carpeta = require('./Carpeta');
 const Actividad = require('./Actividad');
 const Documento = require('./Documento');
 const UsuarioRol = require('./UsuarioRol');
@@ -66,6 +67,11 @@ Subcriterio.belongsTo(Criterio, { foreignKey: 'criterio_id', as: 'criterio' });
 Subcriterio.belongsToMany(Usuario, { through: 'subcriterios_responsables', as: 'responsables', foreignKey: 'subcriterio_id' });
 Usuario.belongsToMany(Subcriterio, { through: 'subcriterios_responsables', as: 'subcriteriosAsignados', foreignKey: 'usuario_id' });
 
+// ─── Subcriterio ↔ Carpeta (Carpetas dentro del Subcriterio) ────────────────
+Subcriterio.hasMany(Carpeta, { foreignKey: 'subcriterio_id', as: 'carpetas' });
+Carpeta.belongsTo(Subcriterio, { foreignKey: 'subcriterio_id', as: 'subcriterio' });
+Carpeta.belongsTo(Usuario, { foreignKey: 'creado_por_id', as: 'creadoPor' });
+
 // ─── Subcriterio ↔ Actividad (compatibilidad legacy) ────────────────────────
 Subcriterio.hasMany(Actividad, { foreignKey: 'subcriterio_id', as: 'actividades' });
 Actividad.belongsTo(Subcriterio, { foreignKey: 'subcriterio_id', as: 'subcriterio' });
@@ -86,12 +92,14 @@ Indicador.hasMany(Actividad, { foreignKey: 'indicador_id', as: 'actividades' });
 Actividad.belongsToMany(Usuario, { through: 'actividades_usuarios', as: 'usuariosAsignados', foreignKey: 'actividad_id' });
 Usuario.belongsToMany(Actividad, { through: 'actividades_usuarios', as: 'actividadesAsignadas', foreignKey: 'usuario_id' });
 
-// ─── Documento (vinculado directamente a Subcriterio) ───────────────────────
+// ─── Documento (vinculado a Carpeta y Subcriterio) ──────────────────────────
 Documento.belongsTo(Usuario, { foreignKey: 'subido_por_id', as: 'subidoPor' });
 Documento.belongsTo(Usuario, { foreignKey: 'firmante_actual_id', as: 'firmanteActual' });
 Documento.belongsTo(Facultad, { foreignKey: 'facultad_id', as: 'facultad' });
 Documento.belongsTo(Subcriterio, { foreignKey: 'subcriterio_id', as: 'subcriterio' });
 Subcriterio.hasMany(Documento, { foreignKey: 'subcriterio_id', as: 'documentos' });
+Documento.belongsTo(Carpeta, { foreignKey: 'carpeta_id', as: 'carpeta' });
+Carpeta.hasMany(Documento, { foreignKey: 'carpeta_id', as: 'documentos' });
 Documento.belongsTo(Actividad, { foreignKey: 'actividad_id', as: 'actividad' });
 Actividad.hasMany(Documento, { foreignKey: 'actividad_id', as: 'documentos' });
 
@@ -127,6 +135,7 @@ module.exports = {
   Criterio,
   Indicador,
   Subcriterio,
+  Carpeta,
   Actividad,
   Documento,
   FlujoFirma,

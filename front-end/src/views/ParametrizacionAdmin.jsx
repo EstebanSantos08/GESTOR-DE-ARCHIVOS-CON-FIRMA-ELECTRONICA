@@ -44,6 +44,7 @@ export default function ParametrizacionAdmin() {
     agregarPeriodo, actualizarPeriodo, eliminarPeriodo,
     agregarCriterio, actualizarCriterio, eliminarCriterio,
     agregarIndicador, actualizarIndicador, eliminarIndicador, asignarResponsablesIndicador,
+    agregarCarpeta, actualizarCarpeta, eliminarCarpeta,
     listarUsuarios,
     listarDocentes, eliminarDocente,
     flujosFirma, crearFlujo, actualizarFlujo, eliminarFlujo,
@@ -120,6 +121,8 @@ export default function ParametrizacionAdmin() {
   const [busquedaSubcriterio, setBusquedaSubcriterio] = useState('');
   const [mostrarFormCriterio, setMostrarFormCriterio] = useState(false);
   const [mostrarFormSubcriterio, setMostrarFormSubcriterio] = useState(false);
+  const [subcriterioCarpetasModal, setSubcriterioCarpetasModal] = useState(null); // { u, f, p, ca, c, i }
+  const [fCarpetaParam, setFCarpetaParam] = useState({ nombre: '', descripcion: '' });
 
   const [fUniv, setFUniv] = useState({ nombre: '', siglas: '' });
   const [fFac,  setFfac]  = useState({ nombre: '', univId: '' });
@@ -1362,7 +1365,7 @@ export default function ParametrizacionAdmin() {
                           <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Criterio Padre</th>
                           <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Carrera / Período</th>
                           <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Responsables</th>
-                          <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Documentos (1 Clic)</th>
+                          <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Carpetas / PDFs</th>
                           <th className="text-right px-5 py-3 text-xs font-semibold text-gray-500 uppercase">Acciones</th>
                         </tr>
                       </thead>
@@ -1497,29 +1500,43 @@ export default function ParametrizacionAdmin() {
                               </td>
 
                               <td className="px-4 py-3 text-center">
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    navegarA &&
-                                    navegarA('explorador', {
-                                      univId: u.id,
-                                      facId: f.id,
-                                      perId: p.id,
-                                      carrId: ca.id,
-                                      critId: c.id,
-                                      subId: i.id,
-                                    })
-                                  }
-                                  className={`inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-semibold border transition-colors ${
-                                    totalDocs > 0
-                                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
-                                      : 'bg-navy-50 text-navy-800 border-navy-200 hover:bg-navy-100'
-                                  }`}
-                                  title="Ir directamente a subir o ver PDFs de este subcriterio"
-                                >
-                                  <FolderOpen size={12} />
-                                  <span>{totalDocs} PDF{totalDocs === 1 ? '' : 's'} →</span>
-                                </button>
+                                <div className="flex flex-col items-center gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSubcriterioCarpetasModal({ u, f, p, ca, c, i });
+                                      setFCarpetaParam({ nombre: '', descripcion: '' });
+                                    }}
+                                    className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 transition-colors"
+                                    title="Crear o administrar carpetas dentro de este subcriterio"
+                                  >
+                                    <FolderOpen size={12} />
+                                    <span>{(i.carpetas || []).length} carpeta{(i.carpetas || []).length === 1 ? '' : 's'} (+ Crear)</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      navegarA &&
+                                      navegarA('explorador', {
+                                        univId: u.id,
+                                        facId: f.id,
+                                        perId: p.id,
+                                        carrId: ca.id,
+                                        critId: c.id,
+                                        subId: i.id,
+                                      })
+                                    }
+                                    className={`inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-semibold border transition-colors ${
+                                      totalDocs > 0
+                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                                        : 'bg-navy-50 text-navy-800 border-navy-200 hover:bg-navy-100'
+                                    }`}
+                                    title="Ir al explorador para ver carpetas y subir PDFs"
+                                  >
+                                    <FileText size={12} />
+                                    <span>{totalDocs} PDF{totalDocs === 1 ? '' : 's'} →</span>
+                                  </button>
+                                </div>
                               </td>
 
                               <td className="px-5 py-3 text-right">
@@ -1843,6 +1860,142 @@ export default function ParametrizacionAdmin() {
           cargarListaDocentes();
         }}
       />
+
+      {/* Modal para Gestionar Carpetas de un Subcriterio */}
+      {subcriterioCarpetasModal && (() => {
+        const filaActual = filasSubcriterios.find(row => row.i.id === subcriterioCarpetasModal.i.id) || subcriterioCarpetasModal;
+        const subActual = filaActual.i;
+        const carpetasList = subActual.carpetas || [];
+        return (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 space-y-4">
+              <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+                <div>
+                  <h3 className="text-base font-bold text-navy-900 flex items-center space-x-2">
+                    <FolderOpen size={18} className="text-amber-600" />
+                    <span>Carpetas del Subcriterio [{subActual.numero}]</span>
+                  </h3>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {subActual.nombre} · {filaActual.ca.nombre} ({filaActual.p.nombre})
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSubcriterioCarpetasModal(null)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (!fCarpetaParam.nombre.trim()) return;
+                  try {
+                    await agregarCarpeta(subActual.id, {
+                      nombre: fCarpetaParam.nombre.trim(),
+                      descripcion: fCarpetaParam.descripcion.trim() || undefined,
+                    });
+                    setFCarpetaParam({ nombre: '', descripcion: '' });
+                    mostrarExito('Carpeta creada exitosamente');
+                  } catch (err) {
+                    mostrarError(err.message);
+                  }
+                }}
+                className="bg-amber-50/60 border border-amber-200 rounded-xl p-3.5 space-y-2.5"
+              >
+                <p className="text-xs font-semibold text-amber-900">Nueva Carpeta (se replicará en períodos de la carrera)</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <input
+                    value={fCarpetaParam.nombre}
+                    onChange={e => setFCarpetaParam(prev => ({ ...prev, nombre: e.target.value }))}
+                    placeholder="Nombre de la carpeta (ej. Evidencias 2026)"
+                    className={inputSmCls}
+                    required
+                  />
+                  <input
+                    value={fCarpetaParam.descripcion}
+                    onChange={e => setFCarpetaParam(prev => ({ ...prev, descripcion: e.target.value }))}
+                    placeholder="Descripción (opcional)"
+                    className={inputSmCls}
+                  />
+                </div>
+                <div className="flex justify-end">
+                  <button
+                    type="submit"
+                    disabled={!fCarpetaParam.nombre.trim()}
+                    className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-navy-900 text-white rounded-lg text-xs font-medium hover:bg-navy-800 disabled:opacity-40"
+                  >
+                    <Plus size={13} />
+                    <span>Crear Carpeta</span>
+                  </button>
+                </div>
+              </form>
+
+              <div className="space-y-2 max-h-60 overflow-y-auto">
+                {carpetasList.length === 0 ? (
+                  <p className="text-xs text-gray-400 text-center py-6 border border-dashed border-gray-200 rounded-xl">
+                    Aún no hay carpetas creadas en este subcriterio. Crea una carpeta arriba para habilitar la carga de documentos PDF.
+                  </p>
+                ) : (
+                  carpetasList.map(carp => (
+                    <div key={carp.id} className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-3.5 py-2.5">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center space-x-2">
+                          <FolderOpen size={14} className="text-amber-600 flex-shrink-0" />
+                          <span className="text-xs font-semibold text-navy-900 truncate">{carp.nombre}</span>
+                          <span className="text-[11px] text-gray-400">
+                            ({carp.cantidadDocumentos ?? (carp.documentos || []).length} PDFs)
+                          </span>
+                        </div>
+                        {carp.descripcion && (
+                          <p className="text-[11px] text-gray-500 mt-0.5 truncate">{carp.descripcion}</p>
+                        )}
+                      </div>
+                      <div className="flex items-center space-x-1.5 ml-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSubcriterioCarpetasModal(null);
+                            navegarA && navegarA('explorador', {
+                              univId: filaActual.u.id,
+                              facId: filaActual.f.id,
+                              perId: filaActual.p.id,
+                              carrId: filaActual.ca.id,
+                              critId: filaActual.c.id,
+                              subId: subActual.id,
+                            });
+                          }}
+                          className="px-2 py-1 text-[11px] font-medium bg-navy-50 text-navy-800 rounded hover:bg-navy-100"
+                        >
+                          Abrir →
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (!window.confirm(`¿Eliminar la carpeta "${carp.nombre}"?`)) return;
+                            try {
+                              await eliminarCarpeta(carp.id);
+                              mostrarExito('Carpeta eliminada');
+                            } catch (err) {
+                              mostrarError(err.message);
+                            }
+                          }}
+                          className="p-1 text-red-500 hover:bg-red-50 rounded"
+                          title="Eliminar carpeta"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

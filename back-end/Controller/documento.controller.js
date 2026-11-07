@@ -2,7 +2,7 @@
 
 const multer = require('multer');
 const { pipeline } = require('stream');
-const { sequelize, Documento, Usuario, Rol, Facultad, Subcriterio, Actividad, FlujoFirma, PasoFirma } = require('../Model');
+const { sequelize, Documento, Usuario, Rol, Facultad, Subcriterio, Carpeta, Actividad, FlujoFirma, PasoFirma } = require('../Model');
 const firmaService = require('../Services/firma.service');
 const workflowService = require('../Services/workflow.service');
 const {
@@ -62,9 +62,15 @@ async function subirDocumento(req, res) {
     claveOriginal = generarClave('originales', req.file.originalname);
     await subirArchivoR2(claveOriginal, bufferOriginal, 'application/pdf');
 
-    const subcriterioId = req.body.subcriterio_id || req.body.actividad_id || null;
+    const carpetaId = req.body.carpeta_id ? parseInt(req.body.carpeta_id, 10) : null;
+    let subcriterioId = req.body.subcriterio_id || req.body.actividad_id || null;
 
-    // 2. Crear registro inicial en PostgreSQL vinculado a subcriterio_id
+    if (carpetaId && !subcriterioId && Carpeta && typeof Carpeta.findByPk === 'function') {
+      const carp = await Carpeta.findByPk(carpetaId);
+      if (carp) subcriterioId = carp.subcriterio_id;
+    }
+
+    // 2. Crear registro inicial en PostgreSQL vinculado a subcriterio_id y carpeta_id
     const documento = await Documento.create({
       nombre_original: req.file.originalname,
       ruta_archivo: claveOriginal,
@@ -73,6 +79,7 @@ async function subirDocumento(req, res) {
       subido_por_id: req.usuario.id,
       facultad_id: req.body.facultad_id || null,
       subcriterio_id: subcriterioId,
+      carpeta_id: carpetaId,
       actividad_id: req.body.actividad_id || null,
       hash_sha256: hashOriginal,
     });
@@ -117,7 +124,17 @@ async function listarDocumentos(req, res) {
     const usuarioRoles = req.usuario.roles || [req.usuario.rol].filter(Boolean);
     const esAdmin = usuarioRoles.includes('ADMINISTRADOR');
 
-    if (req.query.subcriterio_id) {
+    if (req.query.carpeta_id) {
+      where.carpeta_id = parseInt(req.query.carpeta_id, 10);
+
+      if (!esAdmin) {
+        const { Op } = require('sequelize');
+        where[Op.or] = [
+          { subido_por_id: req.usuario.id },
+          { firmante_actual_id: req.usuario.id },
+        ];
+      }
+    } else if (req.query.subcriterio_id) {
       where.subcriterio_id = parseInt(req.query.subcriterio_id, 10);
 
       if (!esAdmin) {

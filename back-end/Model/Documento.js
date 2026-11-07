@@ -37,7 +37,12 @@ const Documento = sequelize.define('Documento', {
   subcriterio_id: {
     type: DataTypes.INTEGER,
     allowNull: true,
-    comment: 'Subcriterio al que pertenece directamente el documento PDF',
+    comment: 'Subcriterio al que pertenece el documento PDF',
+  },
+  carpeta_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    comment: 'Carpeta dentro del subcriterio donde se almacena el documento PDF',
   },
   actividad_id: { type: DataTypes.INTEGER, allowNull: true },
   flujo_id: { type: DataTypes.INTEGER, allowNull: true },

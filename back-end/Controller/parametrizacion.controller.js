@@ -2,7 +2,7 @@ const { validationResult } = require('express-validator');
 const {
   sequelize,
   Universidad, Facultad, Carrera, Periodo,
-  Criterio, Indicador, Subcriterio, Actividad, Usuario, Rol,
+  Criterio, Indicador, Subcriterio, Carpeta, Actividad, Usuario, Rol,
 } = require('../Model');
 const {
   CRITERIOS_ACREDITACION,
@@ -216,7 +216,7 @@ const periodoCtrl = {
           await generarEstructuraParaCarreraYPeriodo({
             carreraId: carr.id,
             periodoId: periodo.id,
-            models: { Criterio, Subcriterio, Indicador, Actividad },
+            models: { Criterio, Subcriterio, Indicador, Actividad, Carpeta },
             transaction: t,
           });
         }
@@ -224,7 +224,7 @@ const periodoCtrl = {
         await generarEstructuraParaCarreraYPeriodo({
           carreraId: carrera_id,
           periodoId: periodo.id,
-          models: { Criterio, Subcriterio, Indicador, Actividad },
+          models: { Criterio, Subcriterio, Indicador, Actividad, Carpeta },
           transaction: t,
         });
       }
@@ -540,6 +540,91 @@ const actividadCtrl = crearCRUD(Actividad, [
   { model: Usuario, as: 'usuariosAsignados', attributes: ['id', 'nombre', 'email'], through: { attributes: [] } },
 ]);
 
+const _carpetaBase = crearCRUD(Carpeta, [
+  { model: Subcriterio, as: 'subcriterio', attributes: ['id', 'numero', 'nombre', 'criterio_id'] },
+]);
+
+const carpetaCtrl = {
+  ..._carpetaBase,
+  async listar(req, res) {
+    try {
+      const where = { activo: true };
+      if (req.query.subcriterio_id) {
+        where.subcriterio_id = parseInt(req.query.subcriterio_id, 10);
+      }
+      const registros = await Carpeta.findAll({
+        where,
+        include: [{ model: Subcriterio, as: 'subcriterio', attributes: ['id', 'numero', 'nombre', 'criterio_id'] }],
+        order: [['id', 'ASC']],
+      });
+      res.json(registros);
+    } catch {
+      res.status(500).json({ error: 'Error al obtener carpetas' });
+    }
+  },
+  async crear(req, res) {
+    const errores = validationResult(req);
+    if (!errores.isEmpty()) return res.status(400).json({ errores: errores.array() });
+    try {
+      const { nombre, descripcion = null, subcriterio_id } = req.body;
+      const carpeta = await Carpeta.create({
+        nombre,
+        descripcion,
+        subcriterio_id,
+        creado_por_id: req.usuario?.id || null,
+      });
+
+      // Propagar la carpeta al mismo subcriterio en los demás períodos activos de la carrera
+      try {
+        if (Subcriterio && Criterio && typeof Subcriterio.findByPk === 'function') {
+          const subPadre = await Subcriterio.findByPk(subcriterio_id, {
+            include: [{ model: Criterio, as: 'criterio' }],
+          });
+          if (subPadre && subPadre.criterio && subPadre.criterio.carrera_id) {
+            const criteriosHermanos = await Criterio.findAll({
+              where: {
+                activo: true,
+                nombre: subPadre.criterio.nombre,
+                carrera_id: subPadre.criterio.carrera_id,
+              },
+            });
+            for (const ch of criteriosHermanos || []) {
+              const subHermano = await Subcriterio.findOne({
+                where: {
+                  activo: true,
+                  criterio_id: ch.id,
+                  numero: subPadre.numero,
+                  nombre: subPadre.nombre,
+                },
+              });
+              if (subHermano && Number(subHermano.id) !== Number(subcriterio_id)) {
+                await Carpeta.findOrCreate({
+                  where: {
+                    nombre,
+                    subcriterio_id: subHermano.id,
+                  },
+                  defaults: {
+                    nombre,
+                    descripcion,
+                    subcriterio_id: subHermano.id,
+                    creado_por_id: req.usuario?.id || null,
+                  },
+                });
+              }
+            }
+          }
+        }
+      } catch {
+        // Ignorar errores de propagación opcional
+      }
+
+      res.status(201).json(carpeta);
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  },
+};
+
 // ─── Generación de estructura para una Carrera específica ─────────────────
 async function generarEstructuraCarrera(req, res) {
   const { id } = req.params; // carrera_id
@@ -567,7 +652,7 @@ async function generarEstructuraCarrera(req, res) {
       await generarEstructuraParaCarreraYPeriodo({
         carreraId: carrera.id,
         periodoId: per.id,
-        models: { Criterio, Subcriterio, Indicador, Actividad },
+        models: { Criterio, Subcriterio, Indicador, Actividad, Carpeta },
         transaction: t,
       });
     }
@@ -612,7 +697,7 @@ async function estructura(req, res) {
             await generarEstructuraParaCarreraYPeriodo({
               carreraId: ca.id,
               periodoId: p.id,
-              models: { Criterio, Subcriterio, Indicador, Actividad },
+              models: { Criterio, Subcriterio, Indicador, Actividad, Carpeta },
             });
             huboAutogeneracion = true;
           }
@@ -645,6 +730,65 @@ async function estructura(req, res) {
       order: [['numero', 'ASC']],
     });
 
+    let carpetasDB = [];
+    if (Carpeta && typeof Carpeta.findAll === 'function') {
+      try {
+        carpetasDB = await Carpeta.findAll({
+          where: { activo: true },
+          attributes: {
+            include: [
+              [
+                sequelize.literal(
+                  '(SELECT COUNT(*)::int FROM documentos AS d WHERE d.carpeta_id = "Carpeta".id)'
+                ),
+                'cantidadDocumentos',
+              ],
+            ],
+          },
+          order: [['id', 'ASC']],
+        });
+      } catch {
+        carpetasDB = [];
+      }
+    }
+
+    const mapearSubcriterio = (item) => {
+      const cantDocs = parseInt(
+        item.get?.('cantidadDocumentos') ?? item.dataValues?.cantidadDocumentos ?? item.cantidadDocumentos ?? 0,
+        10
+      );
+      const carpetasSub = (carpetasDB || [])
+        .filter(cp => cp.subcriterio_id === item.id)
+        .map(cp => {
+          const cantDocsCarpeta = parseInt(
+            cp.get?.('cantidadDocumentos') ?? cp.dataValues?.cantidadDocumentos ?? cp.cantidadDocumentos ?? 0,
+            10
+          );
+          return {
+            id: cp.id,
+            nombre: cp.nombre,
+            descripcion: cp.descripcion || '',
+            subcriterio_id: cp.subcriterio_id,
+            cantidadDocumentos: isNaN(cantDocsCarpeta) ? 0 : cantDocsCarpeta,
+            documentos: [],
+          };
+        });
+      return {
+        id: item.id,
+        numero: item.numero,
+        nombre: item.nombre,
+        descripcion: item.descripcion || '',
+        informacion_ayuda: item.descripcion || '',
+        requiere_firma: item.requiere_firma ?? true,
+        flujo_id: item.flujo_id || null,
+        responsable_nombre: item.responsable_nombre || '',
+        responsables: item.responsables || [],
+        cantidadDocumentos: isNaN(cantDocs) ? 0 : cantDocs,
+        carpetas: carpetasSub,
+        documentos: [],
+      };
+    };
+
     const resultado = universidades.map(u => ({
       id: u.id,
       nombre: u.nombre,
@@ -665,7 +809,7 @@ async function estructura(req, res) {
             id: f.id,
             nombre: f.nombre,
             descripcion: f.descripcion,
-            // Flujo principal: Facultad → Carrera → Período → Criterio → Subcriterio
+            // Flujo principal: Facultad → Carrera → Período → Criterio → Subcriterio → Carpetas
             carreras: facCarreras.map(ca => ({
               id: ca.id,
               nombre: ca.nombre,
@@ -684,25 +828,7 @@ async function estructura(req, res) {
                     const critSubcriteriosDB = subcriterios.filter(s => s.criterio_id === c.id);
                     const critIndicadoresDB  = indicadores.filter(i => i.criterio_id === c.id);
                     const listaBase = critSubcriteriosDB.length > 0 ? critSubcriteriosDB : critIndicadoresDB;
-                    const itemsMapeados = listaBase.map(item => {
-                      const cantDocs = parseInt(
-                        item.get?.('cantidadDocumentos') ?? item.dataValues?.cantidadDocumentos ?? item.cantidadDocumentos ?? 0,
-                        10
-                      );
-                      return {
-                        id: item.id,
-                        numero: item.numero,
-                        nombre: item.nombre,
-                        descripcion: item.descripcion || '',
-                        informacion_ayuda: item.descripcion || '',
-                        requiere_firma: item.requiere_firma ?? true,
-                        flujo_id: item.flujo_id || null,
-                        responsable_nombre: item.responsable_nombre || '',
-                        responsables: item.responsables || [],
-                        cantidadDocumentos: isNaN(cantDocs) ? 0 : cantDocs,
-                        documentos: [],
-                      };
-                    });
+                    const itemsMapeados = listaBase.map(mapearSubcriterio);
                     return {
                       id: c.id,
                       nombre: c.nombre,
@@ -734,27 +860,7 @@ async function estructura(req, res) {
                     const critSubcriteriosDB = subcriterios.filter(s => s.criterio_id === c.id);
                     const critIndicadoresDB  = indicadores.filter(i => i.criterio_id === c.id);
                     const listaBase = critSubcriteriosDB.length > 0 ? critSubcriteriosDB : critIndicadoresDB;
-
-                    const itemsMapeados = listaBase.map(item => {
-                      const cantDocs = parseInt(
-                        item.get?.('cantidadDocumentos') ?? item.dataValues?.cantidadDocumentos ?? item.cantidadDocumentos ?? 0,
-                        10
-                      );
-
-                      return {
-                        id: item.id,
-                        numero: item.numero,
-                        nombre: item.nombre,
-                        descripcion: item.descripcion || '',
-                        informacion_ayuda: item.descripcion || '',
-                        requiere_firma: item.requiere_firma ?? true,
-                        flujo_id: item.flujo_id || null,
-                        responsable_nombre: item.responsable_nombre || '',
-                        responsables: item.responsables || [],
-                        cantidadDocumentos: isNaN(cantDocs) ? 0 : cantDocs,
-                        documentos: [],
-                      };
-                    });
+                    const itemsMapeados = listaBase.map(mapearSubcriterio);
 
                     return {
                       id: c.id,
@@ -1131,6 +1237,7 @@ const docenteCtrl = {
 module.exports = {
   universidadCtrl, facultadCtrl, carreraCtrl,
   periodoCtrl, criterioCtrl, indicadorCtrl, subcriterioCtrl,
+  carpetaCtrl,
   actividadCtrl,
   estructura,
   asignarUsuariosActividad,

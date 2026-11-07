@@ -54,7 +54,7 @@ async function generarEstructuraParaCarreraYPeriodo({
   models,
   transaction,
 }) {
-  const { Criterio, Subcriterio, Indicador } = models;
+  const { Criterio, Subcriterio, Indicador, Carpeta } = models;
 
   const criteriosCreados = [];
 
@@ -121,7 +121,15 @@ async function generarEstructuraParaCarreraYPeriodo({
         ...(periodoId ? { periodo_id: { [Op.ne]: periodoId } } : {}),
       },
       include: Subcriterio
-        ? [{ model: Subcriterio, as: 'subcriterios', where: { activo: true }, required: false }]
+        ? [{
+            model: Subcriterio,
+            as: 'subcriterios',
+            where: { activo: true },
+            required: false,
+            include: Carpeta
+              ? [{ model: Carpeta, as: 'carpetas', where: { activo: true }, required: false }]
+              : [],
+          }]
         : [],
       order: [['id', 'ASC']],
       transaction,
@@ -143,7 +151,21 @@ async function generarEstructuraParaCarreraYPeriodo({
       for (const sp of cp.subcriterios || []) {
         const keySub = `${sp.numero}::${sp.nombre}`;
         if (!entry.subcriterios.has(keySub)) {
-          entry.subcriterios.set(keySub, sp);
+          entry.subcriterios.set(keySub, {
+            numero: sp.numero,
+            nombre: sp.nombre,
+            descripcion: sp.descripcion,
+            responsable_nombre: sp.responsable_nombre,
+            requiere_firma: sp.requiere_firma,
+            flujo_id: sp.flujo_id,
+            carpetas: new Map(),
+          });
+        }
+        const subEntry = entry.subcriterios.get(keySub);
+        for (const carp of sp.carpetas || []) {
+          if (carp.nombre && !subEntry.carpetas.has(carp.nombre)) {
+            subEntry.carpetas.set(carp.nombre, carp);
+          }
         }
       }
     }
@@ -170,8 +192,9 @@ async function generarEstructuraParaCarreraYPeriodo({
       }
 
       for (const [, subExtra] of critExtra.subcriterios.entries()) {
+        let subDestino = null;
         if (Subcriterio) {
-          await Subcriterio.findOrCreate({
+          const [subCreado] = await Subcriterio.findOrCreate({
             where: {
               numero: subExtra.numero,
               nombre: subExtra.nombre,
@@ -188,6 +211,7 @@ async function generarEstructuraParaCarreraYPeriodo({
             },
             transaction,
           });
+          subDestino = subCreado;
         }
         if (Indicador) {
           await Indicador.findOrCreate({
@@ -205,6 +229,23 @@ async function generarEstructuraParaCarreraYPeriodo({
             },
             transaction,
           }).catch(() => {});
+        }
+        if (Carpeta && subDestino && subExtra.carpetas && subExtra.carpetas.size > 0) {
+          for (const [, carpExtra] of subExtra.carpetas.entries()) {
+            await Carpeta.findOrCreate({
+              where: {
+                nombre: carpExtra.nombre,
+                subcriterio_id: subDestino.id,
+              },
+              defaults: {
+                nombre: carpExtra.nombre,
+                descripcion: carpExtra.descripcion || null,
+                subcriterio_id: subDestino.id,
+                creado_por_id: carpExtra.creado_por_id || null,
+              },
+              transaction,
+            }).catch(() => {});
+          }
         }
       }
     }

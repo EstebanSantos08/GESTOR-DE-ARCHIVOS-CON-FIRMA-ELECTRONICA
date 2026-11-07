@@ -213,8 +213,11 @@ export function AppProvider({ children }) {
     }
   }
 
-  async function cargarDocumentosSubcriterio(subcriterioId) {
-    const res = await fetch(`${API_URL}/documentos?subcriterio_id=${subcriterioId}`, {
+  async function cargarDocumentosSubcriterio(subcriterioId, carpetaId = null) {
+    const query = carpetaId
+      ? `carpeta_id=${carpetaId}`
+      : `subcriterio_id=${subcriterioId}`;
+    const res = await fetch(`${API_URL}/documentos?${query}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!res.ok) return [];
@@ -354,17 +357,33 @@ export function AppProvider({ children }) {
     localStorage.removeItem('gestdoc_usuario');
   }
 
-  function _inyectarDocumentosEnSubcriterio(subcriterioId, docs) {
+  function _inyectarDocumentosEnSubcriterio(subcriterioId, docs, carpetaId = null) {
     const actualizarListaSub = (lista = []) =>
-      lista.map(s =>
-        s.id === subcriterioId
-          ? {
-              ...s,
-              documentos: docs,
-              cantidadDocumentos: Array.isArray(docs) ? docs.length : (s.cantidadDocumentos || 0),
-            }
-          : s
-      );
+      lista.map(s => {
+        if (s.id !== subcriterioId) return s;
+        if (carpetaId) {
+          const nuevasCarpetas = (s.carpetas || []).map(cp =>
+            cp.id === Number(carpetaId)
+              ? {
+                  ...cp,
+                  documentos: docs,
+                  cantidadDocumentos: Array.isArray(docs) ? docs.length : (cp.cantidadDocumentos || 0),
+                }
+              : cp
+          );
+          const totalDocsSub = nuevasCarpetas.reduce((acc, cp) => acc + (cp.cantidadDocumentos || 0), 0);
+          return {
+            ...s,
+            carpetas: nuevasCarpetas,
+            cantidadDocumentos: Math.max(s.cantidadDocumentos || 0, totalDocsSub),
+          };
+        }
+        return {
+          ...s,
+          documentos: docs,
+          cantidadDocumentos: Array.isArray(docs) ? docs.length : (s.cantidadDocumentos || 0),
+        };
+      });
 
     const actualizarCriterios = (criterios = []) =>
       criterios.map(c => {
@@ -402,10 +421,11 @@ export function AppProvider({ children }) {
 
   const _inyectarDocumentosEnActividad = _inyectarDocumentosEnSubcriterio;
 
-  async function subirDocumento(file, subcriterioId, facultadId) {
+  async function subirDocumento(file, subcriterioId, facultadId, carpetaId = null) {
     const formData = new FormData();
     formData.append('archivo', file);
     if (subcriterioId) formData.append('subcriterio_id', subcriterioId);
+    if (carpetaId) formData.append('carpeta_id', carpetaId);
     if (facultadId) formData.append('facultad_id', facultadId);
 
     const res = await fetch(`${API_URL}/documentos/subir`, {
@@ -419,9 +439,10 @@ export function AppProvider({ children }) {
     }
 
     if (subcriterioId) {
-      const docs = await cargarDocumentosSubcriterio(subcriterioId);
-      _inyectarDocumentosEnSubcriterio(subcriterioId, docs);
+      const docs = await cargarDocumentosSubcriterio(subcriterioId, carpetaId);
+      _inyectarDocumentosEnSubcriterio(subcriterioId, docs, carpetaId);
     }
+    await cargarEstructura();
     cargarMetricasApi();
     cargarDocumentosGlobales();
   }
@@ -480,7 +501,7 @@ export function AppProvider({ children }) {
     cargarDocumentosGlobales();
   }
 
-  async function eliminarDocumento(docId, subcriterioId) {
+  async function eliminarDocumento(docId, subcriterioId, carpetaId = null) {
     const res = await fetch(`${API_URL}/documentos/${docId}`, {
       method: 'DELETE',
       headers: authHeaders(),
@@ -489,14 +510,12 @@ export function AppProvider({ children }) {
     if (!res.ok) throw new Error(data.error || 'Error al eliminar documento');
 
     if (subcriterioId) {
-      const subActual = universidades
-        .flatMap(u => (u.facultades || []).flatMap(f => (f.periodos || []).flatMap(p => (p.carreras || []).flatMap(ca => (ca.criterios || []).flatMap(c => c.subcriterios || c.indicadores || [])))))
-        .find(s => s.id === subcriterioId);
-      const docsRestantes = (subActual?.documentos || []).filter(d => d.id !== docId);
-      _inyectarDocumentosEnSubcriterio(subcriterioId, docsRestantes);
+      const docs = await cargarDocumentosSubcriterio(subcriterioId, carpetaId);
+      _inyectarDocumentosEnSubcriterio(subcriterioId, docs, carpetaId);
     }
 
     if (documentoSeleccionado?.id === docId) setDocumentoSeleccionado(null);
+    await cargarEstructura();
     cargarMetricasApi();
     cargarDocumentosGlobales();
     return data;
@@ -522,6 +541,10 @@ export function AppProvider({ children }) {
       lista.map(s => ({
         ...s,
         documentos: (s.documentos || []).map(d => (d.id === docId ? { ...d, ...cambios } : d)),
+        carpetas: (s.carpetas || []).map(cp => ({
+          ...cp,
+          documentos: (cp.documentos || []).map(d => (d.id === docId ? { ...d, ...cambios } : d)),
+        })),
       }));
 
     const actualizarCriterios = (criterios = []) =>
@@ -1011,6 +1034,42 @@ export function AppProvider({ children }) {
     return data;
   }
 
+  // CRUD Carpetas (dentro de Subcriterios — solo Administrador)
+  async function agregarCarpeta(subcriterioId, datos) {
+    const res = await fetch(`${API_URL}/parametrizacion/carpetas`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ ...datos, subcriterio_id: subcriterioId }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || data.errores?.[0]?.msg || 'Error al crear carpeta');
+    await cargarEstructura();
+    return data;
+  }
+
+  async function actualizarCarpeta(id, datos) {
+    const res = await fetch(`${API_URL}/parametrizacion/carpetas/${id}`, {
+      method: 'PUT',
+      headers: authHeaders(),
+      body: JSON.stringify(datos),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Error al actualizar carpeta');
+    await cargarEstructura();
+    return data;
+  }
+
+  async function eliminarCarpeta(id) {
+    const res = await fetch(`${API_URL}/parametrizacion/carpetas/${id}`, {
+      method: 'DELETE',
+      headers: authHeaders(),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Error al eliminar carpeta');
+    await cargarEstructura();
+    return data;
+  }
+
   const todosLosDocs = (universidades ?? []).flatMap(u =>
     (u?.facultades ?? []).flatMap(f =>
       (f?.carreras ?? []).flatMap(ca =>
@@ -1062,6 +1121,7 @@ export function AppProvider({ children }) {
       actualizarSubcriterio: actualizarIndicador,
       eliminarSubcriterio: eliminarIndicador,
       asignarResponsablesSubcriterio: asignarResponsablesIndicador,
+      agregarCarpeta, actualizarCarpeta, eliminarCarpeta,
       flujosFirma, crearFlujo, actualizarFlujo, eliminarFlujo,
       metricas, todosLosDocs,
     }}>

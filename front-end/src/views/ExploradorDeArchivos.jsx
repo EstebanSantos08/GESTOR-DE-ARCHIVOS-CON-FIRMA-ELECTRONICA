@@ -22,6 +22,8 @@ import {
   CheckCircle2,
   Clock,
   FolderOpen,
+  FolderPlus,
+  Plus,
   Layers,
   LayoutGrid,
   Table as TableIcon,
@@ -193,6 +195,7 @@ export default function ExploradorDeArchivos() {
     actualizarPeriodo, eliminarPeriodo,
     actualizarCriterio, eliminarCriterio,
     actualizarIndicador, eliminarIndicador,
+    agregarCarpeta, actualizarCarpeta, eliminarCarpeta,
     navParams,
   } = useApp();
 
@@ -206,6 +209,11 @@ export default function ExploradorDeArchivos() {
   const [selCarrId, setSelCarrId] = useState(null);
   const [selCritId, setSelCritId] = useState(null);
   const [selIndId, setSelIndId] = useState(null);
+  const [selCarpetaId, setSelCarpetaId] = useState(null);
+
+  // Modal de creación de carpeta (solo Administrador)
+  const [modalNuevaCarpeta, setModalNuevaCarpeta] = useState(null); // { subId, nombre: '', descripcion: '' }
+  const [creandoCarpeta, setCreandoCarpeta] = useState(false);
 
   // Vista rápida en Carrera: tabla unificada vs carpetas
   const [modoVistaCarrera, setModoVistaCarrera] = useState('tabla'); // 'tabla' | 'carpetas'
@@ -230,6 +238,7 @@ export default function ExploradorDeArchivos() {
   const fileInputRef = useRef();
   const quickFileInputRef = useRef();
   const [targetSubIdParaUpload, setTargetSubIdParaUpload] = useState(null);
+  const [targetCarpetaIdParaUpload, setTargetCarpetaIdParaUpload] = useState(null);
   const autoInitRef = useRef(false);
 
   // 1. Soporte de salto directo desde Parametrización o navParams
@@ -339,6 +348,7 @@ export default function ExploradorDeArchivos() {
 
   const userRoles = usuario?.roles || [];
   const esAdmin = userRoles.includes('ADMINISTRADOR') || userRoles.includes('RECTOR') || userRoles.includes('DECANO');
+  const soloAdmin = userRoles.includes('ADMINISTRADOR');
 
   const uniActual  = (universidades ?? []).find(u => u.id === Number(selUniId));
   const facActual  = uniActual?.facultades?.find(f => f.id === Number(selFacId));
@@ -355,6 +365,8 @@ export default function ExploradorDeArchivos() {
     critActual?.indicadores ||
     criteriosActivos.flatMap(cr => cr.subcriterios || cr.indicadores || [])
   )?.find(i => i.id === Number(selIndId));
+  const carpetasSubActual = subActual?.carpetas || [];
+  const carpetaActual = carpetasSubActual.find(cp => cp.id === Number(selCarpetaId));
 
   // Handlers de cambio rápido en la barra superior (Universidad → Facultad → Carrera → Período)
   function handleSelectRapidoUni(id) {
@@ -450,77 +462,104 @@ export default function ExploradorDeArchivos() {
 
   function breadcrumbItems() {
     const items = [{ label: 'Inicio', onClick: () => setNivel('universidades') }];
-    if (['facultades','carreras','periodos','criterios','subcriterios','indicadores','documentos'].includes(nivel) && uniActual)
+    if (['facultades','carreras','periodos','criterios','subcriterios','indicadores','carpetas','documentos'].includes(nivel) && uniActual)
       items.push({ label: uniActual?.siglas || uniActual?.nombre, onClick: () => setNivel('facultades') });
-    if (['carreras','periodos','criterios','subcriterios','indicadores','documentos'].includes(nivel) && facActual)
+    if (['carreras','periodos','criterios','subcriterios','indicadores','carpetas','documentos'].includes(nivel) && facActual)
       items.push({ label: facActual?.nombre, onClick: () => setNivel('carreras') });
-    if (['periodos','criterios','subcriterios','indicadores','documentos'].includes(nivel) && carrActual)
+    if (['periodos','criterios','subcriterios','indicadores','carpetas','documentos'].includes(nivel) && carrActual)
       items.push({ label: carrActual?.nombre, onClick: () => setNivel('periodos') });
-    if (['criterios','subcriterios','indicadores','documentos'].includes(nivel) && periActual)
+    if (['criterios','subcriterios','indicadores','carpetas','documentos'].includes(nivel) && periActual)
       items.push({ label: periActual?.nombre, onClick: () => { setFiltroCriterioId('TODOS'); setNivel('criterios'); } });
     if (['subcriterios','indicadores'].includes(nivel) && critActual)
       items.push({ label: critActual?.nombre, onClick: () => setNivel('subcriterios') });
-    if (nivel === 'documentos' && subActual)
-      items.push({ label: `[${subActual.numero}] ${subActual.nombre}`, onClick: null });
+    if (['carpetas','documentos'].includes(nivel) && subActual)
+      items.push({
+        label: `[${subActual.numero}] ${subActual.nombre}`,
+        onClick: nivel === 'documentos' ? () => { setSelCarpetaId(null); setNivel('carpetas'); } : null,
+      });
+    if (nivel === 'documentos' && carpetaActual)
+      items.push({ label: carpetaActual.nombre, onClick: null });
     return items;
   }
 
-  async function entrarSubcriterio(subId, critIdOpcional = null) {
+  function entrarSubcriterio(subId, critIdOpcional = null) {
     if (critIdOpcional) setSelCritId(critIdOpcional);
     setSelIndId(subId);
+    setSelCarpetaId(null);
+    setNivel('carpetas');
+  }
+
+  async function entrarCarpeta(carpetaId, subIdOpcional = selIndId, critIdOpcional = null) {
+    if (critIdOpcional) setSelCritId(critIdOpcional);
+    if (subIdOpcional) setSelIndId(subIdOpcional);
+    setSelCarpetaId(carpetaId);
     setNivel('documentos');
     setCargandoDocs(true);
     try {
-      const docs = await cargarDocsFn(subId);
-      inyectarDocsFn(subId, docs);
+      const docs = await cargarDocsFn(subIdOpcional, carpetaId);
+      inyectarDocsFn(subIdOpcional, docs, carpetaId);
     } finally {
       setCargandoDocs(false);
     }
   }
 
-  async function toggleExpandirSubcriterio(subId, critIdOpcional = null) {
+  function toggleExpandirSubcriterio(subId, critIdOpcional = null) {
     if (subExpandidoId === subId) {
       setSubExpandidoId(null);
       return;
     }
     if (critIdOpcional) setSelCritId(critIdOpcional);
     setSubExpandidoId(subId);
-    setCargandoDocs(true);
+  }
+
+  async function handleGuardarNuevaCarpeta(e) {
+    if (e) e.preventDefault();
+    if (!modalNuevaCarpeta || !modalNuevaCarpeta.nombre.trim()) return;
+    setCreandoCarpeta(true);
     try {
-      const docs = await cargarDocsFn(subId);
-      inyectarDocsFn(subId, docs);
+      await agregarCarpeta(modalNuevaCarpeta.subId, {
+        nombre: modalNuevaCarpeta.nombre.trim(),
+        descripcion: modalNuevaCarpeta.descripcion?.trim() || null,
+      });
+      setModalNuevaCarpeta(null);
+      setExitoRapido(`Carpeta "${modalNuevaCarpeta.nombre.trim()}" creada exitosamente.`);
+      setTimeout(() => setExitoRapido(''), 3500);
+    } catch (err) {
+      setErrorSubida(err.message || 'Error al crear la carpeta');
     } finally {
-      setCargandoDocs(false);
+      setCreandoCarpeta(false);
     }
   }
 
-  async function recargarDocs(subIdTarget = selIndId) {
+  async function recargarDocs(subIdTarget = selIndId, carpetaIdTarget = selCarpetaId) {
     if (!subIdTarget) return;
     setCargandoDocs(true);
     try {
-      const docs = await cargarDocsFn(subIdTarget);
-      inyectarDocsFn(subIdTarget, docs);
+      const docs = await cargarDocsFn(subIdTarget, carpetaIdTarget);
+      inyectarDocsFn(subIdTarget, docs, carpetaIdTarget);
     } finally {
       setCargandoDocs(false);
     }
   }
 
-  async function manejarArchivo(file, subIdDestino = selIndId) {
+  async function manejarArchivo(file, subIdDestino = selIndId, carpetaIdDestino = selCarpetaId) {
     if (!file || !file.name.toLowerCase().endsWith('.pdf')) {
       setErrorSubida('Solo se aceptan archivos PDF');
       return;
     }
-    if (!subIdDestino) return;
+    if (!subIdDestino || !carpetaIdDestino) {
+      setErrorSubida('Primero debes entrar o seleccionar una carpeta dentro del subcriterio para subir el documento.');
+      return;
+    }
 
     setErrorSubida('');
     setSubiendo(true);
-    setSubSubiendoId(subIdDestino);
+    setSubSubiendoId(carpetaIdDestino);
     try {
-      await subirDocumento(file, subIdDestino, facActual?.id);
-      const docs = await cargarDocsFn(subIdDestino);
-      inyectarDocsFn(subIdDestino, docs);
-      setSubExpandidoId(subIdDestino);
-      setExitoRapido(`PDF "${file.name}" subido correctamente.`);
+      await subirDocumento(file, subIdDestino, facActual?.id, carpetaIdDestino);
+      const docs = await cargarDocsFn(subIdDestino, carpetaIdDestino);
+      inyectarDocsFn(subIdDestino, docs, carpetaIdDestino);
+      setExitoRapido(`PDF "${file.name}" subido correctamente a la carpeta.`);
       setTimeout(() => setExitoRapido(''), 3500);
     } catch (err) {
       setErrorSubida(err.message || 'Error al subir el archivo');
@@ -533,10 +572,10 @@ export default function ExploradorDeArchivos() {
   function onDrop(e) {
     e.preventDefault();
     setArrastrandoDrop(false);
-    manejarArchivo(e.dataTransfer.files[0], selIndId);
+    manejarArchivo(e.dataTransfer.files[0], selIndId, selCarpetaId);
   }
 
-  function handleEliminarDoc(doc, subIdContext = selIndId) {
+  function handleEliminarDoc(doc, subIdContext = selIndId, carpetaIdContext = selCarpetaId) {
     setModalConfirm({
       abierto: true,
       titulo: 'Eliminar documento',
@@ -544,7 +583,7 @@ export default function ExploradorDeArchivos() {
       onConfirm: async () => {
         setEliminandoDocId(doc.id);
         try {
-          await eliminarDocumento(doc.id, subIdContext);
+          await eliminarDocumento(doc.id, subIdContext, carpetaIdContext);
         } catch (err) {
           alert(err.message);
         } finally {
@@ -588,6 +627,8 @@ export default function ExploradorDeArchivos() {
         await actualizarCriterio(id, meta.univId, meta.facId, meta.carrId, meta.perId, { nombre: nombreEdit, requiere_firma: meta.requiere_firma });
       } else if (tipo === 'indicador' || tipo === 'subcriterio') {
         await actualizarIndicador(id, meta.univId, meta.facId, meta.carrId, meta.perId, meta.critId, { nombre: nombreEdit });
+      } else if (tipo === 'carpeta') {
+        await actualizarCarpeta(id, { nombre: nombreEdit });
       }
       setModalEdit(null);
     } catch (err) {
@@ -622,6 +663,12 @@ export default function ExploradorDeArchivos() {
           } else if (tipo === 'indicador' || tipo === 'subcriterio') {
             await eliminarIndicador(id, meta.univId, meta.facId, meta.carrId, meta.perId, meta.critId);
             if (selIndId === id) setNivel('criterios');
+          } else if (tipo === 'carpeta') {
+            await eliminarCarpeta(id);
+            if (selCarpetaId === id) {
+              setSelCarpetaId(null);
+              setNivel('carpetas');
+            }
           }
         } catch (err) {
           alert(err.message);
@@ -630,7 +677,7 @@ export default function ExploradorDeArchivos() {
     });
   }
 
-  const docsActual = subActual?.documentos || [];
+  const docsActual = carpetaActual?.documentos || subActual?.documentos || [];
 
   const getFiltrados = (lista) => {
     if (!lista) return [];
@@ -701,7 +748,7 @@ export default function ExploradorDeArchivos() {
     <div className="flex flex-col h-full">
       <Breadcrumbs items={breadcrumbItems()} />
 
-      {/* Input oculto para subida rápida en 1 clic desde cualquier fila de la tabla */}
+      {/* Input oculto para subida rápida en 1 clic a una carpeta específica */}
       <input
         ref={quickFileInputRef}
         type="file"
@@ -709,12 +756,91 @@ export default function ExploradorDeArchivos() {
         className="hidden"
         onChange={e => {
           const file = e.target.files?.[0];
-          if (file && targetSubIdParaUpload) {
-            manejarArchivo(file, targetSubIdParaUpload);
+          if (file && targetSubIdParaUpload && targetCarpetaIdParaUpload) {
+            manejarArchivo(file, targetSubIdParaUpload, targetCarpetaIdParaUpload);
           }
           e.target.value = '';
         }}
       />
+
+      {/* Modal crear nueva carpeta dentro de un Subcriterio (solo Administrador) */}
+      {modalNuevaCarpeta && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
+          <form
+            onSubmit={handleGuardarNuevaCarpeta}
+            className="bg-white rounded-2xl shadow-xl border border-gray-100 p-6 w-full max-w-md space-y-4"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2.5">
+                <div className="w-9 h-9 rounded-xl bg-navy-50 flex items-center justify-center text-navy-700">
+                  <FolderPlus size={18} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-navy-900">Nueva Carpeta</h3>
+                  <p className="text-xs text-gray-400">
+                    Se creará dentro del subcriterio seleccionado
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalNuevaCarpeta(null)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">
+                  Nombre de la carpeta <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={modalNuevaCarpeta.nombre}
+                  onChange={e => setModalNuevaCarpeta(p => ({ ...p, nombre: e.target.value }))}
+                  placeholder="Ej: Sílabos 2026, Actas de Reunión, Informes..."
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-navy-500"
+                  autoFocus
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">
+                  Descripción (opcional)
+                </label>
+                <input
+                  type="text"
+                  value={modalNuevaCarpeta.descripcion || ''}
+                  onChange={e => setModalNuevaCarpeta(p => ({ ...p, descripcion: e.target.value }))}
+                  placeholder="Descripción breve de los documentos que irán en esta carpeta"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-navy-500"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center space-x-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setModalNuevaCarpeta(null)}
+                className="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={creandoCarpeta || !modalNuevaCarpeta.nombre.trim()}
+                className="flex-1 flex items-center justify-center space-x-1.5 px-4 py-2.5 bg-navy-900 text-white text-sm font-medium rounded-lg hover:bg-navy-800 transition-colors disabled:opacity-50"
+              >
+                {creandoCarpeta ? <RefreshCw size={14} className="animate-spin" /> : <FolderPlus size={14} />}
+                <span>{creandoCarpeta ? 'Creando...' : 'Crear Carpeta'}</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {/* ── Barra Superior de Salto Rápido (Contexto en 1 Clic) ── */}
       <div className="bg-white border-b border-gray-200 px-6 py-3">
@@ -1113,7 +1239,7 @@ export default function ExploradorDeArchivos() {
               </div>
             </div>
 
-            {/* MODO 1: TABLA RÁPIDA DE SUBCRITERIOS CON SUBIDA EN 1 CLIC */}
+            {/* MODO 1: TABLA RÁPIDA DE SUBCRITERIOS Y SUS CARPETAS */}
             {modoVistaCarrera === 'tabla' ? (
               <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-xs">
                 {subcriteriosCarreraFiltrados.length === 0 ? (
@@ -1129,16 +1255,14 @@ export default function ExploradorDeArchivos() {
                           <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Subcriterio</th>
                           <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Criterio</th>
                           <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Responsable</th>
-                          <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Evidencias PDF</th>
-                          <th className="text-right px-5 py-3 text-xs font-semibold text-gray-500 uppercase">Acción Rápida (1 Clic)</th>
+                          <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Carpetas / PDFs</th>
+                          <th className="text-right px-5 py-3 text-xs font-semibold text-gray-500 uppercase">Acciones</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100">
                         {subcriteriosCarreraFiltrados.map(sub => {
                           const expandido = subExpandidoId === sub.id;
-                          const estaSubiendo = subSubiendoId === sub.id;
-                          const estaArrastrando = subArrastrandoId === sub.id;
-                          const docsSub = sub.documentos || [];
+                          const carpetasDeSub = sub.carpetas || [];
                           const respTexto = sub.responsables?.length > 0
                             ? sub.responsables.map(r => r.nombre).join(', ')
                             : sub.responsable_nombre;
@@ -1146,19 +1270,8 @@ export default function ExploradorDeArchivos() {
                           return (
                             <React.Fragment key={sub.id}>
                               <tr
-                                onDragOver={e => { e.preventDefault(); setSubArrastrandoId(sub.id); }}
-                                onDragLeave={() => setSubArrastrandoId(null)}
-                                onDrop={e => {
-                                  e.preventDefault();
-                                  setSubArrastrandoId(null);
-                                  manejarArchivo(e.dataTransfer.files?.[0], sub.id);
-                                }}
                                 className={`transition-colors ${
-                                  estaArrastrando
-                                    ? 'bg-navy-50/80 ring-2 ring-navy-400'
-                                    : expandido
-                                      ? 'bg-slate-50/90'
-                                      : 'hover:bg-gray-50/70'
+                                  expandido ? 'bg-slate-50/90' : 'hover:bg-gray-50/70'
                                 }`}
                               >
                                 <td className="px-4 py-3 text-center">
@@ -1197,137 +1310,139 @@ export default function ExploradorDeArchivos() {
                                 </td>
 
                                 <td className="px-4 py-3 text-center">
-                                  {sub.totalDocs > 0 ? (
-                                    <button
-                                      type="button"
-                                      onClick={() => toggleExpandirSubcriterio(sub.id, sub.criterioId)}
-                                      className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-colors"
-                                    >
-                                      <CheckCircle2 size={12} />
-                                      <span>{sub.totalDocs} PDF{sub.totalDocs === 1 ? '' : 's'}</span>
-                                      {expandido ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-                                    </button>
-                                  ) : (
-                                    <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">
-                                      <Clock size={12} />
-                                      <span>Pendiente</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleExpandirSubcriterio(sub.id, sub.criterioId)}
+                                    className={`inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border transition-colors ${
+                                      sub.totalDocs > 0
+                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                                        : carpetasDeSub.length > 0
+                                          ? 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
+                                          : 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'
+                                    }`}
+                                  >
+                                    <Folder size={12} />
+                                    <span>
+                                      {carpetasDeSub.length} carpeta{carpetasDeSub.length === 1 ? '' : 's'} · {sub.totalDocs} PDF{sub.totalDocs === 1 ? '' : 's'}
                                     </span>
-                                  )}
+                                    {expandido ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                                  </button>
                                 </td>
 
                                 <td className="px-5 py-3 text-right">
                                   <div className="flex items-center justify-end space-x-1.5">
-                                    {/* Botón Subir PDF en 1 clic */}
-                                    <button
-                                      type="button"
-                                      disabled={estaSubiendo}
-                                      onClick={() => {
-                                        setTargetSubIdParaUpload(sub.id);
-                                        quickFileInputRef.current?.click();
-                                      }}
-                                      className="inline-flex items-center space-x-1 px-3 py-1.5 bg-navy-900 text-white text-xs font-medium rounded-lg hover:bg-navy-800 transition-colors shadow-2xs disabled:opacity-50"
-                                      title="Subir archivo PDF directamente a este subcriterio"
-                                    >
-                                      {estaSubiendo ? (
-                                        <RefreshCw size={12} className="animate-spin" />
-                                      ) : (
-                                        <Upload size={12} />
-                                      )}
-                                      <span>{estaSubiendo ? 'Subiendo...' : 'Subir PDF'}</span>
-                                    </button>
+                                    {soloAdmin && (
+                                      <button
+                                        type="button"
+                                        onClick={() => setModalNuevaCarpeta({ subId: sub.id, nombre: '', descripcion: '' })}
+                                        className="inline-flex items-center space-x-1 px-2.5 py-1.5 bg-indigo-50 text-indigo-700 border border-indigo-200 text-xs font-medium rounded-lg hover:bg-indigo-100 transition-colors"
+                                        title="Crear carpeta en este subcriterio"
+                                      >
+                                        <FolderPlus size={12} />
+                                        <span>+ Carpeta</span>
+                                      </button>
+                                    )}
 
-                                    {/* Botón Ver / Abrir Subcriterio */}
                                     <button
                                       type="button"
                                       onClick={() => entrarSubcriterio(sub.id, sub.criterioId)}
-                                      className="inline-flex items-center space-x-1 px-2.5 py-1.5 bg-gray-100 text-gray-700 text-xs font-medium rounded-lg hover:bg-gray-200 transition-colors"
-                                      title="Abrir vista completa del subcriterio"
+                                      className="inline-flex items-center space-x-1 px-3 py-1.5 bg-navy-900 text-white text-xs font-medium rounded-lg hover:bg-navy-800 transition-colors shadow-2xs"
+                                      title="Ver carpetas del subcriterio"
                                     >
                                       <FolderOpen size={12} />
-                                      <span>Abrir</span>
+                                      <span>Ver Carpetas</span>
                                     </button>
                                   </div>
                                 </td>
                               </tr>
 
-                              {/* Fila Expandida con los Documentos PDF del Subcriterio */}
+                              {/* Fila Expandida con las Carpetas del Subcriterio */}
                               {expandido && (
                                 <tr className="bg-slate-50/70">
                                   <td colSpan={6} className="px-6 py-3 border-t border-gray-100">
-                                    <div className="bg-white rounded-lg border border-gray-200 p-3 space-y-2">
+                                    <div className="bg-white rounded-lg border border-gray-200 p-3.5 space-y-3">
                                       <div className="flex items-center justify-between">
-                                        <span className="text-xs font-semibold text-navy-900">
-                                          Documentos cargados en [{sub.numero}] {sub.nombre}
+                                        <span className="text-xs font-semibold text-navy-900 flex items-center space-x-1.5">
+                                          <Folder size={14} className="text-navy-700" />
+                                          <span>Carpetas dentro de [{sub.numero}] {sub.nombre}</span>
                                         </span>
-                                        <button
-                                          type="button"
-                                          onClick={() => setSubExpandidoId(null)}
-                                          className="text-xs text-gray-400 hover:text-gray-600"
-                                        >
-                                          Cerrar vista rápida
-                                        </button>
+                                        <div className="flex items-center space-x-2">
+                                          {soloAdmin && (
+                                            <button
+                                              type="button"
+                                              onClick={() => setModalNuevaCarpeta({ subId: sub.id, nombre: '', descripcion: '' })}
+                                              className="inline-flex items-center space-x-1 px-2.5 py-1 bg-navy-900 text-white text-xs font-medium rounded-md hover:bg-navy-800"
+                                            >
+                                              <Plus size={12} />
+                                              <span>Nueva Carpeta</span>
+                                            </button>
+                                          )}
+                                          <button
+                                            type="button"
+                                            onClick={() => setSubExpandidoId(null)}
+                                            className="text-xs text-gray-400 hover:text-gray-600"
+                                          >
+                                            Cerrar
+                                          </button>
+                                        </div>
                                       </div>
 
-                                      {cargandoDocs ? (
-                                        <div className="py-4 flex justify-center">
-                                          <RefreshCw size={18} className="text-navy-500 animate-spin" />
+                                      {carpetasDeSub.length === 0 ? (
+                                        <div className="py-3 text-center">
+                                          <p className="text-xs text-gray-500">
+                                            {soloAdmin
+                                              ? 'Aún no hay carpetas en este subcriterio. Crea una carpeta para poder subir documentos PDF.'
+                                              : 'El Administrador aún no ha creado carpetas en este subcriterio.'}
+                                          </p>
                                         </div>
-                                      ) : docsSub.length === 0 ? (
-                                        <p className="text-xs text-gray-400 py-2">
-                                          No hay documentos en este subcriterio todavía.
-                                        </p>
                                       ) : (
-                                        <div className="divide-y divide-gray-100">
-                                          {docsSub.map(doc => (
-                                            <div key={doc.id} className="py-2 flex items-center justify-between gap-3">
-                                              <div className="flex items-center space-x-2.5 min-w-0">
-                                                <FileText size={14} className="text-red-400 flex-shrink-0" />
-                                                <span className="text-xs font-medium text-gray-800 truncate">{doc.nombre}</span>
-                                                <Badge tipo={doc.estado} />
-                                                <span className="text-[11px] text-gray-400 hidden sm:inline">
-                                                  · {doc.subido_por} ({doc.fecha})
-                                                </span>
-                                              </div>
-                                              <div className="flex items-center space-x-1.5 flex-shrink-0">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                                          {carpetasDeSub.map(carp => {
+                                            const subiendoEnEsta = subSubiendoId === carp.id;
+                                            return (
+                                              <div
+                                                key={carp.id}
+                                                className="flex items-center justify-between p-2.5 rounded-lg border border-gray-200 hover:border-navy-300 bg-gray-50/60 hover:bg-white transition-all"
+                                              >
                                                 <button
                                                   type="button"
-                                                  onClick={() => setDocumentoSeleccionado(doc)}
-                                                  className="flex items-center space-x-1 px-2 py-1 text-xs font-medium text-navy-700 bg-navy-50 rounded-md hover:bg-navy-100"
+                                                  onClick={() => entrarCarpeta(carp.id, sub.id, sub.criterioId)}
+                                                  className="flex items-center space-x-2.5 min-w-0 flex-1 text-left"
                                                 >
-                                                  <Eye size={12} />
-                                                  <span>Ver</span>
+                                                  <Folder size={18} className="text-navy-700 flex-shrink-0" />
+                                                  <div className="min-w-0">
+                                                    <p className="text-xs font-semibold text-navy-900 truncate">{carp.nombre}</p>
+                                                    <p className="text-[11px] text-gray-500">
+                                                      {carp.cantidadDocumentos || 0} PDF{(carp.cantidadDocumentos || 0) === 1 ? '' : 's'}
+                                                    </p>
+                                                  </div>
                                                 </button>
-                                                <button
-                                                  type="button"
-                                                  onClick={() => handleDescargar(doc)}
-                                                  className="p-1 text-gray-400 hover:text-navy-700 hover:bg-navy-50 rounded-md"
-                                                  title="Descargar PDF"
-                                                >
-                                                  <Download size={12} />
-                                                </button>
-                                                {puedeFirmar(doc) && (
+                                                <div className="flex items-center space-x-1 flex-shrink-0 ml-2">
                                                   <button
                                                     type="button"
-                                                    onClick={() => setDocumentoSeleccionado(doc)}
-                                                    className="flex items-center space-x-1 px-2 py-1 text-xs font-medium text-white bg-navy-800 rounded-md hover:bg-navy-700"
+                                                    disabled={subiendoEnEsta}
+                                                    onClick={() => {
+                                                      setTargetSubIdParaUpload(sub.id);
+                                                      setTargetCarpetaIdParaUpload(carp.id);
+                                                      quickFileInputRef.current?.click();
+                                                    }}
+                                                    className="inline-flex items-center space-x-1 px-2 py-1 bg-navy-900 text-white text-[11px] font-medium rounded hover:bg-navy-800 disabled:opacity-50"
+                                                    title="Subir PDF a esta carpeta"
                                                   >
-                                                    <PenLine size={12} />
-                                                    <span>Firmar</span>
+                                                    {subiendoEnEsta ? <RefreshCw size={11} className="animate-spin" /> : <Upload size={11} />}
+                                                    <span>Subir PDF</span>
                                                   </button>
-                                                )}
-                                                {puedeEliminarDoc(doc) && (
                                                   <button
                                                     type="button"
-                                                    onClick={() => handleEliminarDoc(doc, sub.id)}
-                                                    className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-md"
-                                                    title="Eliminar PDF"
+                                                    onClick={() => entrarCarpeta(carp.id, sub.id, sub.criterioId)}
+                                                    className="px-2 py-1 bg-gray-200/70 hover:bg-gray-200 text-gray-700 text-[11px] font-medium rounded"
                                                   >
-                                                    <Trash2 size={12} />
+                                                    Abrir
                                                   </button>
-                                                )}
+                                                </div>
                                               </div>
-                                            </div>
-                                          ))}
+                                            );
+                                          })}
                                         </div>
                                       )}
                                     </div>
@@ -1349,13 +1464,14 @@ export default function ExploradorDeArchivos() {
                   const respTexto = i.responsables?.length > 0
                     ? i.responsables.map(r => r.nombre).join(', ')
                     : i.responsable_nombre;
+                  const numCarpetas = (i.carpetas || []).length;
                   return (
                     <CarpetaCard
                       key={i.id}
                       nombre={`[${i.numero}] ${i.nombre}`}
                       descripcion={`${i.criterioNombre}${respTexto ? ` · Resp: ${respTexto}` : ''}`}
-                      badgeText={`${i.totalDocs} documento${i.totalDocs === 1 ? '' : 's'}`}
-                      badgeColor={i.totalDocs > 0 ? 'green' : 'amber'}
+                      badgeText={`${numCarpetas} carpeta${numCarpetas === 1 ? '' : 's'} · ${i.totalDocs} PDF${i.totalDocs === 1 ? '' : 's'}`}
+                      badgeColor={i.totalDocs > 0 ? 'green' : numCarpetas > 0 ? 'blue' : 'amber'}
                       onClick={() => entrarSubcriterio(i.id, i.criterioId)}
                       onEdit={esAdmin ? () => abrirEditar('subcriterio', i.id, i.nombre, { univId: selUniId, facId: selFacId, carrId: selCarrId, perId: selPerId, critId: i.criterioId }) : null}
                       onDelete={esAdmin ? () => handleEliminar('subcriterio', i.id, i.nombre, { univId: selUniId, facId: selFacId, carrId: selCarrId, perId: selPerId, critId: i.criterioId }) : null}
@@ -1367,27 +1483,127 @@ export default function ExploradorDeArchivos() {
           </div>
         )}
 
-        {/* Nivel Detalle de un Subcriterio: Subida drag & drop + Tabla de documentos */}
-        {nivel === 'documentos' && subActual && (
+        {/* Nivel Carpetas dentro de un Subcriterio */}
+        {nivel === 'carpetas' && subActual && (
           <div className="space-y-5">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <button
                 type="button"
                 onClick={() => setNivel('criterios')}
                 className="inline-flex items-center space-x-1.5 text-xs font-semibold text-navy-700 hover:text-navy-900 bg-white border border-gray-200 px-3 py-1.5 rounded-lg shadow-2xs"
               >
-                <span>← Volver a los 31 Subcriterios de {carrActual?.nombre}</span>
+                <span>← Volver a los Subcriterios de {carrActual?.nombre}</span>
+              </button>
+
+              {soloAdmin && (
+                <button
+                  type="button"
+                  onClick={() => setModalNuevaCarpeta({ subId: subActual.id, nombre: '', descripcion: '' })}
+                  className="inline-flex items-center space-x-2 px-4 py-2 bg-navy-900 text-white text-xs font-semibold rounded-xl hover:bg-navy-800 transition-colors shadow-sm"
+                >
+                  <FolderPlus size={15} />
+                  <span>+ Crear Carpeta</span>
+                </button>
+              )}
+            </div>
+
+            <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <span className="text-xs font-bold text-indigo-700 bg-indigo-50 px-2.5 py-0.5 rounded-full border border-indigo-200">
+                  Subcriterio [{subActual.numero}]
+                </span>
+                <h2 className="text-base font-bold text-navy-900 mt-1">{subActual.nombre}</h2>
+                {(subActual.informacion_ayuda || subActual.descripcion) && (
+                  <p className="text-xs text-gray-500 mt-0.5">{subActual.informacion_ayuda || subActual.descripcion}</p>
+                )}
+              </div>
+              <div className="text-right">
+                <span className="text-xs font-semibold text-gray-600">
+                  {carpetasSubActual.length} carpeta{carpetasSubActual.length === 1 ? '' : 's'} disponible{carpetasSubActual.length === 1 ? '' : 's'}
+                </span>
+              </div>
+            </div>
+
+            {carpetasSubActual.length === 0 ? (
+              <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-12 text-center space-y-3">
+                <div className="w-14 h-14 bg-navy-50 rounded-2xl flex items-center justify-center mx-auto text-navy-700">
+                  <Folder size={28} />
+                </div>
+                <h3 className="text-sm font-semibold text-navy-900">
+                  No hay carpetas creadas en este subcriterio
+                </h3>
+                <p className="text-xs text-gray-500 max-w-md mx-auto">
+                  {soloAdmin
+                    ? 'Crea primero una carpeta dentro de este subcriterio para que los usuarios puedan subir los documentos PDF.'
+                    : 'El Administrador aún no ha creado carpetas en este subcriterio. Solicita la creación de la carpeta correspondiente para subir tu documento PDF.'}
+                </p>
+                {soloAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => setModalNuevaCarpeta({ subId: subActual.id, nombre: '', descripcion: '' })}
+                    className="inline-flex items-center space-x-2 px-4 py-2.5 bg-navy-900 text-white text-xs font-semibold rounded-xl hover:bg-navy-800 transition-colors"
+                  >
+                    <FolderPlus size={15} />
+                    <span>Crear primera carpeta</span>
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div>
+                <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold mb-3">
+                  Selecciona una carpeta para subir o revisar documentos PDF
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {getFiltrados(carpetasSubActual).map(carp => {
+                    const cant = carp.cantidadDocumentos ?? (carp.documentos?.length || 0);
+                    return (
+                      <CarpetaCard
+                        key={carp.id}
+                        nombre={carp.nombre}
+                        descripcion={carp.descripcion || `Carpeta de [${subActual.numero}] ${subActual.nombre}`}
+                        badgeText={`${cant} documento${cant === 1 ? '' : 's'} PDF`}
+                        badgeColor={cant > 0 ? 'green' : 'blue'}
+                        onClick={() => entrarCarpeta(carp.id, subActual.id, critActual?.id)}
+                        onEdit={soloAdmin ? () => abrirEditar('carpeta', carp.id, carp.nombre) : null}
+                        onDelete={soloAdmin ? () => handleEliminar('carpeta', carp.id, carp.nombre) : null}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Nivel Detalle de una Carpeta dentro del Subcriterio: Subida drag & drop + Tabla de documentos */}
+        {nivel === 'documentos' && subActual && carpetaActual && (
+          <div className="space-y-5">
+            <div className="flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelCarpetaId(null);
+                  setNivel('carpetas');
+                }}
+                className="inline-flex items-center space-x-1.5 text-xs font-semibold text-navy-700 hover:text-navy-900 bg-white border border-gray-200 px-3 py-1.5 rounded-lg shadow-2xs"
+              >
+                <span>← Volver a las carpetas de [{subActual.numero}] {subActual.nombre}</span>
               </button>
             </div>
 
-            {(subActual.informacion_ayuda || subActual.descripcion) && (
-              <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 flex space-x-3">
-                <Info size={18} className="text-blue-500 flex-shrink-0 mt-0.5" />
-                <p className="text-sm text-blue-800">{subActual.informacion_ayuda || subActual.descripcion}</p>
+            <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 flex items-start space-x-3">
+              <Folder size={18} className="text-blue-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-semibold text-navy-900">
+                  Carpeta: {carpetaActual.nombre}
+                </p>
+                <p className="text-xs text-blue-800 mt-0.5">
+                  {carpetaActual.descripcion || `Subcriterio [${subActual.numero}] ${subActual.nombre}`}
+                </p>
               </div>
-            )}
+            </div>
 
-            {/* Subida directa en el Subcriterio */}
+            {/* Subida directa en la Carpeta */}
             <div>
               <div
                 onDragOver={e => { e.preventDefault(); setArrastrandoDrop(true); }}
@@ -1400,42 +1616,42 @@ export default function ExploradorDeArchivos() {
                 {subiendo ? (
                   <div className="flex flex-col items-center space-y-2">
                     <RefreshCw size={28} className="text-navy-500 animate-spin" />
-                    <p className="text-sm text-navy-700 font-medium">Subiendo documento al subcriterio...</p>
+                    <p className="text-sm text-navy-700 font-medium">Subiendo documento a la carpeta "{carpetaActual.nombre}"...</p>
                   </div>
                 ) : (
                   <>
                     <Upload size={28} className={`mx-auto mb-3 ${arrastrandoDrop ? 'text-navy-600' : 'text-gray-300'}`} />
                     <p className="text-sm font-medium text-gray-700">
-                      Arrastra tu PDF aquí para el subcriterio [{subActual.numero}] {subActual.nombre}
+                      Arrastra tu PDF aquí para la carpeta <span className="font-bold text-navy-900">"{carpetaActual.nombre}"</span>
                     </p>
                     <p className="text-xs text-gray-400 mt-1">o</p>
                     <button
                       onClick={() => fileInputRef.current?.click()}
                       className="mt-2 px-4 py-2 bg-navy-900 text-white text-xs font-medium rounded-lg hover:bg-navy-800 transition-colors"
                     >
-                      Seleccionar archivo
+                      Seleccionar archivo PDF
                     </button>
                     <input
                       ref={fileInputRef}
                       type="file"
                       accept=".pdf"
                       className="hidden"
-                      onChange={e => { manejarArchivo(e.target.files[0], selIndId); e.target.value = ''; }}
+                      onChange={e => { manejarArchivo(e.target.files[0], selIndId, selCarpetaId); e.target.value = ''; }}
                     />
                   </>
                 )}
               </div>
             </div>
 
-            {/* Tabla de documentos */}
+            {/* Tabla de documentos de la carpeta */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
               <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
                 <h3 className="text-sm font-semibold text-navy-900 flex items-center space-x-2">
                   <FileText size={16} className="text-navy-700" />
-                  <span>Documentos en [{subActual.numero}] {subActual.nombre} ({docsActual.length})</span>
+                  <span>Documentos en "{carpetaActual.nombre}" ({docsActual.length})</span>
                 </h3>
                 <button
-                  onClick={() => recargarDocs(selIndId)}
+                  onClick={() => recargarDocs(selIndId, selCarpetaId)}
                   disabled={cargandoDocs}
                   className="flex items-center space-x-1 text-xs text-gray-500 hover:text-navy-700 transition-colors disabled:opacity-40"
                 >
@@ -1451,7 +1667,7 @@ export default function ExploradorDeArchivos() {
               ) : docsActual.length === 0 ? (
                 <div className="py-12 text-center">
                   <FileText size={32} className="mx-auto text-gray-200 mb-2" />
-                  <p className="text-sm text-gray-400">Sin documentos en este subcriterio. Suba el primero.</p>
+                  <p className="text-sm text-gray-400">Sin documentos en esta carpeta. Suba el primero.</p>
                 </div>
               ) : (
                 <div className="overflow-x-auto">
@@ -1518,7 +1734,7 @@ export default function ExploradorDeArchivos() {
 
                               {puedeEliminarDoc(doc) && (
                                 <button
-                                  onClick={() => handleEliminarDoc(doc, selIndId)}
+                                  onClick={() => handleEliminarDoc(doc, selIndId, selCarpetaId)}
                                   disabled={eliminandoDocId === doc.id}
                                   className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-40"
                                   title="Eliminar documento"

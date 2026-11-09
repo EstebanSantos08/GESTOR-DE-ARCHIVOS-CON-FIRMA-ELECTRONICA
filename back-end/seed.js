@@ -1,8 +1,26 @@
 require('dotenv').config();
 const bcrypt = require('bcryptjs');
+const { Op } = require('sequelize');
 const {
-  sequelize, Rol, Usuario, Universidad, Facultad,
-  Carrera, Periodo, Criterio, Indicador, Actividad
+  sequelize,
+  Rol,
+  Usuario,
+  UsuarioRol,
+  UsuarioFacultad,
+  UsuarioCarrera,
+  UsuarioActividad,
+  Universidad,
+  Facultad,
+  Carrera,
+  Periodo,
+  Criterio,
+  Subcriterio,
+  Indicador,
+  Carpeta,
+  Actividad,
+  Documento,
+  FlujoFirma,
+  PasoFirma,
 } = require('./Model');
 
 async function seed() {
@@ -10,7 +28,29 @@ async function seed() {
     await sequelize.authenticate();
     console.log('Conectado a PostgreSQL\n');
 
-    // ─── Roles (7 niveles jerárquicos) ─────────────────────────────────────
+    // ─── 1. Limpiar estructura previa (dejar solo roles y usuarios de prueba) ──
+    console.log('Limpiando tablas de estructura y documentos...');
+    await Documento.destroy({ where: {}, force: true }).catch(() => {});
+    await PasoFirma.destroy({ where: {}, force: true }).catch(() => {});
+    await FlujoFirma.destroy({ where: {}, force: true }).catch(() => {});
+    await UsuarioActividad.destroy({ where: {}, force: true }).catch(() => {});
+    await Actividad.destroy({ where: {}, force: true }).catch(() => {});
+    await Carpeta.destroy({ where: {}, force: true }).catch(() => {});
+    await sequelize.query('DELETE FROM subcriterios_responsables;').catch(() => {});
+    await sequelize.query('DELETE FROM indicadores_responsables;').catch(() => {});
+    await sequelize.query('DELETE FROM actividades_usuarios;').catch(() => {});
+    await Subcriterio.destroy({ where: {}, force: true }).catch(() => {});
+    await Indicador.destroy({ where: {}, force: true }).catch(() => {});
+    await Criterio.destroy({ where: {}, force: true }).catch(() => {});
+    await Periodo.destroy({ where: {}, force: true }).catch(() => {});
+    await UsuarioCarrera.destroy({ where: {}, force: true }).catch(() => {});
+    await Carrera.destroy({ where: {}, force: true }).catch(() => {});
+    await UsuarioFacultad.destroy({ where: {}, force: true }).catch(() => {});
+    await Usuario.update({ facultad_id: null }, { where: {} }).catch(() => {});
+    await Facultad.destroy({ where: {}, force: true }).catch(() => {});
+    await Universidad.destroy({ where: {}, force: true }).catch(() => {});
+
+    // ─── 2. Roles (7 niveles jerárquicos) ─────────────────────────────────────
     await Rol.bulkCreate([
       { nombre: 'DOCENTE',           nivel: 1, descripcion: 'Docente universitario — sube documentos' },
       { nombre: 'RESPONSABLE_AREA',  nivel: 2, descripcion: 'Responsable de área — sube evidencia en indicadores asignados' },
@@ -21,220 +61,64 @@ async function seed() {
       { nombre: 'ADMINISTRADOR',     nivel: 7, descripcion: 'Administrador del sistema — gestión total, no firma' },
     ], { ignoreDuplicates: true });
 
-    console.log('Roles creados:');
     const rolesDB = await Rol.findAll({ order: [['nivel', 'ASC']] });
+    console.log('Roles verificados:');
     rolesDB.forEach(r => console.log(`  [${r.id}] ${r.nombre} (nivel ${r.nivel})`));
 
-    // ─── Universidad ─────────────────────────────────────────────────────
-    const [universidad] = await Universidad.findOrCreate({
-      where: { nombre: 'Universidad Católica de Cuenca' },
-      defaults: { descripcion: 'UCACUE — Sede Cuenca', siglas: 'UCACUE' },
-    });
-    console.log(`\nUniversidad: ${universidad.nombre} (id: ${universidad.id})`);
-
-    // ─── Facultad ────────────────────────────────────────────────────────
-    const [facultad] = await Facultad.findOrCreate({
-      where: { nombre: 'Facultad de Ingeniería' },
-      defaults: {
-        descripcion: 'Facultad de ingeniería y ciencias aplicadas',
-        universidad_id: universidad.id,
-      },
-    });
-    console.log(`Facultad: ${facultad.nombre} (id: ${facultad.id})`);
-
-    // ─── Carreras ────────────────────────────────────────────────────────
-    const carrerasData = [
-      { nombre: 'Software - Cuenca',           descripcion: 'Ingeniería de Software' },
-      { nombre: 'Sistemas Computacionales',     descripcion: 'Ingeniería en Sistemas Computacionales' },
-      { nombre: 'Realidad Virtual - Cuenca',    descripcion: 'Ingeniería en Realidad Virtual' },
-      { nombre: 'Robótica - Cuenca',            descripcion: 'Ingeniería en Robótica' },
-      { nombre: 'Sistemas Biomédicos - Cuenca', descripcion: 'Ingeniería en Sistemas Biomédicos' },
-    ];
-
-    console.log('\nCarreras:');
-    const carreras = [];
-    for (const c of carrerasData) {
-      const [carrera] = await Carrera.findOrCreate({
-        where: { nombre: c.nombre, facultad_id: facultad.id },
-        defaults: { descripcion: c.descripcion, facultad_id: facultad.id },
-      });
-      carreras.push(carrera);
-      console.log(`  ${carrera.nombre} (id: ${carrera.id})`);
-    }
-    const carreraSoftware = carreras[0];
-
-    // ─── Usuarios (1 por cada rol + personalizados) ───────────────────────
+    // ─── 3. Usuarios de prueba (únicamente los 7 usuarios de test) ────────────
     const usuarios = [
-      { nombre: 'Admin Sistema',          email: 'admin@universidad.edu',       password: 'Admin123!',       rol: 'ADMINISTRADOR',    facultad_id: null,         carrera_id: null },
-      { nombre: 'Carlos Rector',          email: 'rector@universidad.edu',      password: 'Rector123!',      rol: 'RECTOR',           facultad_id: null,         carrera_id: null },
-      { nombre: 'María Decano',           email: 'decano@universidad.edu',      password: 'Decano123!',      rol: 'DECANO',           facultad_id: facultad.id,  carrera_id: null },
-      { nombre: 'Pedro Subdecano',        email: 'subdecano@universidad.edu',   password: 'Subdecano123!',   rol: 'SUBDECANO',        facultad_id: facultad.id,  carrera_id: null },
-      { nombre: 'Ana Director',           email: 'director@universidad.edu',    password: 'Director123!',    rol: 'DIRECTOR_CARRERA', facultad_id: facultad.id,  carrera_id: carreraSoftware.id },
-      { nombre: 'Juan Docente',           email: 'docente@universidad.edu',     password: 'Docente123!',     rol: 'DOCENTE',          facultad_id: facultad.id,  carrera_id: carreraSoftware.id },
-      { nombre: 'Laura Responsable',      email: 'responsable@universidad.edu', password: 'Responsable123!', rol: 'RESPONSABLE_AREA', facultad_id: facultad.id,  carrera_id: null },
-      { nombre: 'Directores de Carrera',   email: 'directores@universidad.edu',  password: 'Director123!',    rol: 'DIRECTOR_CARRERA', facultad_id: facultad.id,  carrera_id: carreraSoftware.id },
-      { nombre: 'Ing. Andrés Galarza',    email: 'agalarza@universidad.edu',    password: 'Galarza123!',     rol: 'RESPONSABLE_AREA', facultad_id: facultad.id,  carrera_id: carreraSoftware.id },
-      { nombre: 'Ing. Antonio Cajamarca', email: 'acajamarca@universidad.edu',  password: 'Cajamarca123!',   rol: 'RESPONSABLE_AREA', facultad_id: facultad.id,  carrera_id: carreraSoftware.id },
-      { nombre: 'Bienestar Estudiantil',  email: 'bienestar@universidad.edu',   password: 'Bienestar123!',   rol: 'RESPONSABLE_AREA', facultad_id: facultad.id,  carrera_id: null },
-      { nombre: 'Ing. José Carrillo',     email: 'jcarrillo@universidad.edu',   password: 'Carrillo123!',    rol: 'RESPONSABLE_AREA', facultad_id: facultad.id,  carrera_id: null },
-      { nombre: 'PhD. Orlando Álvarez',   email: 'oalvarez@universidad.edu',    password: 'Alvarez123!',     rol: 'RESPONSABLE_AREA', facultad_id: facultad.id,  carrera_id: null },
-      { nombre: 'Eco. Jorge Cárdenas',    email: 'jcardenas@universidad.edu',   password: 'Cardenas123!',    rol: 'RESPONSABLE_AREA', facultad_id: facultad.id,  carrera_id: null },
-      { nombre: 'Ing. Jeyson Gaona',      email: 'jgaona@universidad.edu',      password: 'Gaona123!',       rol: 'RESPONSABLE_AREA', facultad_id: facultad.id,  carrera_id: null },
-      { nombre: 'Ing. Jenny Vizñay',      email: 'jviznay@universidad.edu',     password: 'Viznay123!',      rol: 'RESPONSABLE_AREA', facultad_id: facultad.id,  carrera_id: null },
-      { nombre: 'Ing. Juan Pablo Pazmiño',email: 'jpazmino@universidad.edu',    password: 'Pazmino123!',     rol: 'RESPONSABLE_AREA', facultad_id: facultad.id,  carrera_id: null },
-      { nombre: 'Ing. Xavier González',   email: 'xgonzalez@universidad.edu',   password: 'Gonzalez123!',    rol: 'RESPONSABLE_AREA', facultad_id: facultad.id,  carrera_id: carreraSoftware.id },
-      { nombre: 'Ing. Pablo Buestán',     email: 'pbuestan@universidad.edu',    password: 'Buestan123!',     rol: 'RESPONSABLE_AREA', facultad_id: facultad.id,  carrera_id: null },
-      { nombre: 'Ing. Sandro Ortiz',      email: 'sortiz@universidad.edu',      password: 'Ortiz123!',       rol: 'RESPONSABLE_AREA', facultad_id: facultad.id,  carrera_id: null },
-      { nombre: 'Ing. David Calderón',    email: 'dcalderon@universidad.edu',   password: 'Calderon123!',    rol: 'RESPONSABLE_AREA', facultad_id: facultad.id,  carrera_id: null },
-      { nombre: 'Biblioteca UCACUE',      email: 'biblioteca@universidad.edu',   password: 'Biblioteca123!',  rol: 'RESPONSABLE_AREA', facultad_id: facultad.id,  carrera_id: null },
+      { nombre: 'Administrador Sistema',    email: 'admin@universidad.edu',            password: 'Admin123!',    rol: 'ADMINISTRADOR' },
+      { nombre: 'Docente Prueba',           email: 'docente.prueba@ucacue.edu.ec',     password: 'Password123!', rol: 'DOCENTE' },
+      { nombre: 'Responsable Área Prueba',  email: 'responsable.prueba@ucacue.edu.ec', password: 'Password123!', rol: 'RESPONSABLE_AREA' },
+      { nombre: 'Director Carrera Prueba',  email: 'director.prueba@ucacue.edu.ec',    password: 'Password123!', rol: 'DIRECTOR_CARRERA' },
+      { nombre: 'Subdecano Prueba',         email: 'subdecano.prueba@ucacue.edu.ec',   password: 'Password123!', rol: 'SUBDECANO' },
+      { nombre: 'Decano Prueba',            email: 'decano.prueba@ucacue.edu.ec',      password: 'Password123!', rol: 'DECANO' },
+      { nombre: 'Rector Prueba',            email: 'rector.prueba@ucacue.edu.ec',      password: 'Password123!', rol: 'RECTOR' },
     ];
 
-    console.log('\nUsuarios:');
-    const usuariosDB = {};
+    const emailsPermitidos = usuarios.map(u => u.email);
+
+    // Eliminar cualquier otro usuario que no sea de los 7 de prueba
+    const usuariosExtra = await Usuario.findAll({
+      where: { email: { [Op.notIn]: emailsPermitidos } },
+    });
+    if (usuariosExtra.length > 0) {
+      const idsExtra = usuariosExtra.map(u => u.id);
+      await UsuarioRol.destroy({ where: { usuario_id: { [Op.in]: idsExtra } } }).catch(() => {});
+      await Usuario.destroy({ where: { id: { [Op.in]: idsExtra } }, force: true });
+      console.log(`Eliminados ${idsExtra.length} usuario(s) adicionales fuera del set de prueba.`);
+    }
+
+    console.log('\nUsuarios de prueba:');
     for (const u of usuarios) {
       const rol = rolesDB.find(r => r.nombre === u.rol);
-      const hash = await bcrypt.hash(u.password, 12);
+      const hash = await bcrypt.hash(u.password, 10);
       const [usuario, creado] = await Usuario.findOrCreate({
         where: { email: u.email },
         defaults: {
           nombre: u.nombre,
           password_hash: hash,
-          rol_id: rol ? rol.id : null,
-          facultad_id: u.facultad_id,
-          carrera_id: u.carrera_id,
+          facultad_id: null,
+          activo: true,
         },
       });
       if (!creado) {
         await usuario.update({
+          nombre: u.nombre,
           password_hash: hash,
-          rol_id: rol ? rol.id : null,
-          facultad_id: u.facultad_id,
-          carrera_id: u.carrera_id,
+          facultad_id: null,
           activo: true,
         });
       }
       if (rol) {
         await usuario.setRoles([rol.id]);
       }
-      if (u.carrera_id) {
-        await usuario.setCarreras([u.carrera_id]);
-      }
-      if (u.facultad_id) {
-        await usuario.setFacultades([u.facultad_id]);
-      }
-      usuariosDB[u.rol] = usuario;
-      const estado = creado ? 'CREADO' : 'ACTUALIZADO';
-      console.log(`  [${estado}] ${u.nombre} <${u.email}> — ${u.rol} — password: ${u.password}`);
-    }
-
-    // ─── Período ─────────────────────────────────────────────────────────
-    const [periodo] = await Periodo.findOrCreate({
-      where: { nombre: '2026-I', carrera_id: carreraSoftware.id },
-      defaults: { carrera_id: carreraSoftware.id },
-    });
-    console.log(`\nPeríodo: ${periodo.nombre} (id: ${periodo.id})`);
-
-    // ─── Criterios de acreditación (5) ───────────────────────────────────
-    const criteriosData = [
-      { nombre: '1. CURRÍCULO',                                 descripcion: 'Currículo y plan de estudios' },
-      { nombre: '2. DOCENCIA',                                  descripcion: 'Personal académico y enseñanza' },
-      { nombre: '3. INVESTIGACIÓN E INNOVACIÓN',                descripcion: 'Gestión de investigación y producción académica' },
-      { nombre: '4. VINCULACIÓN CON LA SOCIEDAD',               descripcion: 'Vinculación, transferencia y prácticas preprofesionales' },
-      { nombre: '5. FUNCIONES ESTRATÉGICAS Y DE SOPORTE',       descripcion: 'Planificación, calidad, infraestructura y gestión' },
-    ];
-
-    console.log('\nCriterios de acreditación:');
-    const criteriosDB = [];
-    for (const c of criteriosData) {
-      const [criterio] = await Criterio.findOrCreate({
-        where: { nombre: c.nombre, periodo_id: periodo.id },
-        defaults: { descripcion: c.descripcion, periodo_id: periodo.id },
-      });
-      criteriosDB.push(criterio);
-      console.log(`  ${criterio.nombre} (id: ${criterio.id})`);
-    }
-
-    const indicadoresData = [
-      { numero: 1,  nombre: 'Perfil de egreso',                                       criterioIdx: 0, responsableRol: 'DIRECTOR_CARRERA', responsableTexto: 'Directores de Carrera' },
-      { numero: 2,  nombre: 'Proyecto curricular',                                    criterioIdx: 0, responsableRol: 'DIRECTOR_CARRERA', responsableTexto: 'Directores de Carrera' },
-      { numero: 3,  nombre: 'Malla curricular',                                       criterioIdx: 0, responsableRol: 'DIRECTOR_CARRERA', responsableTexto: 'Directores de Carrera' },
-      { numero: 4,  nombre: 'Syllabus',                                               criterioIdx: 0, responsableRol: 'DIRECTOR_CARRERA', responsableTexto: 'Directores de Carrera' },
-      { numero: 5,  nombre: 'Metodología y recursos de aprendizaje',                  criterioIdx: 0, responsableRol: 'DIRECTOR_CARRERA', responsableTexto: 'Directores de Carrera' },
-      { numero: 6,  nombre: 'Escenarios de prácticas formativas',                     criterioIdx: 0, responsableRol: 'DIRECTOR_CARRERA', responsableTexto: 'Directores de Carrera' },
-      { numero: 7,  nombre: 'Tecnologías para el Aprendizaje y Conocimiento (TAC)',   criterioIdx: 0, responsableRol: 'DIRECTOR_CARRERA', responsableTexto: 'Directores de Carrera' },
-      { numero: 8,  nombre: 'Afinidad del personal académico',                        criterioIdx: 1, responsableRol: 'DIRECTOR_CARRERA', responsableTexto: 'Directores de Carrera' },
-      { numero: 9,  nombre: 'Personal académico titular permanente',                  criterioIdx: 1, responsableRol: 'DIRECTOR_CARRERA', responsableTexto: 'Directores de Carrera' },
-      { numero: 10, nombre: 'Evaluación integral del desempeño del personal académico', criterioIdx: 1, responsableRol: 'DIRECTOR_CARRERA', responsableTexto: 'Directores de Carrera' },
-      { numero: 11, nombre: 'Sistema de tutorías académicas',                         criterioIdx: 1, responsableRol: 'DOCENTE', responsableTexto: 'Ing. Andrés Galarza' },
-      { numero: 12, nombre: 'Habilidades blandas',                                    criterioIdx: 1, responsableRol: 'DIRECTOR_CARRERA', responsableTexto: 'Directores de Carrera' },
-      { numero: 13, nombre: 'Seguimiento al cumplimiento de los resultados de aprendizaje', criterioIdx: 1, responsableRol: 'DOCENTE', responsableTexto: 'Ing. Antonio Cajamarca' },
-      { numero: 14, nombre: 'Tasa de deserción',                                      criterioIdx: 1, responsableRol: 'RESPONSABLE_AREA', responsableTexto: 'Bienestar Estudiantil' },
-      { numero: 15, nombre: 'Tasa de titulación de grado',                            criterioIdx: 1, responsableRol: 'RESPONSABLE_AREA', responsableTexto: 'Ing. José Carrillo' },
-      { numero: 16, nombre: 'Seguimiento a graduados',                                criterioIdx: 1, responsableRol: 'RESPONSABLE_AREA', responsableTexto: 'Ing. Antonio Cajamarca' },
-      { numero: 17, nombre: 'Éxito de los graduados',                                 criterioIdx: 1, responsableRol: 'RESPONSABLE_AREA', responsableTexto: 'Ing. Antonio Cajamarca' },
-      { numero: 18, nombre: 'Gestión de la investigación e innovación',               criterioIdx: 2, responsableRol: 'RESPONSABLE_AREA', responsableTexto: 'PhD. Orlando Álvarez' },
-      { numero: 19, nombre: 'Producción académica',                                   criterioIdx: 2, responsableRol: 'RESPONSABLE_AREA', responsableTexto: 'PhD. Orlando Álvarez' },
-      { numero: 20, nombre: 'Interdisciplinariedad para la articulación de las funciones sustantivas', criterioIdx: 2, responsableRol: 'RESPONSABLE_AREA', responsableTexto: 'Eco. Jorge Cárdenas / Ing. Jeyson Gaona' },
-      { numero: 21, nombre: 'Planificación y gestión de la vinculación con la sociedad', criterioIdx: 3, responsableRol: 'RESPONSABLE_AREA', responsableTexto: 'Ing. Jenny Vizñay / Ing. Juan Pablo Pazmiño' },
-      { numero: 22, nombre: 'Mecanismos de transferencia de tecnología y conocimiento', criterioIdx: 3, responsableRol: 'RESPONSABLE_AREA', responsableTexto: 'Ing. Jenny Vizñay / Ing. Juan Pablo Pazmiño' },
-      { numero: 23, nombre: 'Prácticas preprofesionales',                             criterioIdx: 3, responsableRol: 'RESPONSABLE_AREA', responsableTexto: 'Software: Ing. Xavier González | Sistemas: Dr. Orlando Álvarez | Realidad Virtual: Ing. Xavier González | Robótica: Ing. Pablo Buestán | Sistemas Biomédicos: Ing. Sandro Ortiz' },
-      { numero: 24, nombre: 'Planificación académica y administrativa de la carrera', criterioIdx: 4, responsableRol: 'DIRECTOR_CARRERA', responsableTexto: 'Directores de Carrera' },
-      { numero: 25, nombre: 'Aseguramiento de la calidad de la carrera',              criterioIdx: 4, responsableRol: 'RESPONSABLE_AREA', responsableTexto: 'Ing. José Carrillo' },
-      { numero: 26, nombre: 'Ética, transparencia e integridad',                      criterioIdx: 4, responsableRol: 'DIRECTOR_CARRERA', responsableTexto: 'Directores de Carrera' },
-      { numero: 27, nombre: 'Internacionalización y movilidad',                       criterioIdx: 4, responsableRol: 'RESPONSABLE_AREA', responsableTexto: 'Ing. Andrés Galarza' },
-      { numero: 28, nombre: 'Gestión de la infraestructura física y tecnológica',     criterioIdx: 4, responsableRol: 'RESPONSABLE_AREA', responsableTexto: 'Ing. David Calderón' },
-      { numero: 29, nombre: 'Ambientes de aprendizaje',                               criterioIdx: 4, responsableRol: 'RESPONSABLE_AREA', responsableTexto: 'Ing. David Calderón' },
-      { numero: 30, nombre: 'Herramientas pedagógicas',                               criterioIdx: 4, responsableRol: 'RESPONSABLE_AREA', responsableTexto: 'Ing. David Calderón' },
-      { numero: 31, nombre: 'Gestión del acervo y recursos bibliográficos',           criterioIdx: 4, responsableRol: 'DIRECTOR_CARRERA', responsableTexto: 'Biblioteca UCACUE / Directores de Carrera' },
-    ];
-
-    console.log('\nIndicadores y Actividades:');
-    for (const ind of indicadoresData) {
-      const criterio = criteriosDB[ind.criterioIdx];
-      const responsable = usuariosDB[ind.responsableRol] || null;
-      
-      const [indicador] = await Indicador.findOrCreate({
-        where: { numero: ind.numero, criterio_id: criterio.id },
-        defaults: {
-          nombre: ind.nombre,
-          criterio_id: criterio.id,
-          responsable_id: responsable?.id || null,
-          responsable_nombre: ind.responsableTexto || null,
-        },
-      });
-      // Actualizar por si ya existía pero con nombre anterior
-      await indicador.update({ responsable_nombre: ind.responsableTexto || null });
-      
-      // Creamos 1 o 2 actividades por indicador
-      await Actividad.findOrCreate({
-        where: { nombre: `Informe de Evidencias - ${ind.nombre}`, indicador_id: indicador.id },
-        defaults: { descripcion: 'Subir todos los PDFs respaldatorios para este indicador.' }
-      });
-      
-      if (ind.numero % 2 === 0) {
-        await Actividad.findOrCreate({
-          where: { nombre: `Matriz Consolidada - ${ind.nombre}`, indicador_id: indicador.id },
-          defaults: { descripcion: 'Subir Excel convertido a PDF con la matriz de datos.' }
-        });
-      }
-
-      console.log(`  ✅ [${ind.numero}] ${ind.nombre} → ${ind.responsableRol}`);
+      console.log(`  [${creado ? 'CREADO' : 'ACTUALIZADO'}] ${u.nombre} <${u.email}> — ${u.rol} — password: ${u.password}`);
     }
 
     console.log('\n══════════════════════════════════════════');
-    console.log('Seed completado exitosamente con 7 niveles.');
+    console.log('Base de datos lista únicamente con los 7 usuarios de prueba.');
     console.log('══════════════════════════════════════════');
-    console.log('\nCredenciales de prueba:');
-    console.log('  admin@universidad.edu       / Admin123!       (ADMINISTRADOR)');
-    console.log('  rector@universidad.edu      / Rector123!      (RECTOR)');
-    console.log('  decano@universidad.edu      / Decano123!      (DECANO)');
-    console.log('  subdecano@universidad.edu   / Subdecano123!   (SUBDECANO)');
-    console.log('  director@universidad.edu    / Director123!    (DIRECTOR_CARRERA)');
-    console.log('  docente@universidad.edu     / Docente123!     (DOCENTE)');
-    console.log('  responsable@universidad.edu / Responsable123! (RESPONSABLE_AREA)');
-    console.log('  agalarza@universidad.edu    / Docente123!     (DOCENTE - Tutorías)');
-    console.log('  acajamarca@universidad.edu  / Docente123!     (DOCENTE - Seguimiento)');
-
     process.exit(0);
   } catch (err) {
     console.error('Error en seed:', err.message);

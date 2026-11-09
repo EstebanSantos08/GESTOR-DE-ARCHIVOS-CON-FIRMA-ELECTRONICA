@@ -98,12 +98,10 @@ app.all('/api/admin/seed', async (req, res) => {
     const { execSync } = require('child_process');
     console.log('🌱 Ejecutando seed solicitado...');
     const out1 = execSync('node seed.js', { cwd: __dirname }).toString();
-    const out2 = execSync('node seed-criterios.js', { cwd: __dirname }).toString();
-    const out3 = execSync('node seed-carreras-demo.js', { cwd: __dirname }).toString();
     res.json({
       estado: 'OK',
-      mensaje: 'Base de datos poblada exitosamente con todos los seeds.',
-      salida: [out1, out2, out3].join('\n---\n'),
+      mensaje: 'Base de datos inicializada únicamente con los 7 usuarios de prueba.',
+      salida: out1,
     });
   } catch (err) {
     console.error('Error al ejecutar seeds:', err);
@@ -144,13 +142,14 @@ async function iniciar() {
     console.log('Modelos sincronizados con la base de datos');
 
     try {
-      const { Rol, UsuarioRol } = require('./Model');
+      const { Rol, UsuarioRol, Usuario } = require('./Model');
       const totalRoles = await Rol.count();
       const totalAsignaciones = await UsuarioRol.count();
-      if (totalRoles === 0 || totalAsignaciones === 0) {
-        console.log(`🌱 Asignaciones incompletas detectadas (roles: ${totalRoles}, asignaciones: ${totalAsignaciones}). Ejecutando seed...`);
+      const tieneUsuariosDemoAntiguos = await Usuario.findOne({ where: { email: 'agalarza@universidad.edu' } });
+      if (totalRoles === 0 || totalAsignaciones === 0 || tieneUsuariosDemoAntiguos) {
+        console.log(`🌱 Inicializando base con únicamente los 7 usuarios de prueba...`);
         const { execSync } = require('child_process');
-        execSync('node seed.js && node seed-criterios.js && node seed-carreras-demo.js', {
+        execSync('node seed.js', {
           cwd: __dirname,
           stdio: 'inherit',
         });

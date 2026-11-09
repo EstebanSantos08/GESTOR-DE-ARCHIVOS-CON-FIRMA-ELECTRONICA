@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Check, Building2, BookOpen, GraduationCap, CalendarDays, Microscope, Target, Pencil, Trash2, X, Save, UserCheck, UserPlus, Search, Info, FileText, FolderOpen, ChevronDown, ChevronUp } from 'lucide-react';
 import { useApp } from '../context/useApp';
-import { RESPONSABLES_PREDEFINIDOS, CRITERIOS_PREDEFINIDOS, INDICADORES_PREDEFINIDOS } from '../data/parametrosPredefinidos';
+import { RESPONSABLES_PREDEFINIDOS, CRITERIOS_PREDEFINIDOS, INDICADORES_PREDEFINIDOS, GRUPOS_SUBCRITERIOS_POR_CRITERIO } from '../data/parametrosPredefinidos';
 import ModalDocenteForm from '../components/modals/ModalDocenteForm';
 import PasoFirmaItem from '../components/flujos/PasoFirmaItem';
 
-export { RESPONSABLES_PREDEFINIDOS, CRITERIOS_PREDEFINIDOS, INDICADORES_PREDEFINIDOS };
+export { RESPONSABLES_PREDEFINIDOS, CRITERIOS_PREDEFINIDOS, INDICADORES_PREDEFINIDOS, GRUPOS_SUBCRITERIOS_POR_CRITERIO };
 
 function Toggle({ value, onChange, label }) {
   return (
@@ -132,6 +132,7 @@ export default function ParametrizacionAdmin() {
   const [fInd,  setFInd]  = useState({
     nombre: '',
     numero: '',
+    grupo_subcriterio: '',
     descripcion: '',
     requiere_firma: true,
     flujo_id: '',
@@ -280,6 +281,7 @@ export default function ParametrizacionAdmin() {
         {
           nombre: fInd.nombre,
           numero: Number(fInd.numero),
+          grupo_subcriterio: fInd.grupo_subcriterio || null,
           descripcion: fInd.descripcion || undefined,
           requiere_firma: fInd.requiere_firma,
           flujo_id: fInd.flujo_id || null,
@@ -293,6 +295,7 @@ export default function ParametrizacionAdmin() {
         ...prev,
         nombre: '',
         numero: '',
+        grupo_subcriterio: '',
         descripcion: '',
         requiere_firma: true,
         flujo_id: '',
@@ -1217,6 +1220,7 @@ export default function ParametrizacionAdmin() {
                                   ...prev,
                                   numero: sel.numero,
                                   nombre: sel.nombre,
+                                  grupo_subcriterio: sel.grupo_subcriterio || '',
                                   responsable_nombre: sel.responsable_nombre,
                                 }));
                               } else {
@@ -1224,6 +1228,7 @@ export default function ParametrizacionAdmin() {
                                   ...prev,
                                   numero: '',
                                   nombre: '',
+                                  grupo_subcriterio: '',
                                   responsable_nombre: '',
                                 }));
                               }
@@ -1446,7 +1451,19 @@ export default function ParametrizacionAdmin() {
                               </td>
 
                               <td className="px-4 py-3 text-xs text-gray-700 font-medium">
-                                {c.nombre}
+                                <div className="space-y-1">
+                                  <div>{c.nombre}</div>
+                                  {(() => {
+                                    const defPre = INDICADORES_PREDEFINIDOS.find(p => Number(p.numero) === Number(i.numero));
+                                    const grupo = i.grupo_subcriterio ?? defPre?.grupo_subcriterio ?? null;
+                                    return grupo ? (
+                                      <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-amber-50 text-amber-800 border border-amber-200">
+                                        <FolderOpen size={11} className="text-amber-600 flex-shrink-0" />
+                                        <span>{grupo}</span>
+                                      </span>
+                                    ) : null;
+                                  })()}
+                                </div>
                               </td>
 
                               <td className="px-4 py-3">

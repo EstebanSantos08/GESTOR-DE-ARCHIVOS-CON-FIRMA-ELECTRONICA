@@ -7,46 +7,51 @@ const CRITERIOS_ACREDITACION = [
 ];
 
 const SUBCRITERIOS_ACREDITACION = [
-  { numero: 1,  criterioIdx: 0, nombre: 'Perfil de egreso', responsableTexto: 'Directores de Carrera' },
-  { numero: 2,  criterioIdx: 0, nombre: 'Proyecto curricular', responsableTexto: 'Directores de Carrera' },
-  { numero: 3,  criterioIdx: 0, nombre: 'Malla curricular', responsableTexto: 'Directores de Carrera' },
-  { numero: 4,  criterioIdx: 0, nombre: 'Syllabus', responsableTexto: 'Directores de Carrera' },
-  { numero: 5,  criterioIdx: 0, nombre: 'Metodología y recursos de aprendizaje', responsableTexto: 'Directores de Carrera' },
-  { numero: 6,  criterioIdx: 0, nombre: 'Escenarios de prácticas formativas', responsableTexto: 'Directores de Carrera' },
-  { numero: 7,  criterioIdx: 0, nombre: 'Tecnologías para el Aprendizaje y Conocimiento (TAC)', responsableTexto: 'Directores de Carrera' },
+  // 1. CURRÍCULO (Queda igual, directo bajo el Criterio 1 sin agrupador)
+  { numero: 1,  criterioIdx: 0, grupo_subcriterio: null, nombre: 'Perfil de egreso', responsableTexto: 'Directores de Carrera' },
+  { numero: 2,  criterioIdx: 0, grupo_subcriterio: null, nombre: 'Proyecto curricular', responsableTexto: 'Directores de Carrera' },
+  { numero: 3,  criterioIdx: 0, grupo_subcriterio: null, nombre: 'Malla curricular', responsableTexto: 'Directores de Carrera' },
+  { numero: 4,  criterioIdx: 0, grupo_subcriterio: null, nombre: 'Syllabus', responsableTexto: 'Directores de Carrera' },
+  { numero: 5,  criterioIdx: 0, grupo_subcriterio: null, nombre: 'Metodología y recursos de aprendizaje', responsableTexto: 'Directores de Carrera' },
+  { numero: 6,  criterioIdx: 0, grupo_subcriterio: null, nombre: 'Escenarios de prácticas formativas', responsableTexto: 'Directores de Carrera' },
+  { numero: 7,  criterioIdx: 0, grupo_subcriterio: null, nombre: 'Tecnologías para el Aprendizaje y Conocimiento (TAC)', responsableTexto: 'Directores de Carrera' },
 
-  { numero: 8,  criterioIdx: 1, nombre: 'Afinidad del personal académico', responsableTexto: 'Directores de Carrera' },
-  { numero: 9,  criterioIdx: 1, nombre: 'Personal académico titular permanente', responsableTexto: 'Directores de Carrera' },
-  { numero: 10, criterioIdx: 1, nombre: 'Evaluación integral del desempeño del personal académico', responsableTexto: 'Directores de Carrera' },
-  { numero: 11, criterioIdx: 1, nombre: 'Sistema de tutorías académicas', responsableTexto: 'Ing. Andrés Galarza' },
-  { numero: 12, criterioIdx: 1, nombre: 'Habilidades blandas', responsableTexto: 'Directores de Carrera' },
-  { numero: 13, criterioIdx: 1, nombre: 'Seguimiento al cumplimiento de los resultados de aprendizaje', responsableTexto: 'Ing. Antonio Cajamarca' },
-  { numero: 14, criterioIdx: 1, nombre: 'Tasa de deserción', responsableTexto: 'Bienestar Estudiantil' },
-  { numero: 15, criterioIdx: 1, nombre: 'Tasa de titulación de grado', responsableTexto: 'Ing. José Carrillo' },
-  { numero: 16, criterioIdx: 1, nombre: 'Seguimiento a graduados', responsableTexto: 'Ing. Antonio Cajamarca' },
-  { numero: 17, criterioIdx: 1, nombre: 'Éxito de los graduados', responsableTexto: 'Ing. Antonio Cajamarca' },
+  // 2. DOCENCIA -> 2.1 PERSONAL ACADÉMICO y 2.2 ESTUDIANTES
+  { numero: 8,  criterioIdx: 1, grupo_subcriterio: '2.1 PERSONAL ACADÉMICO', nombre: 'Afinidad del personal académico', responsableTexto: 'Directores de Carrera' },
+  { numero: 9,  criterioIdx: 1, grupo_subcriterio: '2.1 PERSONAL ACADÉMICO', nombre: 'Personal académico titular permanente', responsableTexto: 'Directores de Carrera' },
+  { numero: 10, criterioIdx: 1, grupo_subcriterio: '2.1 PERSONAL ACADÉMICO', nombre: 'Evaluación integral del desempeño del personal académico', responsableTexto: 'Directores de Carrera' },
+  { numero: 11, criterioIdx: 1, grupo_subcriterio: '2.2 ESTUDIANTES', nombre: 'Sistema de tutorías académicas', responsableTexto: 'Ing. Andrés Galarza' },
+  { numero: 12, criterioIdx: 1, grupo_subcriterio: '2.2 ESTUDIANTES', nombre: 'Habilidades blandas', responsableTexto: 'Directores de Carrera' },
+  { numero: 13, criterioIdx: 1, grupo_subcriterio: '2.2 ESTUDIANTES', nombre: 'Seguimiento al cumplimiento de los resultados de aprendizaje', responsableTexto: 'Ing. Antonio Cajamarca' },
+  { numero: 14, criterioIdx: 1, grupo_subcriterio: '2.2 ESTUDIANTES', nombre: 'Tasa de deserción', responsableTexto: 'Bienestar Estudiantil' },
+  { numero: 15, criterioIdx: 1, grupo_subcriterio: '2.2 ESTUDIANTES', nombre: 'Tasa de titulación de grado', responsableTexto: 'Ing. José Carrillo' },
+  { numero: 16, criterioIdx: 1, grupo_subcriterio: '2.2 ESTUDIANTES', nombre: 'Seguimiento a graduados', responsableTexto: 'Ing. Antonio Cajamarca' },
+  { numero: 17, criterioIdx: 1, grupo_subcriterio: '2.2 ESTUDIANTES', nombre: 'Éxito de los graduados', responsableTexto: 'Ing. Antonio Cajamarca' },
 
-  { numero: 18, criterioIdx: 2, nombre: 'Gestión de la investigación e innovación', responsableTexto: 'PhD. Orlando Álvarez' },
-  { numero: 19, criterioIdx: 2, nombre: 'Producción académica', responsableTexto: 'PhD. Orlando Álvarez' },
-  { numero: 20, criterioIdx: 2, nombre: 'Interdisciplinariedad para la articulación de las funciones sustantivas', responsableTexto: 'Eco. Jorge Cárdenas / Ing. Jeyson Gaona' },
+  // 3. INVESTIGACIÓN E INNOVACIÓN -> 3.1 y 3.2
+  { numero: 18, criterioIdx: 2, grupo_subcriterio: '3.1 GESTIÓN DE LA INVESTIGACIÓN E INNOVACIÓN', nombre: 'Gestión de la investigación e innovación', responsableTexto: 'PhD. Orlando Álvarez' },
+  { numero: 19, criterioIdx: 2, grupo_subcriterio: '3.2 CONTRIBUCIÓN A LA INVESTIGACIÓN E INNOVACIÓN', nombre: 'Producción académica', responsableTexto: 'PhD. Orlando Álvarez' },
+  { numero: 20, criterioIdx: 2, grupo_subcriterio: '3.2 CONTRIBUCIÓN A LA INVESTIGACIÓN E INNOVACIÓN', nombre: 'Interdisciplinariedad para la articulación de las funciones sustantivas', responsableTexto: 'Eco. Jorge Cárdenas / Ing. Jeyson Gaona' },
 
-  { numero: 21, criterioIdx: 3, nombre: 'Planificación y gestión de la vinculación con la sociedad', responsableTexto: 'Ing. Jenny Vizñay / Ing. Juan Pablo Pazmiño' },
-  { numero: 22, criterioIdx: 3, nombre: 'Mecanismos de transferencia de tecnología y conocimiento', responsableTexto: 'Ing. Jenny Vizñay / Ing. Juan Pablo Pazmiño' },
-  { numero: 23, criterioIdx: 3, nombre: 'Prácticas preprofesionales', responsableTexto: 'Software: Ing. Xavier González | Sistemas: Dr. Orlando Álvarez | VR: Ing. Xavier González | Robótica: Ing. Pablo Buestán | Biomédicos: Ing. Sandro Ortiz' },
+  // 4. VINCULACIÓN CON LA SOCIEDAD -> 4.1 y 4.2
+  { numero: 21, criterioIdx: 3, grupo_subcriterio: '4.1 ORGANIZACIÓN DE LA VINCULACIÓN CON LA SOCIEDAD', nombre: 'Planificación y gestión de la vinculación con la sociedad', responsableTexto: 'Ing. Jenny Vizñay / Ing. Juan Pablo Pazmiño' },
+  { numero: 22, criterioIdx: 3, grupo_subcriterio: '4.2 TRANSFERENCIA DE TECNOLOGÍAS Y PRÁCTICAS PREPROFESIONALES', nombre: 'Mecanismos de transferencia de tecnología y conocimiento', responsableTexto: 'Ing. Jenny Vizñay / Ing. Juan Pablo Pazmiño' },
+  { numero: 23, criterioIdx: 3, grupo_subcriterio: '4.2 TRANSFERENCIA DE TECNOLOGÍAS Y PRÁCTICAS PREPROFESIONALES', nombre: 'Prácticas preprofesionales', responsableTexto: 'Software: Ing. Xavier González | Sistemas: Dr. Orlando Álvarez | VR: Ing. Xavier González | Robótica: Ing. Pablo Buestán | Biomédicos: Ing. Sandro Ortiz' },
 
-  { numero: 24, criterioIdx: 4, nombre: 'Planificación académica y administrativa de la carrera', responsableTexto: 'Directores de Carrera' },
-  { numero: 25, criterioIdx: 4, nombre: 'Aseguramiento de la calidad de la carrera', responsableTexto: 'Ing. José Carrillo' },
-  { numero: 26, criterioIdx: 4, nombre: 'Ética, transparencia e integridad', responsableTexto: 'Directores de Carrera' },
-  { numero: 27, criterioIdx: 4, nombre: 'Internacionalización y movilidad', responsableTexto: 'Ing. Andrés Galarza' },
-  { numero: 28, criterioIdx: 4, nombre: 'Gestión de la infraestructura física y tecnológica', responsableTexto: 'Ing. David Calderón' },
-  { numero: 29, criterioIdx: 4, nombre: 'Ambientes de aprendizaje', responsableTexto: 'Ing. David Calderón' },
-  { numero: 30, criterioIdx: 4, nombre: 'Herramientas pedagógicas', responsableTexto: 'Ing. David Calderón' },
-  { numero: 31, criterioIdx: 4, nombre: 'Gestión del acervo y recursos bibliográficos', responsableTexto: 'Biblioteca UCACUE / Directores de Carrera' },
+  // 5. FUNCIONES ESTRATÉGICAS Y DE SOPORTE -> 5.1 y 5.2
+  { numero: 24, criterioIdx: 4, grupo_subcriterio: '5.1 FUNCIONES ESTRATÉGICAS', nombre: 'Planificación académica y administrativa de la carrera', responsableTexto: 'Directores de Carrera' },
+  { numero: 25, criterioIdx: 4, grupo_subcriterio: '5.1 FUNCIONES ESTRATÉGICAS', nombre: 'Aseguramiento de la calidad de la carrera', responsableTexto: 'Ing. José Carrillo' },
+  { numero: 26, criterioIdx: 4, grupo_subcriterio: '5.1 FUNCIONES ESTRATÉGICAS', nombre: 'Ética, transparencia e integridad', responsableTexto: 'Directores de Carrera' },
+  { numero: 27, criterioIdx: 4, grupo_subcriterio: '5.1 FUNCIONES ESTRATÉGICAS', nombre: 'Internacionalización y movilidad', responsableTexto: 'Ing. Andrés Galarza' },
+  { numero: 28, criterioIdx: 4, grupo_subcriterio: '5.2 FUNCIONES DE SOPORTE', nombre: 'Gestión de la infraestructura física y tecnológica', responsableTexto: 'Ing. David Calderón' },
+  { numero: 29, criterioIdx: 4, grupo_subcriterio: '5.2 FUNCIONES DE SOPORTE', nombre: 'Ambientes de aprendizaje', responsableTexto: 'Ing. David Calderón' },
+  { numero: 30, criterioIdx: 4, grupo_subcriterio: '5.2 FUNCIONES DE SOPORTE', nombre: 'Herramientas pedagógicas', responsableTexto: 'Ing. David Calderón' },
+  { numero: 31, criterioIdx: 4, grupo_subcriterio: '5.2 FUNCIONES DE SOPORTE', nombre: 'Gestión del acervo y recursos bibliográficos', responsableTexto: 'Biblioteca UCACUE / Directores de Carrera' },
 ];
 
 /**
  * Genera de forma automatizada los 5 Criterios y 31 Subcriterios (e Indicadores legacy)
- * para una Carrera dentro de un Período dado. Los documentos PDF se suben directamente al Subcriterio.
+ * para una Carrera dentro de un Período dado.
  */
 async function generarEstructuraParaCarreraYPeriodo({
   carreraId,
@@ -79,12 +84,13 @@ async function generarEstructuraParaCarreraYPeriodo({
   for (const subDef of SUBCRITERIOS_ACREDITACION) {
     const criterio = criteriosCreados[subDef.criterioIdx];
 
-    // 1. Crear Subcriterio (nivel final donde se suben los documentos PDF)
+    // 1. Crear Subcriterio
     if (Subcriterio) {
-      await Subcriterio.findOrCreate({
+      const [sub] = await Subcriterio.findOrCreate({
         where: { numero: subDef.numero, criterio_id: criterio.id },
         defaults: {
           nombre: subDef.nombre,
+          grupo_subcriterio: subDef.grupo_subcriterio || null,
           descripcion: `Subir los documentos PDF respaldatorios para el subcriterio [${subDef.numero}] ${subDef.nombre}.`,
           criterio_id: criterio.id,
           responsable_nombre: subDef.responsableTexto,
@@ -92,26 +98,31 @@ async function generarEstructuraParaCarreraYPeriodo({
         },
         transaction,
       });
+      if (sub && sub.grupo_subcriterio !== (subDef.grupo_subcriterio || null) && typeof sub.update === 'function') {
+        await sub.update({ grupo_subcriterio: subDef.grupo_subcriterio || null }, { transaction }).catch(() => {});
+      }
     }
 
     // 2. Crear Indicador (para mantener sincronía y compatibilidad retroactiva)
     if (Indicador) {
-      await Indicador.findOrCreate({
+      const [ind] = await Indicador.findOrCreate({
         where: { numero: subDef.numero, criterio_id: criterio.id },
         defaults: {
           nombre: subDef.nombre,
+          grupo_subcriterio: subDef.grupo_subcriterio || null,
           descripcion: `Subir los documentos PDF respaldatorios para el subcriterio [${subDef.numero}] ${subDef.nombre}.`,
           criterio_id: criterio.id,
           responsable_nombre: subDef.responsableTexto,
         },
         transaction,
       });
+      if (ind && ind.grupo_subcriterio !== (subDef.grupo_subcriterio || null) && typeof ind.update === 'function') {
+        await ind.update({ grupo_subcriterio: subDef.grupo_subcriterio || null }, { transaction }).catch(() => {});
+      }
     }
   }
 
-  // 3. Incorporar dinámicamente cualquier Criterio y Subcriterio adicional/personalizado
-  //    que haya sido creado previamente en la carrera (o en el sistema), para que se
-  //    agregue por defecto a todo nuevo Período.
+  // 3. Incorporar dinámicamente cualquier Criterio, Subcriterio y Carpeta adicional/personalizado
   try {
     const { Op } = require('sequelize');
     const criteriosPrevios = await Criterio.findAll({
@@ -135,7 +146,6 @@ async function generarEstructuraParaCarreraYPeriodo({
       transaction,
     });
 
-    // Agrupar por nombre de criterio para evitar duplicados entre varios períodos previos
     const mapaCriteriosExtra = new Map();
     for (const cp of criteriosPrevios) {
       if (!mapaCriteriosExtra.has(cp.nombre)) {
@@ -154,6 +164,7 @@ async function generarEstructuraParaCarreraYPeriodo({
           entry.subcriterios.set(keySub, {
             numero: sp.numero,
             nombre: sp.nombre,
+            grupo_subcriterio: sp.grupo_subcriterio || null,
             descripcion: sp.descripcion,
             responsable_nombre: sp.responsable_nombre,
             requiere_firma: sp.requiere_firma,
@@ -203,6 +214,7 @@ async function generarEstructuraParaCarreraYPeriodo({
             defaults: {
               numero: subExtra.numero,
               nombre: subExtra.nombre,
+              grupo_subcriterio: subExtra.grupo_subcriterio || null,
               descripcion: subExtra.descripcion,
               criterio_id: critDestino.id,
               responsable_nombre: subExtra.responsable_nombre,
@@ -223,6 +235,7 @@ async function generarEstructuraParaCarreraYPeriodo({
             defaults: {
               numero: subExtra.numero,
               nombre: subExtra.nombre,
+              grupo_subcriterio: subExtra.grupo_subcriterio || null,
               descripcion: subExtra.descripcion,
               criterio_id: critDestino.id,
               responsable_nombre: subExtra.responsable_nombre,

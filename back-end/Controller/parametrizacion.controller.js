@@ -270,6 +270,7 @@ const criterioCtrl = {
               where: { numero: s.numero, criterio_id: registro.id },
               defaults: {
                 nombre: s.nombre,
+                grupo_subcriterio: s.grupo_subcriterio || null,
                 descripcion: `Subir los documentos PDF respaldatorios para el subcriterio [${s.numero}] ${s.nombre}.`,
                 criterio_id: registro.id,
                 responsable_nombre: s.responsableTexto,
@@ -366,6 +367,7 @@ const subcriterioCtrl = {
                   defaults: {
                     numero: sub.numero,
                     nombre: sub.nombre,
+                    grupo_subcriterio: sub.grupo_subcriterio || null,
                     descripcion: sub.descripcion,
                     criterio_id: ch.id,
                     responsable_nombre: sub.responsable_nombre,
@@ -773,10 +775,12 @@ async function estructura(req, res) {
             documentos: [],
           };
         });
+      const defCatalogo = (SUBCRITERIOS_ACREDITACION || []).find(s => Number(s.numero) === Number(item.numero));
       return {
         id: item.id,
         numero: item.numero,
         nombre: item.nombre,
+        grupo_subcriterio: item.grupo_subcriterio ?? defCatalogo?.grupo_subcriterio ?? null,
         descripcion: item.descripcion || '',
         informacion_ayuda: item.descripcion || '',
         requiere_firma: item.requiere_firma ?? true,

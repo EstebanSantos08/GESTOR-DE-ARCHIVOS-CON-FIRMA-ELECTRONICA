@@ -31,6 +31,7 @@ import {
 import Breadcrumbs from '../components/common/Breadcrumbs';
 import Badge from '../components/common/Badge';
 import { useApp } from '../context/useApp';
+import { INDICADORES_PREDEFINIDOS } from '../data/parametrosPredefinidos';
 
 const STORAGE_CTX_KEY = 'gestdoc_explorador_ctx_v1';
 
@@ -218,6 +219,7 @@ export default function ExploradorDeArchivos() {
   // Vista rápida en Carrera: tabla unificada vs carpetas
   const [modoVistaCarrera, setModoVistaCarrera] = useState('tabla'); // 'tabla' | 'carpetas'
   const [filtroCriterioId, setFiltroCriterioId] = useState('TODOS');
+  const [filtroGrupoSub, setFiltroGrupoSub] = useState('TODOS');
   const [filtroEvidencia, setFiltroEvidencia] = useState('TODOS'); // 'TODOS' | 'CON_DOCS' | 'PENDIENTES'
   const [subExpandidoId, setSubExpandidoId] = useState(null);
   const [subSubiendoId, setSubSubiendoId] = useState(null);
@@ -469,14 +471,27 @@ export default function ExploradorDeArchivos() {
     if (['periodos','criterios','subcriterios','indicadores','carpetas','documentos'].includes(nivel) && carrActual)
       items.push({ label: carrActual?.nombre, onClick: () => setNivel('periodos') });
     if (['criterios','subcriterios','indicadores','carpetas','documentos'].includes(nivel) && periActual)
-      items.push({ label: periActual?.nombre, onClick: () => { setFiltroCriterioId('TODOS'); setNivel('criterios'); } });
-    if (['subcriterios','indicadores'].includes(nivel) && critActual)
-      items.push({ label: critActual?.nombre, onClick: () => setNivel('subcriterios') });
-    if (['carpetas','documentos'].includes(nivel) && subActual)
+      items.push({ label: periActual?.nombre, onClick: () => { setFiltroCriterioId('TODOS'); setFiltroGrupoSub('TODOS'); setNivel('criterios'); } });
+    if (['subcriterios','indicadores','carpetas','documentos'].includes(nivel) && critActual)
+      items.push({ label: critActual?.nombre, onClick: () => { setFiltroCriterioId(String(critActual.id)); setFiltroGrupoSub('TODOS'); setNivel('criterios'); } });
+    if (['carpetas','documentos'].includes(nivel) && subActual) {
+      const defPre = INDICADORES_PREDEFINIDOS.find(p => Number(p.numero) === Number(subActual.numero));
+      const grupoNombre = subActual.grupo_subcriterio ?? defPre?.grupo_subcriterio ?? null;
+      if (grupoNombre) {
+        items.push({
+          label: grupoNombre,
+          onClick: () => {
+            if (critActual) setFiltroCriterioId(String(critActual.id));
+            setFiltroGrupoSub(grupoNombre);
+            setNivel('criterios');
+          },
+        });
+      }
       items.push({
         label: `[${subActual.numero}] ${subActual.nombre}`,
         onClick: nivel === 'documentos' ? () => { setSelCarpetaId(null); setNivel('carpetas'); } : null,
       });
+    }
     if (nivel === 'documentos' && carpetaActual)
       items.push({ label: carpetaActual.nombre, onClick: null });
     return items;
@@ -709,8 +724,11 @@ export default function ExploradorDeArchivos() {
       const totalDocs = typeof sub.cantidadDocumentos === 'number'
         ? sub.cantidadDocumentos
         : (sub.documentos?.length || 0);
+      const defPre = INDICADORES_PREDEFINIDOS.find(p => Number(p.numero) === Number(sub.numero));
+      const grupo_subcriterio = sub.grupo_subcriterio ?? defPre?.grupo_subcriterio ?? null;
       return {
         ...sub,
+        grupo_subcriterio,
         criterioId: cr.id,
         criterioNombre: cr.nombre,
         criterioRequiereFirma: cr.requiere_firma,
@@ -724,8 +742,17 @@ export default function ExploradorDeArchivos() {
   const totalPdfsCarrera = todosSubcriteriosCarrera.reduce((acc, s) => acc + s.totalDocs, 0);
   const porcentajeAvance = totalSubsCarrera > 0 ? Math.round((subsConEvidencia / totalSubsCarrera) * 100) : 0;
 
-  const subcriteriosCarreraFiltrados = todosSubcriteriosCarrera.filter(sub => {
-    if (filtroCriterioId !== 'TODOS' && String(sub.criterioId) !== String(filtroCriterioId)) {
+  // Subcriterios del criterio activo (antes de filtrar por grupo_subcriterio)
+  const subcriteriosDeCriterioSeleccionado = todosSubcriteriosCarrera.filter(sub =>
+    filtroCriterioId === 'TODOS' ? true : String(sub.criterioId) === String(filtroCriterioId)
+  );
+
+  const gruposDisponiblesEnCriterio = Array.from(
+    new Set(subcriteriosDeCriterioSeleccionado.map(s => s.grupo_subcriterio).filter(Boolean))
+  );
+
+  const subcriteriosCarreraFiltrados = subcriteriosDeCriterioSeleccionado.filter(sub => {
+    if (filtroGrupoSub !== 'TODOS' && sub.grupo_subcriterio !== filtroGrupoSub) {
       return false;
     }
     if (filtroEvidencia === 'CON_DOCS' && sub.totalDocs === 0) return false;
@@ -735,6 +762,7 @@ export default function ExploradorDeArchivos() {
       const respStr = (sub.responsables || []).map(r => r.nombre).join(' ').toLowerCase();
       return (
         sub.nombre?.toLowerCase().includes(q) ||
+        sub.grupo_subcriterio?.toLowerCase().includes(q) ||
         sub.criterioNombre?.toLowerCase().includes(q) ||
         String(sub.numero || '').includes(q) ||
         sub.responsable_nombre?.toLowerCase().includes(q) ||
@@ -1183,60 +1211,108 @@ export default function ExploradorDeArchivos() {
             </div>
 
             {/* Píldoras de Filtro por Criterio (1..5) + Estado */}
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex flex-wrap items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => setFiltroCriterioId('TODOS')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                    filtroCriterioId === 'TODOS'
-                      ? 'bg-navy-900 text-white shadow-2xs'
-                      : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
-                  }`}
-                >
-                  Todos ({totalSubsCarrera})
-                </button>
-                {criteriosActivos.map(c => {
-                  const cant = (c.subcriterios || c.indicadores || []).length;
-                  const activo = String(filtroCriterioId) === String(c.id);
-                  return (
-                    <button
-                      key={c.id}
-                      type="button"
-                      onClick={() => setFiltroCriterioId(String(c.id))}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                        activo
-                          ? 'bg-navy-800 text-white shadow-2xs'
-                          : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
-                      }`}
-                    >
-                      {c.nombre} ({cant})
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Filtro rápido por estado de documentos */}
-              <div className="flex items-center gap-1.5">
-                {[
-                  { id: 'TODOS', label: 'Todos' },
-                  { id: 'CON_DOCS', label: `Con PDF (${subsConEvidencia})` },
-                  { id: 'PENDIENTES', label: `Vacíos (${totalSubsCarrera - subsConEvidencia})` },
-                ].map(op => (
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-1.5">
                   <button
-                    key={op.id}
                     type="button"
-                    onClick={() => setFiltroEvidencia(op.id)}
-                    className={`px-2.5 py-1 rounded-md text-xs font-medium border transition-colors ${
-                      filtroEvidencia === op.id
-                        ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
-                        : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
+                    onClick={() => {
+                      setFiltroCriterioId('TODOS');
+                      setFiltroGrupoSub('TODOS');
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                      filtroCriterioId === 'TODOS'
+                        ? 'bg-navy-900 text-white shadow-2xs'
+                        : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
                     }`}
                   >
-                    {op.label}
+                    Todos ({totalSubsCarrera})
                   </button>
-                ))}
+                  {criteriosActivos.map(c => {
+                    const cant = (c.subcriterios || c.indicadores || []).length;
+                    const activo = String(filtroCriterioId) === String(c.id);
+                    return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => {
+                          setFiltroCriterioId(String(c.id));
+                          setFiltroGrupoSub('TODOS');
+                        }}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                          activo
+                            ? 'bg-navy-800 text-white shadow-2xs'
+                            : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
+                        }`}
+                      >
+                        {c.nombre} ({cant})
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Filtro rápido por estado de documentos */}
+                <div className="flex items-center gap-1.5">
+                  {[
+                    { id: 'TODOS', label: 'Todos' },
+                    { id: 'CON_DOCS', label: `Con PDF (${subsConEvidencia})` },
+                    { id: 'PENDIENTES', label: `Vacíos (${totalSubsCarrera - subsConEvidencia})` },
+                  ].map(op => (
+                    <button
+                      key={op.id}
+                      type="button"
+                      onClick={() => setFiltroEvidencia(op.id)}
+                      className={`px-2.5 py-1 rounded-md text-xs font-medium border transition-colors ${
+                        filtroEvidencia === op.id
+                          ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                          : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
+                      }`}
+                    >
+                      {op.label}
+                    </button>
+                  ))}
+                </div>
               </div>
+
+              {/* Sub-píldoras de Subcriterios Agrupadores (Criterios 2 al 5: 2.1, 2.2, 3.1, 3.2, 4.1, 4.2, 5.1, 5.2) */}
+              {gruposDisponiblesEnCriterio.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5 bg-slate-100/80 border border-gray-200 rounded-xl px-3 py-2">
+                  <span className="text-[11px] font-bold text-navy-800 uppercase tracking-wide mr-1 flex items-center space-x-1">
+                    <FolderOpen size={13} className="text-amber-600" />
+                    <span>Subcriterios:</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setFiltroGrupoSub('TODOS')}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors ${
+                      filtroGrupoSub === 'TODOS'
+                        ? 'bg-navy-900 text-white'
+                        : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
+                    }`}
+                  >
+                    Todos ({subcriteriosDeCriterioSeleccionado.length})
+                  </button>
+                  {gruposDisponiblesEnCriterio.map(grupo => {
+                    const cantGrupo = subcriteriosDeCriterioSeleccionado.filter(s => s.grupo_subcriterio === grupo).length;
+                    const activo = filtroGrupoSub === grupo;
+                    return (
+                      <button
+                        key={grupo}
+                        type="button"
+                        onClick={() => setFiltroGrupoSub(grupo)}
+                        className={`inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors ${
+                          activo
+                            ? 'bg-amber-600 text-white shadow-2xs'
+                            : 'bg-white text-navy-900 border border-amber-200 hover:bg-amber-50'
+                        }`}
+                      >
+                        <Folder size={12} className={activo ? 'text-white' : 'text-amber-600'} />
+                        <span>{grupo} ({cantGrupo})</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             {/* MODO 1: TABLA RÁPIDA DE SUBCRITERIOS Y SUS CARPETAS */}
@@ -1260,15 +1336,41 @@ export default function ExploradorDeArchivos() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100">
-                        {subcriteriosCarreraFiltrados.map(sub => {
+                        {subcriteriosCarreraFiltrados.map((sub, idx) => {
                           const expandido = subExpandidoId === sub.id;
                           const carpetasDeSub = sub.carpetas || [];
                           const respTexto = sub.responsables?.length > 0
                             ? sub.responsables.map(r => r.nombre).join(', ')
                             : sub.responsable_nombre;
+                          const prevGrupo = idx > 0 ? subcriteriosCarreraFiltrados[idx - 1].grupo_subcriterio : null;
+                          const mostrarCabeceraGrupo = Boolean(sub.grupo_subcriterio && sub.grupo_subcriterio !== prevGrupo);
 
                           return (
                             <React.Fragment key={sub.id}>
+                              {mostrarCabeceraGrupo && (
+                                <tr className="bg-amber-50/80 border-y border-amber-200/80">
+                                  <td colSpan={6} className="px-4 py-2">
+                                    <div className="flex items-center justify-between">
+                                      <div className="flex items-center space-x-2">
+                                        <FolderOpen size={15} className="text-amber-600 flex-shrink-0" />
+                                        <span className="text-xs font-extrabold text-navy-900 tracking-wide">
+                                          {sub.grupo_subcriterio}
+                                        </span>
+                                        <span className="text-[11px] font-medium text-gray-500">
+                                          · {sub.criterioNombre}
+                                        </span>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() => setFiltroGrupoSub(filtroGrupoSub === sub.grupo_subcriterio ? 'TODOS' : sub.grupo_subcriterio)}
+                                        className="text-[11px] font-semibold text-amber-800 hover:underline"
+                                      >
+                                        {filtroGrupoSub === sub.grupo_subcriterio ? 'Ver todos' : 'Filtrar este grupo'}
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              )}
                               <tr
                                 className={`transition-colors ${
                                   expandido ? 'bg-slate-50/90' : 'hover:bg-gray-50/70'
@@ -1458,26 +1560,94 @@ export default function ExploradorDeArchivos() {
                 )}
               </div>
             ) : (
-              /* MODO 2: CARPETAS DE SUBCRITERIOS */
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {subcriteriosCarreraFiltrados.map(i => {
-                  const respTexto = i.responsables?.length > 0
-                    ? i.responsables.map(r => r.nombre).join(', ')
-                    : i.responsable_nombre;
-                  const numCarpetas = (i.carpetas || []).length;
-                  return (
-                    <CarpetaCard
-                      key={i.id}
-                      nombre={`[${i.numero}] ${i.nombre}`}
-                      descripcion={`${i.criterioNombre}${respTexto ? ` · Resp: ${respTexto}` : ''}`}
-                      badgeText={`${numCarpetas} carpeta${numCarpetas === 1 ? '' : 's'} · ${i.totalDocs} PDF${i.totalDocs === 1 ? '' : 's'}`}
-                      badgeColor={i.totalDocs > 0 ? 'green' : numCarpetas > 0 ? 'blue' : 'amber'}
-                      onClick={() => entrarSubcriterio(i.id, i.criterioId)}
-                      onEdit={esAdmin ? () => abrirEditar('subcriterio', i.id, i.nombre, { univId: selUniId, facId: selFacId, carrId: selCarrId, perId: selPerId, critId: i.criterioId }) : null}
-                      onDelete={esAdmin ? () => handleEliminar('subcriterio', i.id, i.nombre, { univId: selUniId, facId: selFacId, carrId: selCarrId, perId: selPerId, critId: i.criterioId }) : null}
-                    />
-                  );
-                })}
+              /* MODO 2: CARPETAS DE SUBCRITERIOS (Agrupando Criterios 2 al 5 por 2.1, 2.2, 3.1, etc.; Criterio 1 directo) */
+              <div className="space-y-4">
+                {filtroGrupoSub !== 'TODOS' && (
+                  <div className="flex items-center justify-between bg-amber-50/70 border border-amber-200 rounded-xl px-4 py-2.5">
+                    <div className="flex items-center space-x-2">
+                      <FolderOpen size={16} className="text-amber-600" />
+                      <span className="text-xs font-bold text-navy-900">{filtroGrupoSub}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setFiltroGrupoSub('TODOS')}
+                      className="text-xs font-semibold text-navy-700 hover:text-navy-900 bg-white border border-gray-200 px-3 py-1 rounded-lg"
+                    >
+                      ← Volver a Subcriterios
+                    </button>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {(() => {
+                    // Si hay un grupo seleccionado (ej. 2.1 PERSONAL ACADÉMICO) o búsqueda activa, mostrar los ítems individuales
+                    if (filtroGrupoSub !== 'TODOS' || busqueda.trim()) {
+                      return subcriteriosCarreraFiltrados.map(i => {
+                        const respTexto = i.responsables?.length > 0
+                          ? i.responsables.map(r => r.nombre).join(', ')
+                          : i.responsable_nombre;
+                        const numCarpetas = (i.carpetas || []).length;
+                        return (
+                          <CarpetaCard
+                            key={i.id}
+                            nombre={`[${i.numero}] ${i.nombre}`}
+                            descripcion={`${i.grupo_subcriterio ? `${i.grupo_subcriterio} · ` : ''}${i.criterioNombre}${respTexto ? ` · Resp: ${respTexto}` : ''}`}
+                            badgeText={`${numCarpetas} carpeta${numCarpetas === 1 ? '' : 's'} · ${i.totalDocs} PDF${i.totalDocs === 1 ? '' : 's'}`}
+                            badgeColor={i.totalDocs > 0 ? 'green' : numCarpetas > 0 ? 'blue' : 'amber'}
+                            onClick={() => entrarSubcriterio(i.id, i.criterioId)}
+                            onEdit={esAdmin ? () => abrirEditar('subcriterio', i.id, i.nombre, { univId: selUniId, facId: selFacId, carrId: selCarrId, perId: selPerId, critId: i.criterioId }) : null}
+                            onDelete={esAdmin ? () => handleEliminar('subcriterio', i.id, i.nombre, { univId: selUniId, facId: selFacId, carrId: selCarrId, perId: selPerId, critId: i.criterioId }) : null}
+                          />
+                        );
+                      });
+                    }
+
+                    // Cuando filtroGrupoSub === 'TODOS':
+                    // - Ítems sin grupo (Criterio 1) se muestran directamente
+                    // - Ítems con grupo (Criterios 2..5) se muestran primero como tarjetas de su Subcriterio Agrupador (2.1, 2.2, etc.)
+                    const cards = [];
+                    const gruposVistos = new Set();
+
+                    subcriteriosCarreraFiltrados.forEach(i => {
+                      if (!i.grupo_subcriterio) {
+                        const respTexto = i.responsables?.length > 0
+                          ? i.responsables.map(r => r.nombre).join(', ')
+                          : i.responsable_nombre;
+                        const numCarpetas = (i.carpetas || []).length;
+                        cards.push(
+                          <CarpetaCard
+                            key={`item-${i.id}`}
+                            nombre={`[${i.numero}] ${i.nombre}`}
+                            descripcion={`${i.criterioNombre}${respTexto ? ` · Resp: ${respTexto}` : ''}`}
+                            badgeText={`${numCarpetas} carpeta${numCarpetas === 1 ? '' : 's'} · ${i.totalDocs} PDF${i.totalDocs === 1 ? '' : 's'}`}
+                            badgeColor={i.totalDocs > 0 ? 'green' : numCarpetas > 0 ? 'blue' : 'amber'}
+                            onClick={() => entrarSubcriterio(i.id, i.criterioId)}
+                            onEdit={esAdmin ? () => abrirEditar('subcriterio', i.id, i.nombre, { univId: selUniId, facId: selFacId, carrId: selCarrId, perId: selPerId, critId: i.criterioId }) : null}
+                            onDelete={esAdmin ? () => handleEliminar('subcriterio', i.id, i.nombre, { univId: selUniId, facId: selFacId, carrId: selCarrId, perId: selPerId, critId: i.criterioId }) : null}
+                          />
+                        );
+                      } else if (!gruposVistos.has(i.grupo_subcriterio)) {
+                        gruposVistos.add(i.grupo_subcriterio);
+                        const itemsDelGrupo = subcriteriosCarreraFiltrados.filter(
+                          x => x.grupo_subcriterio === i.grupo_subcriterio
+                        );
+                        const docsDelGrupo = itemsDelGrupo.reduce((acc, x) => acc + (x.totalDocs || 0), 0);
+                        cards.push(
+                          <CarpetaCard
+                            key={`grupo-${i.grupo_subcriterio}`}
+                            nombre={i.grupo_subcriterio}
+                            descripcion={`${i.criterioNombre} · Ítems: ${itemsDelGrupo.map(x => `[${x.numero}]`).join(', ')}`}
+                            badgeText={`${itemsDelGrupo.length} subcriterio${itemsDelGrupo.length === 1 ? '' : 's'} · ${docsDelGrupo} PDF${docsDelGrupo === 1 ? '' : 's'}`}
+                            badgeColor={docsDelGrupo > 0 ? 'green' : 'blue'}
+                            onClick={() => setFiltroGrupoSub(i.grupo_subcriterio)}
+                          />
+                        );
+                      }
+                    });
+
+                    return cards;
+                  })()}
+                </div>
               </div>
             )}
           </div>

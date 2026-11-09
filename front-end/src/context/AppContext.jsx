@@ -128,6 +128,7 @@ export function AppProvider({ children }) {
           descripcion: `Subió evidencia "${d.nombre_original}"`,
           fecha: new Date(d.creado_en).toLocaleString('es-EC', { dateStyle: 'short', timeStyle: 'short' }),
           timestamp: new Date(d.creado_en).getTime(),
+          documentoRef: d,
         });
       }
       if (d.actualizado_en && new Date(d.actualizado_en).getTime() > new Date(d.creado_en).getTime() + 1000) {

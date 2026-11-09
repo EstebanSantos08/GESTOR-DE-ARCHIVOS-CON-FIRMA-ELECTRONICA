@@ -6,7 +6,7 @@ import { useApp } from '../context/useApp';
 const TIPOS = ['Todos', 'CARGA', 'FIRMA', 'RECHAZO', 'CREACION'];
 
 export default function HistorialAuditoria() {
-  const { auditoria } = useApp();
+  const { auditoria, setDocumentoSeleccionado } = useApp();
   const [busqueda, setBusqueda] = useState('');
   const [filtroTipo, setFiltroTipo] = useState('Todos');
 
@@ -78,7 +78,12 @@ export default function HistorialAuditoria() {
                 </tr>
               ) : (
                 registros.map((r, i) => (
-                  <tr key={r.id} className="hover:bg-gray-50/50 transition-colors">
+                  <tr
+                    key={r.id}
+                    onClick={() => r.documentoRef && setDocumentoSeleccionado(r.documentoRef)}
+                    className={`hover:bg-gray-50/50 transition-colors ${r.documentoRef ? 'cursor-pointer' : ''}`}
+                    title={r.documentoRef ? 'Clic para ver el documento' : ''}
+                  >
                     <td className="px-5 py-3 text-gray-400 text-xs">{i + 1}</td>
                     <td className="px-5 py-3 font-medium text-gray-800">{r.usuario}</td>
                     <td className="px-5 py-3"><Badge tipo={r.tipo} /></td>

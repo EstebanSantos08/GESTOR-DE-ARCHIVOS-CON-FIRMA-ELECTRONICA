@@ -11,6 +11,10 @@ const Indicador = sequelize.define('Indicador', {
     comment: 'Número del indicador (1-31)',
   },
   nombre: { type: DataTypes.STRING(300), allowNull: false },
+  grupo_subcriterio: {
+    type: DataTypes.STRING(200),
+    allowNull: true,
+  },
   descripcion: { type: DataTypes.TEXT },
   criterio_id: { type: DataTypes.INTEGER, allowNull: false },
   responsable_id: {

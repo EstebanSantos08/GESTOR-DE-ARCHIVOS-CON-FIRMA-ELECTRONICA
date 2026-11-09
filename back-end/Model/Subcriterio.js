@@ -11,6 +11,11 @@ const Subcriterio = sequelize.define('Subcriterio', {
     comment: 'Número del subcriterio (1-31)',
   },
   nombre: { type: DataTypes.STRING(300), allowNull: false },
+  grupo_subcriterio: {
+    type: DataTypes.STRING(200),
+    allowNull: true,
+    comment: 'Subcriterio agrupador (ej. 2.1 PERSONAL ACADÉMICO), null para Criterio 1',
+  },
   descripcion: { type: DataTypes.TEXT },
   criterio_id: { type: DataTypes.INTEGER, allowNull: false },
   responsable_id: {

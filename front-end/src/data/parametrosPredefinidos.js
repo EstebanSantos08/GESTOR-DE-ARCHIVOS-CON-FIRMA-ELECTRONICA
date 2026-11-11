@@ -23,6 +23,17 @@ export const CRITERIOS_PREDEFINIDOS = [
   '5. FUNCIONES ESTRATÉGICAS Y DE SOPORTE',
 ];
 
+export const SUBCRITERIOS_PREDEFINIDOS = [
+  { codigo: '2.1', criterio: '2. DOCENCIA', nombre: '2.1 PERSONAL ACADÉMICO', descripcion: 'Afinidad, titularidad y evaluación integral del personal académico' },
+  { codigo: '2.2', criterio: '2. DOCENCIA', nombre: '2.2 ESTUDIANTES', descripcion: 'Tutorías, habilidades blandas, resultados de aprendizaje, deserción, titulación y graduados' },
+  { codigo: '3.1', criterio: '3. INVESTIGACIÓN E INNOVACIÓN', nombre: '3.1 GESTIÓN DE LA INVESTIGACIÓN E INNOVACIÓN', descripcion: 'Planificación y gestión de la investigación e innovación' },
+  { codigo: '3.2', criterio: '3. INVESTIGACIÓN E INNOVACIÓN', nombre: '3.2 CONTRIBUCIÓN A LA INVESTIGACIÓN E INNOVACIÓN', descripcion: 'Producción académica e interdisciplinariedad' },
+  { codigo: '4.1', criterio: '4. VINCULACIÓN CON LA SOCIEDAD', nombre: '4.1 ORGANIZACIÓN DE LA VINCULACIÓN CON LA SOCIEDAD', descripcion: 'Planificación y gestión de la vinculación con la sociedad' },
+  { codigo: '4.2', criterio: '4. VINCULACIÓN CON LA SOCIEDAD', nombre: '4.2 TRANSFERENCIA DE TECNOLOGÍAS Y PRÁCTICAS PREPROFESIONALES', descripcion: 'Mecanismos de transferencia y prácticas preprofesionales' },
+  { codigo: '5.1', criterio: '5. FUNCIONES ESTRATÉGICAS Y DE SOPORTE', nombre: '5.1 FUNCIONES ESTRATÉGICAS', descripcion: 'Planificación, aseguramiento de calidad, ética e internacionalización' },
+  { codigo: '5.2', criterio: '5. FUNCIONES ESTRATÉGICAS Y DE SOPORTE', nombre: '5.2 FUNCIONES DE SOPORTE', descripcion: 'Infraestructura, ambientes de aprendizaje, herramientas pedagógicas y acervo bibliográfico' },
+];
+
 export const GRUPOS_SUBCRITERIOS_POR_CRITERIO = {
   '1. CURRÍCULO': [],
   '2. DOCENCIA': [
@@ -43,7 +54,7 @@ export const GRUPOS_SUBCRITERIOS_POR_CRITERIO = {
   ],
 };
 
-export const INDICADORES_PREDEFINIDOS = [
+export const ACTIVIDADES_PREDEFINIDAS = [
   // 1. CURRÍCULO (Directo, sin subcriterio agrupador)
   { numero: 1,  criterio: '1. CURRÍCULO', grupo_subcriterio: null, nombre: 'Perfil de egreso', responsable_nombre: 'Directores de Carrera' },
   { numero: 2,  criterio: '1. CURRÍCULO', grupo_subcriterio: null, nombre: 'Proyecto curricular', responsable_nombre: 'Directores de Carrera' },
@@ -85,3 +96,6 @@ export const INDICADORES_PREDEFINIDOS = [
   { numero: 30, criterio: '5. FUNCIONES ESTRATÉGICAS Y DE SOPORTE', grupo_subcriterio: '5.2 FUNCIONES DE SOPORTE', nombre: 'Herramientas pedagógicas', responsable_nombre: 'Ing. David Calderón' },
   { numero: 31, criterio: '5. FUNCIONES ESTRATÉGICAS Y DE SOPORTE', grupo_subcriterio: '5.2 FUNCIONES DE SOPORTE', nombre: 'Gestión del acervo y recursos bibliográficos', responsable_nombre: 'Biblioteca UCACUE / Directores de Carrera' },
 ];
+
+// Alias de compatibilidad retroactiva
+export const INDICADORES_PREDEFINIDOS = ACTIVIDADES_PREDEFINIDAS;

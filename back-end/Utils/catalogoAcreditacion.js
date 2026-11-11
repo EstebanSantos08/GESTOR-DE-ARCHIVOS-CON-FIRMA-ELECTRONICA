@@ -6,8 +6,19 @@ const CRITERIOS_ACREDITACION = [
   { idx: 4, nombre: '5. FUNCIONES ESTRATÉGICAS Y DE SOPORTE', descripcion: 'Planificación, calidad, infraestructura y gestión' },
 ];
 
-const SUBCRITERIOS_ACREDITACION = [
-  // 1. CURRÍCULO (Queda igual, directo bajo el Criterio 1 sin agrupador)
+const SUBCRITERIOS_OFICIALES = [
+  { codigo: '2.1', criterioIdx: 1, criterioNombre: '2. DOCENCIA', nombre: '2.1 PERSONAL ACADÉMICO', descripcion: 'Afinidad, titularidad y evaluación integral del personal académico' },
+  { codigo: '2.2', criterioIdx: 1, criterioNombre: '2. DOCENCIA', nombre: '2.2 ESTUDIANTES', descripcion: 'Tutorías, habilidades blandas, resultados de aprendizaje, deserción, titulación y graduados' },
+  { codigo: '3.1', criterioIdx: 2, criterioNombre: '3. INVESTIGACIÓN E INNOVACIÓN', nombre: '3.1 GESTIÓN DE LA INVESTIGACIÓN E INNOVACIÓN', descripcion: 'Planificación y gestión de la investigación e innovación' },
+  { codigo: '3.2', criterioIdx: 2, criterioNombre: '3. INVESTIGACIÓN E INNOVACIÓN', nombre: '3.2 CONTRIBUCIÓN A LA INVESTIGACIÓN E INNOVACIÓN', descripcion: 'Producción académica e interdisciplinariedad' },
+  { codigo: '4.1', criterioIdx: 3, criterioNombre: '4. VINCULACIÓN CON LA SOCIEDAD', nombre: '4.1 ORGANIZACIÓN DE LA VINCULACIÓN CON LA SOCIEDAD', descripcion: 'Planificación y gestión de la vinculación con la sociedad' },
+  { codigo: '4.2', criterioIdx: 3, criterioNombre: '4. VINCULACIÓN CON LA SOCIEDAD', nombre: '4.2 TRANSFERENCIA DE TECNOLOGÍAS Y PRÁCTICAS PREPROFESIONALES', descripcion: 'Mecanismos de transferencia y prácticas preprofesionales' },
+  { codigo: '5.1', criterioIdx: 4, criterioNombre: '5. FUNCIONES ESTRATÉGICAS Y DE SOPORTE', nombre: '5.1 FUNCIONES ESTRATÉGICAS', descripcion: 'Planificación, aseguramiento de calidad, ética e internacionalización' },
+  { codigo: '5.2', criterioIdx: 4, criterioNombre: '5. FUNCIONES ESTRATÉGICAS Y DE SOPORTE', nombre: '5.2 FUNCIONES DE SOPORTE', descripcion: 'Infraestructura, ambientes de aprendizaje, herramientas pedagógicas y acervo bibliográfico' },
+];
+
+const ACTIVIDADES_ACREDITACION = [
+  // 1. CURRÍCULO (Actividades directas bajo el Criterio 1 sin subcriterio agrupador)
   { numero: 1,  criterioIdx: 0, grupo_subcriterio: null, nombre: 'Perfil de egreso', responsableTexto: 'Directores de Carrera' },
   { numero: 2,  criterioIdx: 0, grupo_subcriterio: null, nombre: 'Proyecto curricular', responsableTexto: 'Directores de Carrera' },
   { numero: 3,  criterioIdx: 0, grupo_subcriterio: null, nombre: 'Malla curricular', responsableTexto: 'Directores de Carrera' },
@@ -16,7 +27,7 @@ const SUBCRITERIOS_ACREDITACION = [
   { numero: 6,  criterioIdx: 0, grupo_subcriterio: null, nombre: 'Escenarios de prácticas formativas', responsableTexto: 'Directores de Carrera' },
   { numero: 7,  criterioIdx: 0, grupo_subcriterio: null, nombre: 'Tecnologías para el Aprendizaje y Conocimiento (TAC)', responsableTexto: 'Directores de Carrera' },
 
-  // 2. DOCENCIA -> 2.1 PERSONAL ACADÉMICO y 2.2 ESTUDIANTES
+  // 2. DOCENCIA -> Subcriterios 2.1 PERSONAL ACADÉMICO y 2.2 ESTUDIANTES
   { numero: 8,  criterioIdx: 1, grupo_subcriterio: '2.1 PERSONAL ACADÉMICO', nombre: 'Afinidad del personal académico', responsableTexto: 'Directores de Carrera' },
   { numero: 9,  criterioIdx: 1, grupo_subcriterio: '2.1 PERSONAL ACADÉMICO', nombre: 'Personal académico titular permanente', responsableTexto: 'Directores de Carrera' },
   { numero: 10, criterioIdx: 1, grupo_subcriterio: '2.1 PERSONAL ACADÉMICO', nombre: 'Evaluación integral del desempeño del personal académico', responsableTexto: 'Directores de Carrera' },
@@ -28,17 +39,17 @@ const SUBCRITERIOS_ACREDITACION = [
   { numero: 16, criterioIdx: 1, grupo_subcriterio: '2.2 ESTUDIANTES', nombre: 'Seguimiento a graduados', responsableTexto: 'Ing. Antonio Cajamarca' },
   { numero: 17, criterioIdx: 1, grupo_subcriterio: '2.2 ESTUDIANTES', nombre: 'Éxito de los graduados', responsableTexto: 'Ing. Antonio Cajamarca' },
 
-  // 3. INVESTIGACIÓN E INNOVACIÓN -> 3.1 y 3.2
+  // 3. INVESTIGACIÓN E INNOVACIÓN -> Subcriterios 3.1 y 3.2
   { numero: 18, criterioIdx: 2, grupo_subcriterio: '3.1 GESTIÓN DE LA INVESTIGACIÓN E INNOVACIÓN', nombre: 'Gestión de la investigación e innovación', responsableTexto: 'PhD. Orlando Álvarez' },
   { numero: 19, criterioIdx: 2, grupo_subcriterio: '3.2 CONTRIBUCIÓN A LA INVESTIGACIÓN E INNOVACIÓN', nombre: 'Producción académica', responsableTexto: 'PhD. Orlando Álvarez' },
   { numero: 20, criterioIdx: 2, grupo_subcriterio: '3.2 CONTRIBUCIÓN A LA INVESTIGACIÓN E INNOVACIÓN', nombre: 'Interdisciplinariedad para la articulación de las funciones sustantivas', responsableTexto: 'Eco. Jorge Cárdenas / Ing. Jeyson Gaona' },
 
-  // 4. VINCULACIÓN CON LA SOCIEDAD -> 4.1 y 4.2
+  // 4. VINCULACIÓN CON LA SOCIEDAD -> Subcriterios 4.1 y 4.2
   { numero: 21, criterioIdx: 3, grupo_subcriterio: '4.1 ORGANIZACIÓN DE LA VINCULACIÓN CON LA SOCIEDAD', nombre: 'Planificación y gestión de la vinculación con la sociedad', responsableTexto: 'Ing. Jenny Vizñay / Ing. Juan Pablo Pazmiño' },
   { numero: 22, criterioIdx: 3, grupo_subcriterio: '4.2 TRANSFERENCIA DE TECNOLOGÍAS Y PRÁCTICAS PREPROFESIONALES', nombre: 'Mecanismos de transferencia de tecnología y conocimiento', responsableTexto: 'Ing. Jenny Vizñay / Ing. Juan Pablo Pazmiño' },
   { numero: 23, criterioIdx: 3, grupo_subcriterio: '4.2 TRANSFERENCIA DE TECNOLOGÍAS Y PRÁCTICAS PREPROFESIONALES', nombre: 'Prácticas preprofesionales', responsableTexto: 'Software: Ing. Xavier González | Sistemas: Dr. Orlando Álvarez | VR: Ing. Xavier González | Robótica: Ing. Pablo Buestán | Biomédicos: Ing. Sandro Ortiz' },
 
-  // 5. FUNCIONES ESTRATÉGICAS Y DE SOPORTE -> 5.1 y 5.2
+  // 5. FUNCIONES ESTRATÉGICAS Y DE SOPORTE -> Subcriterios 5.1 y 5.2
   { numero: 24, criterioIdx: 4, grupo_subcriterio: '5.1 FUNCIONES ESTRATÉGICAS', nombre: 'Planificación académica y administrativa de la carrera', responsableTexto: 'Directores de Carrera' },
   { numero: 25, criterioIdx: 4, grupo_subcriterio: '5.1 FUNCIONES ESTRATÉGICAS', nombre: 'Aseguramiento de la calidad de la carrera', responsableTexto: 'Ing. José Carrillo' },
   { numero: 26, criterioIdx: 4, grupo_subcriterio: '5.1 FUNCIONES ESTRATÉGICAS', nombre: 'Ética, transparencia e integridad', responsableTexto: 'Directores de Carrera' },
@@ -49,8 +60,11 @@ const SUBCRITERIOS_ACREDITACION = [
   { numero: 31, criterioIdx: 4, grupo_subcriterio: '5.2 FUNCIONES DE SOPORTE', nombre: 'Gestión del acervo y recursos bibliográficos', responsableTexto: 'Biblioteca UCACUE / Directores de Carrera' },
 ];
 
+// Alias de compatibilidad retroactiva
+const SUBCRITERIOS_ACREDITACION = ACTIVIDADES_ACREDITACION;
+
 /**
- * Genera de forma automatizada los 5 Criterios y 31 Subcriterios (e Indicadores legacy)
+ * Genera de forma automatizada los 5 Criterios, 8 Subcriterios oficiales y 31 Actividades
  * para una Carrera dentro de un Período dado.
  */
 async function generarEstructuraParaCarreraYPeriodo({
@@ -81,48 +95,48 @@ async function generarEstructuraParaCarreraYPeriodo({
     criteriosCreados.push(criterio);
   }
 
-  for (const subDef of SUBCRITERIOS_ACREDITACION) {
-    const criterio = criteriosCreados[subDef.criterioIdx];
+  for (const actDef of ACTIVIDADES_ACREDITACION) {
+    const criterio = criteriosCreados[actDef.criterioIdx];
 
-    // 1. Crear Subcriterio
+    // 1. Crear registro de Actividad (almacenado en Subcriterio para relación con Carpetas y Documentos)
     if (Subcriterio) {
       const [sub] = await Subcriterio.findOrCreate({
-        where: { numero: subDef.numero, criterio_id: criterio.id },
+        where: { numero: actDef.numero, criterio_id: criterio.id },
         defaults: {
-          nombre: subDef.nombre,
-          grupo_subcriterio: subDef.grupo_subcriterio || null,
-          descripcion: `Subir los documentos PDF respaldatorios para el subcriterio [${subDef.numero}] ${subDef.nombre}.`,
+          nombre: actDef.nombre,
+          grupo_subcriterio: actDef.grupo_subcriterio || null,
+          descripcion: `Subir los documentos PDF respaldatorios para la actividad [${actDef.numero}] ${actDef.nombre}.`,
           criterio_id: criterio.id,
-          responsable_nombre: subDef.responsableTexto,
+          responsable_nombre: actDef.responsableTexto,
           requiere_firma: true,
         },
         transaction,
       });
-      if (sub && sub.grupo_subcriterio !== (subDef.grupo_subcriterio || null) && typeof sub.update === 'function') {
-        await sub.update({ grupo_subcriterio: subDef.grupo_subcriterio || null }, { transaction }).catch(() => {});
+      if (sub && sub.grupo_subcriterio !== (actDef.grupo_subcriterio || null) && typeof sub.update === 'function') {
+        await sub.update({ grupo_subcriterio: actDef.grupo_subcriterio || null }, { transaction }).catch(() => {});
       }
     }
 
     // 2. Crear Indicador (para mantener sincronía y compatibilidad retroactiva)
     if (Indicador) {
       const [ind] = await Indicador.findOrCreate({
-        where: { numero: subDef.numero, criterio_id: criterio.id },
+        where: { numero: actDef.numero, criterio_id: criterio.id },
         defaults: {
-          nombre: subDef.nombre,
-          grupo_subcriterio: subDef.grupo_subcriterio || null,
-          descripcion: `Subir los documentos PDF respaldatorios para el subcriterio [${subDef.numero}] ${subDef.nombre}.`,
+          nombre: actDef.nombre,
+          grupo_subcriterio: actDef.grupo_subcriterio || null,
+          descripcion: `Subir los documentos PDF respaldatorios para la actividad [${actDef.numero}] ${actDef.nombre}.`,
           criterio_id: criterio.id,
-          responsable_nombre: subDef.responsableTexto,
+          responsable_nombre: actDef.responsableTexto,
         },
         transaction,
       });
-      if (ind && ind.grupo_subcriterio !== (subDef.grupo_subcriterio || null) && typeof ind.update === 'function') {
-        await ind.update({ grupo_subcriterio: subDef.grupo_subcriterio || null }, { transaction }).catch(() => {});
+      if (ind && ind.grupo_subcriterio !== (actDef.grupo_subcriterio || null) && typeof ind.update === 'function') {
+        await ind.update({ grupo_subcriterio: actDef.grupo_subcriterio || null }, { transaction }).catch(() => {});
       }
     }
   }
 
-  // 3. Incorporar dinámicamente cualquier Criterio, Subcriterio y Carpeta adicional/personalizado
+  // 3. Incorporar dinámicamente cualquier Criterio, Actividad y Carpeta adicional/personalizado
   try {
     const { Op } = require('sequelize');
     const criteriosPrevios = await Criterio.findAll({
@@ -271,6 +285,8 @@ async function generarEstructuraParaCarreraYPeriodo({
 
 module.exports = {
   CRITERIOS_ACREDITACION,
+  SUBCRITERIOS_OFICIALES,
+  ACTIVIDADES_ACREDITACION,
   SUBCRITERIOS_ACREDITACION,
   generarEstructuraParaCarreraYPeriodo,
 };

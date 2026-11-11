@@ -181,6 +181,9 @@ async function listarDocumentos(req, res) {
     if (Subcriterio) {
       includeModels.push({ model: Subcriterio, as: 'subcriterio', attributes: ['id', 'numero', 'nombre'] });
     }
+    if (Carpeta) {
+      includeModels.push({ model: Carpeta, as: 'carpeta', attributes: ['id', 'nombre'] });
+    }
 
     const documentos = await Documento.findAll({
       where,

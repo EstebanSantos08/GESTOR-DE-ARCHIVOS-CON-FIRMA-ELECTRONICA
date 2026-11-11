@@ -111,7 +111,10 @@ export function AppProvider({ children }) {
     if (isAutenticado && token) {
       cargarEstructura();
       cargarMetricasApi();
-      cargarFlujosFirma();
+      const esAdmin = usuario?.roles?.some(r => r === 'ADMINISTRADOR' || r?.nombre === 'ADMINISTRADOR');
+      if (esAdmin) {
+        cargarFlujosFirma();
+      }
       cargarDocumentosGlobales(token, usuario);
     }
   }, [isAutenticado, token]);
@@ -227,6 +230,8 @@ export function AppProvider({ children }) {
       ...d,
       nombre: d.nombre_original,
       subido_por: d.subidoPor?.nombre || '',
+      carpeta_id: d.carpeta_id || null,
+      carpeta_nombre: d.carpeta?.nombre || null,
       fecha: new Date(d.creado_en).toLocaleDateString('es-EC'),
       hash: d.hash_sha256 || '',
       tamanio: 'N/A',
@@ -372,25 +377,40 @@ export function AppProvider({ children }) {
                 }
               : cp
           );
-          const totalDocsSub = nuevasCarpetas.reduce((acc, cp) => acc + (cp.cantidadDocumentos || 0), 0);
+          const otrosDocs = (s.documentos || []).filter(d => Number(d.carpeta_id) !== Number(carpetaId));
+          const todosDocsSub = [...otrosDocs, ...(Array.isArray(docs) ? docs : [])];
+          const totalDocsCarpetas = nuevasCarpetas.reduce((acc, cp) => acc + (cp.cantidadDocumentos || 0), 0);
+          const docsDirectosCount = (s.documentos || []).filter(d => !d.carpeta_id).length;
           return {
             ...s,
             carpetas: nuevasCarpetas,
-            cantidadDocumentos: Math.max(s.cantidadDocumentos || 0, totalDocsSub),
+            documentos: todosDocsSub,
+            cantidadDocumentos: Math.max(todosDocsSub.length, totalDocsCarpetas + docsDirectosCount),
           };
         }
+        const listaDocs = Array.isArray(docs) ? docs : [];
+        const nuevasCarpetas = (s.carpetas || []).map(cp => {
+          const docsDeEstaCarpeta = listaDocs.filter(d => Number(d.carpeta_id) === Number(cp.id));
+          return {
+            ...cp,
+            documentos: docsDeEstaCarpeta,
+            cantidadDocumentos: docsDeEstaCarpeta.length,
+          };
+        });
         return {
           ...s,
-          documentos: docs,
-          cantidadDocumentos: Array.isArray(docs) ? docs.length : (s.cantidadDocumentos || 0),
+          carpetas: nuevasCarpetas,
+          documentos: listaDocs,
+          cantidadDocumentos: listaDocs.length,
         };
       });
 
     const actualizarCriterios = (criterios = []) =>
       criterios.map(c => {
-        const nuevosSub = actualizarListaSub(c.subcriterios || c.indicadores || []);
+        const nuevosSub = actualizarListaSub(c.actividades || c.subcriterios || c.indicadores || []);
         return {
           ...c,
+          actividades: nuevosSub,
           subcriterios: nuevosSub,
           indicadores: nuevosSub,
         };
@@ -550,9 +570,10 @@ export function AppProvider({ children }) {
 
     const actualizarCriterios = (criterios = []) =>
       criterios.map(c => {
-        const actualizados = actualizarSubLista(c.subcriterios || c.indicadores || []);
+        const actualizados = actualizarSubLista(c.actividades || c.subcriterios || c.indicadores || []);
         return {
           ...c,
+          actividades: actualizados,
           subcriterios: actualizados,
           indicadores: actualizados,
         };
@@ -987,7 +1008,7 @@ export function AppProvider({ children }) {
     return data;
   }
 
-  // CRUD Subcriterios (e Indicadores por compatibilidad)
+  // CRUD Actividades / Subcriterios (e Indicadores por compatibilidad)
   async function actualizarIndicador(id, univId, facultadId, carreraId, periodoId, criterioId, datos) {
     const res = await fetch(`${API_URL}/parametrizacion/subcriterios/${id}`, {
       method: 'PUT',
@@ -995,7 +1016,7 @@ export function AppProvider({ children }) {
       body: JSON.stringify(datos),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Error al actualizar subcriterio');
+    if (!res.ok) throw new Error(data.error || 'Error al actualizar actividad');
     await cargarEstructura();
     return data;
   }
@@ -1006,7 +1027,7 @@ export function AppProvider({ children }) {
       headers: authHeaders(),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Error al eliminar subcriterio');
+    if (!res.ok) throw new Error(data.error || 'Error al eliminar actividad');
     await cargarEstructura();
     return data;
   }
@@ -1018,7 +1039,7 @@ export function AppProvider({ children }) {
       body: JSON.stringify({ ...datos, criterio_id: criterioId }),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || data.errores?.[0]?.msg || 'Error al crear subcriterio');
+    if (!res.ok) throw new Error(data.error || data.errores?.[0]?.msg || 'Error al crear actividad');
     await cargarEstructura();
     return data;
   }
@@ -1030,12 +1051,12 @@ export function AppProvider({ children }) {
       body: JSON.stringify({ responsablesIds }),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Error al asignar responsables al subcriterio');
+    if (!res.ok) throw new Error(data.error || 'Error al asignar responsables a la actividad');
     await cargarEstructura();
     return data;
   }
 
-  // CRUD Carpetas (dentro de Subcriterios — solo Administrador)
+  // CRUD Carpetas (compatibilidad retroactiva)
   async function agregarCarpeta(subcriterioId, datos) {
     const res = await fetch(`${API_URL}/parametrizacion/carpetas`, {
       method: 'POST',
@@ -1076,7 +1097,7 @@ export function AppProvider({ children }) {
       (f?.carreras ?? []).flatMap(ca =>
         (ca?.periodos ?? []).flatMap(p =>
           (p?.criterios ?? []).flatMap(c =>
-            (c?.subcriterios ?? c?.indicadores ?? []).flatMap(i => i?.documentos ?? [])
+            (c?.actividades ?? c?.subcriterios ?? c?.indicadores ?? []).flatMap(i => i?.documentos ?? [])
           )
         )
       )

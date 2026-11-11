@@ -1,11 +1,25 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Check, Building2, BookOpen, GraduationCap, CalendarDays, Microscope, Target, Pencil, Trash2, X, Save, UserCheck, UserPlus, Search, Info, FileText, FolderOpen, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, Check, Building2, BookOpen, GraduationCap, CalendarDays, Microscope, Layers, Target, Pencil, Trash2, X, Save, UserCheck, UserPlus, Search, Info, FileText, FolderOpen, ChevronDown, ChevronUp } from 'lucide-react';
 import { useApp } from '../context/useApp';
-import { RESPONSABLES_PREDEFINIDOS, CRITERIOS_PREDEFINIDOS, INDICADORES_PREDEFINIDOS, GRUPOS_SUBCRITERIOS_POR_CRITERIO } from '../data/parametrosPredefinidos';
+import {
+  RESPONSABLES_PREDEFINIDOS,
+  CRITERIOS_PREDEFINIDOS,
+  SUBCRITERIOS_PREDEFINIDOS,
+  ACTIVIDADES_PREDEFINIDAS,
+  INDICADORES_PREDEFINIDOS,
+  GRUPOS_SUBCRITERIOS_POR_CRITERIO,
+} from '../data/parametrosPredefinidos';
 import ModalDocenteForm from '../components/modals/ModalDocenteForm';
 import PasoFirmaItem from '../components/flujos/PasoFirmaItem';
 
-export { RESPONSABLES_PREDEFINIDOS, CRITERIOS_PREDEFINIDOS, INDICADORES_PREDEFINIDOS, GRUPOS_SUBCRITERIOS_POR_CRITERIO };
+export {
+  RESPONSABLES_PREDEFINIDOS,
+  CRITERIOS_PREDEFINIDOS,
+  SUBCRITERIOS_PREDEFINIDOS,
+  ACTIVIDADES_PREDEFINIDAS,
+  INDICADORES_PREDEFINIDOS,
+  GRUPOS_SUBCRITERIOS_POR_CRITERIO,
+};
 
 function Toggle({ value, onChange, label }) {
   return (
@@ -44,7 +58,7 @@ export default function ParametrizacionAdmin() {
     agregarPeriodo, actualizarPeriodo, eliminarPeriodo,
     agregarCriterio, actualizarCriterio, eliminarCriterio,
     agregarIndicador, actualizarIndicador, eliminarIndicador, asignarResponsablesIndicador,
-    agregarCarpeta, actualizarCarpeta, eliminarCarpeta,
+    agregarCarpeta, eliminarCarpeta,
     listarUsuarios,
     listarDocentes, eliminarDocente,
     flujosFirma, crearFlujo, actualizarFlujo, eliminarFlujo,
@@ -76,7 +90,7 @@ export default function ParametrizacionAdmin() {
 
   const actividadesDisponibles = catalogoActividades.length > 0
     ? catalogoActividades
-    : (universidades || []).flatMap(u => (u.facultades || []).flatMap(f => (f.periodos || []).flatMap(p => (p.carreras || []).flatMap(ca => (ca.criterios || []).flatMap(cr => cr.subcriterios || cr.indicadores || [])))));
+    : (universidades || []).flatMap(u => (u.facultades || []).flatMap(f => (f.periodos || []).flatMap(p => (p.carreras || []).flatMap(ca => (ca.criterios || []).flatMap(cr => cr.actividades || cr.subcriterios || cr.indicadores || [])))));
 
   const [usuariosDB, setUsuariosDB] = useState([]);
 
@@ -104,7 +118,7 @@ export default function ParametrizacionAdmin() {
     }
   };
 
-  const [tab, setTab] = useState(navParams?.tab || 'subcriterio');
+  const [tab, setTab] = useState(navParams?.tab || 'actividad');
 
   useEffect(() => {
     if (navParams?.tab) {
@@ -119,10 +133,24 @@ export default function ParametrizacionAdmin() {
 
   const [busquedaCriterio, setBusquedaCriterio] = useState('');
   const [busquedaSubcriterio, setBusquedaSubcriterio] = useState('');
+  const [busquedaActividad, setBusquedaActividad] = useState('');
+  const [filtroGrupoSubcriterio, setFiltroGrupoSubcriterio] = useState('');
   const [mostrarFormCriterio, setMostrarFormCriterio] = useState(false);
   const [mostrarFormSubcriterio, setMostrarFormSubcriterio] = useState(false);
+  const [mostrarFormActividad, setMostrarFormActividad] = useState(false);
   const [subcriterioCarpetasModal, setSubcriterioCarpetasModal] = useState(null); // { u, f, p, ca, c, i }
   const [fCarpetaParam, setFCarpetaParam] = useState({ nombre: '', descripcion: '' });
+
+  // Subcriterios personalizados adicionales creados por el Admin
+  const [subcriteriosPersonalizados, setSubcriteriosPersonalizados] = useState(() => {
+    try {
+      const guardados = localStorage.getItem('subcriterios_personalizados_admin');
+      return guardados ? JSON.parse(guardados) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [fSubOficial, setFSubOficial] = useState({ codigo: '', nombre: '', descripcion: '' });
 
   const [fUniv, setFUniv] = useState({ nombre: '', siglas: '' });
   const [fFac,  setFfac]  = useState({ nombre: '', univId: '' });
@@ -165,7 +193,7 @@ export default function ParametrizacionAdmin() {
     setFInd(prev => prev.univId ? prev : { ...prev, univId: uId, facId: fId, perId: pId, carrId: cId });
   }, [universidades]);
 
-  function sincronizarContexto({ univId, facId, perId, carrId, critId = '' }) {
+  function sincronizarContexto({ univId, facId, perId, carrId, critId = '', grupoSub = '' }) {
     let resolvedPerId = perId;
     if (carrId && !perId) {
       const uObj = universidades.find(u => String(u.id) === String(univId ?? fCrit.univId));
@@ -191,6 +219,7 @@ export default function ParametrizacionAdmin() {
       carrId: carrId ?? prev.carrId,
       critId: critId,
     }));
+    setFiltroGrupoSubcriterio(grupoSub);
   }
 
   function mostrarExito(msg) {
@@ -249,7 +278,7 @@ export default function ParametrizacionAdmin() {
         { nombre: fPer.nombre }
       );
       setFPer(prev => ({ ...prev, nombre: '' }));
-      mostrarExito('Período creado exitosamente con sus 5 Criterios y 31 Subcriterios');
+      mostrarExito('Período creado exitosamente con sus 5 Criterios, 8 Subcriterios y 31 Actividades');
     } catch (err) { mostrarError(err.message); }
   }
 
@@ -266,6 +295,30 @@ export default function ParametrizacionAdmin() {
       setFCrit(prev => ({ ...prev, nombre: '', requiere_firma: true }));
       mostrarExito('Criterio creado y registrado por defecto para los períodos de la carrera');
     } catch (err) { mostrarError(err.message); }
+  }
+
+  function submitSubOficial(e) {
+    e.preventDefault();
+    if (!fSubOficial.nombre.trim() || !critSelInd) return;
+    const nombreCompleto = fSubOficial.codigo.trim()
+      ? `${fSubOficial.codigo.trim()} ${fSubOficial.nombre.trim()}`
+      : fSubOficial.nombre.trim();
+    const nuevo = {
+      codigo: fSubOficial.codigo.trim() || nombreCompleto.split(' ')[0] || 'SUB',
+      criterio: critSelInd.nombre,
+      nombre: nombreCompleto,
+      descripcion: fSubOficial.descripcion.trim() || 'Subcriterio configurado por el administrador',
+    };
+    const actualizados = [
+      ...subcriteriosPersonalizados.filter(s => !(s.criterio === nuevo.criterio && s.nombre === nuevo.nombre)),
+      nuevo,
+    ];
+    setSubcriteriosPersonalizados(actualizados);
+    try {
+      localStorage.setItem('subcriterios_personalizados_admin', JSON.stringify(actualizados));
+    } catch {}
+    setFSubOficial({ codigo: '', nombre: '', descripcion: '' });
+    mostrarExito(`Subcriterio "${nombreCompleto}" registrado en ${critSelInd.nombre}`);
   }
 
   async function submitInd(e) {
@@ -301,7 +354,7 @@ export default function ParametrizacionAdmin() {
         flujo_id: '',
         responsablesIds: [],
       }));
-      mostrarExito('Subcriterio creado exitosamente');
+      mostrarExito('Actividad creada exitosamente');
     } catch (err) { mostrarError(err.message); }
   }
 
@@ -350,10 +403,27 @@ export default function ParametrizacionAdmin() {
       } else if (tipo === 'criterio') {
         const payload = { ...valor, flujo_id: valor.flujo_id || null };
         await actualizarCriterio(id, meta.univId, meta.facId, meta.carrId, meta.perId, payload);
-      } else if (tipo === 'indicador' || tipo === 'subcriterio') {
+      } else if (tipo === 'subcriterio_grupo') {
+        // Renombrar el grupo_subcriterio en todas las actividades asociadas a ese subcriterio dentro del criterio
+        const nuevoNombreGrupo = (valor.nombre || '').trim();
+        if (nuevoNombreGrupo && Array.isArray(meta.actividadesAsociadas)) {
+          for (const act of meta.actividadesAsociadas) {
+            await actualizarIndicador(
+              act.id,
+              meta.univId,
+              meta.facId,
+              meta.carrId,
+              meta.perId,
+              meta.critId,
+              { numero: Number(act.numero), nombre: act.nombre, grupo_subcriterio: nuevoNombreGrupo }
+            );
+          }
+        }
+      } else if (tipo === 'indicador' || tipo === 'subcriterio' || tipo === 'actividad') {
         const payload = {
           ...valor,
           numero: Number(valor.numero),
+          grupo_subcriterio: valor.grupo_subcriterio || null,
           flujo_id: valor.flujo_id || null,
         };
         await actualizarIndicador(id, meta.univId, meta.facId, meta.carrId, meta.perId, meta.critId, payload);
@@ -386,7 +456,7 @@ export default function ParametrizacionAdmin() {
       else if (tipo === 'carrera') await eliminarCarrera(id, meta.univId, meta.facId);
       else if (tipo === 'periodo') await eliminarPeriodo(id, meta.univId, meta.facId, meta.carrId);
       else if (tipo === 'criterio') await eliminarCriterio(id, meta.univId, meta.facId, meta.carrId, meta.perId);
-      else if (tipo === 'indicador' || tipo === 'subcriterio') await eliminarIndicador(id, meta.univId, meta.facId, meta.carrId, meta.perId, meta.critId);
+      else if (tipo === 'indicador' || tipo === 'subcriterio' || tipo === 'actividad') await eliminarIndicador(id, meta.univId, meta.facId, meta.carrId, meta.perId, meta.critId);
       else if (tipo === 'flujo') await eliminarFlujo(id);
       mostrarExito('Eliminado correctamente');
     } catch (err) { mostrarError(err.message); }
@@ -405,7 +475,8 @@ export default function ParametrizacionAdmin() {
     { id: 'carrera',     label: 'Carrera',     icon: GraduationCap },
     { id: 'periodo',     label: 'Período',     icon: CalendarDays },
     { id: 'criterio',    label: 'Criterio',    icon: Microscope },
-    { id: 'subcriterio', label: 'Subcriterio', icon: Target },
+    { id: 'subcriterio', label: 'Subcriterio', icon: Layers },
+    { id: 'actividad',   label: 'Actividad',   icon: Target },
     { id: 'docentes',    label: 'Docentes',    icon: UserCheck },
     { id: 'flujos',      label: 'Flujos Firma', icon: Pencil },
   ];
@@ -418,7 +489,6 @@ export default function ParametrizacionAdmin() {
   const univSelCrit = universidades.find(u => u.id === Number(fCrit.univId));
   const facSelCrit  = univSelCrit?.facultades.find(f => f.id === Number(fCrit.facId));
   const carrSelCrit = facSelCrit?.carreras?.find(c => c.id === Number(fCrit.carrId));
-  const perSelCrit  = (carrSelCrit?.periodos || facSelCrit?.periodos || []).find(p => p.id === Number(fCrit.perId));
 
   const univSelInd  = universidades.find(u => u.id === Number(fInd.univId));
   const facSelInd   = univSelInd?.facultades.find(f => f.id === Number(fInd.facId));
@@ -431,10 +501,34 @@ export default function ParametrizacionAdmin() {
     [];
   const critSelInd  = criteriosDisponiblesInd.find(c => String(c.id) === String(fInd.critId));
 
-  const indicadoresFiltrados = critSelInd
-    ? INDICADORES_PREDEFINIDOS.filter(
-        ind => ind.criterio?.toLowerCase().trim() === critSelInd.nombre?.toLowerCase().trim()
-      )
+  const obtenerSubcriteriosDeCriterioNombre = (criterioNombre) => {
+    if (!criterioNombre) return [];
+    const base = SUBCRITERIOS_PREDEFINIDOS.filter(
+      s => s.criterio.toLowerCase().trim() === criterioNombre.toLowerCase().trim()
+    );
+    const extras = subcriteriosPersonalizados.filter(
+      s => s.criterio?.toLowerCase().trim() === criterioNombre.toLowerCase().trim()
+    );
+    const mapa = new Map();
+    for (const item of [...base, ...extras]) {
+      mapa.set(item.nombre, item);
+    }
+    return Array.from(mapa.values());
+  };
+
+  const subcriteriosDelCriterioSel = critSelInd
+    ? obtenerSubcriteriosDeCriterioNombre(critSelInd.nombre)
+    : SUBCRITERIOS_PREDEFINIDOS;
+
+  const actividadesFiltradas = critSelInd
+    ? ACTIVIDADES_PREDEFINIDAS.filter(act => {
+        const coincideCrit = act.criterio?.toLowerCase().trim() === critSelInd.nombre?.toLowerCase().trim();
+        if (!coincideCrit) return false;
+        if (fInd.grupo_subcriterio) {
+          return act.grupo_subcriterio === fInd.grupo_subcriterio;
+        }
+        return true;
+      })
     : [];
 
   // Helper para recorrer Carrera → Período (con fallback a Período → Carrera)
@@ -462,14 +556,19 @@ export default function ParametrizacionAdmin() {
   const filasCriterios = universidades.flatMap(u =>
     (u.facultades || []).flatMap(f =>
       obtenerParesCarreraPeriodo(f).flatMap(({ ca, p, criterios }) =>
-        (criterios || []).map(c => ({
-          u,
-          f,
-          p,
-          ca,
-          c,
-          totalSubcriterios: (c.subcriterios || c.indicadores || []).length,
-        }))
+        (criterios || []).map(c => {
+          const listaActs = c.actividades || c.subcriterios || c.indicadores || [];
+          const subsOficiales = obtenerSubcriteriosDeCriterioNombre(c.nombre);
+          return {
+            u,
+            f,
+            p,
+            ca,
+            c,
+            totalSubcriteriosOficiales: subsOficiales.length,
+            totalActividades: listaActs.length,
+          };
+        })
       )
     )
   ).filter(row => {
@@ -489,20 +588,64 @@ export default function ParametrizacionAdmin() {
     return true;
   });
 
-  // ── Filas aplanadas y filtradas para Tabla de Subcriterios ──────────────
-  const filasSubcriterios = universidades.flatMap(u =>
+  // ── Filas aplanadas y filtradas para Tabla de SUBCRITERIOS OFICIALES (2.1..5.2) ──
+  const filasSubcriteriosOficiales = universidades.flatMap(u =>
     (u.facultades || []).flatMap(f =>
       obtenerParesCarreraPeriodo(f).flatMap(({ ca, p, criterios }) =>
-        (criterios || []).flatMap(c =>
-          (c.subcriterios || c.indicadores || []).map(i => ({
-            u,
-            f,
-            p,
-            ca,
-            c,
-            i,
-          }))
-        )
+        (criterios || []).flatMap(c => {
+          const listaActs = (c.actividades || c.subcriterios || c.indicadores || []).map(act => {
+            const defPre = ACTIVIDADES_PREDEFINIDAS.find(pr => Number(pr.numero) === Number(act.numero));
+            return {
+              ...act,
+              grupo_subcriterio: act.grupo_subcriterio ?? defPre?.grupo_subcriterio ?? null,
+            };
+          });
+
+          const subsBase = obtenerSubcriteriosDeCriterioNombre(c.nombre);
+          const nombresVistos = new Set(subsBase.map(s => s.nombre));
+
+          // Incluir cualquier grupo_subcriterio personalizado presente en las actividades del criterio
+          const subsDinamicos = [];
+          for (const act of listaActs) {
+            if (act.grupo_subcriterio && !nombresVistos.has(act.grupo_subcriterio)) {
+              nombresVistos.add(act.grupo_subcriterio);
+              subsDinamicos.push({
+                codigo: act.grupo_subcriterio.split(' ')[0] || 'SUB',
+                criterio: c.nombre,
+                nombre: act.grupo_subcriterio,
+                descripcion: 'Subcriterio personalizado',
+              });
+            }
+          }
+
+          const todosSubsCriterio = [...subsBase, ...subsDinamicos];
+
+          if (todosSubsCriterio.length === 0) {
+            // Caso 1. CURRÍCULO: Actividades directas sin subcriterio intermedio
+            return [{
+              key: `${ca.id}-${p.id}-${c.id}-directo`,
+              u, f, p, ca, c,
+              esDirecto: true,
+              codigo: '1',
+              nombre: 'Actividades directas de 1. CURRÍCULO (sin subcriterio)',
+              descripcion: 'Las actividades [1] a [7] pertenecen directamente al Criterio 1. CURRÍCULO',
+              actividades: listaActs,
+            }];
+          }
+
+          return todosSubsCriterio.map(subOf => {
+            const actsSub = listaActs.filter(a => a.grupo_subcriterio === subOf.nombre);
+            return {
+              key: `${ca.id}-${p.id}-${c.id}-${subOf.nombre}`,
+              u, f, p, ca, c,
+              esDirecto: false,
+              codigo: subOf.codigo,
+              nombre: subOf.nombre,
+              descripcion: subOf.descripcion,
+              actividades: actsSub,
+            };
+          });
+        })
       )
     )
   ).filter(row => {
@@ -514,8 +657,55 @@ export default function ParametrizacionAdmin() {
     if (busquedaSubcriterio.trim()) {
       const q = busquedaSubcriterio.toLowerCase();
       return (
+        row.nombre?.toLowerCase().includes(q) ||
+        row.codigo?.toLowerCase().includes(q) ||
+        row.c.nombre?.toLowerCase().includes(q) ||
+        row.ca.nombre?.toLowerCase().includes(q) ||
+        row.actividades.some(a => a.nombre?.toLowerCase().includes(q) || String(a.numero).includes(q))
+      );
+    }
+    return true;
+  });
+
+  // ── Filas aplanadas y filtradas para Tabla de ACTIVIDADES (las 31 actividades) ──
+  const filasActividades = universidades.flatMap(u =>
+    (u.facultades || []).flatMap(f =>
+      obtenerParesCarreraPeriodo(f).flatMap(({ ca, p, criterios }) =>
+        (criterios || []).flatMap(c =>
+          (c.actividades || c.subcriterios || c.indicadores || []).map(i => {
+            const defPre = ACTIVIDADES_PREDEFINIDAS.find(pr => Number(pr.numero) === Number(i.numero));
+            const grupo = i.grupo_subcriterio ?? defPre?.grupo_subcriterio ?? null;
+            return {
+              u,
+              f,
+              p,
+              ca,
+              c,
+              i: { ...i, grupo_subcriterio: grupo },
+            };
+          })
+        )
+      )
+    )
+  ).filter(row => {
+    if (fInd.univId && row.u.id !== Number(fInd.univId)) return false;
+    if (fInd.facId && row.f.id !== Number(fInd.facId)) return false;
+    if (fInd.carrId && row.ca.id !== Number(fInd.carrId)) return false;
+    if (fInd.perId && row.p.id !== Number(fInd.perId)) return false;
+    if (fInd.critId && String(row.c.id) !== String(fInd.critId)) return false;
+    if (filtroGrupoSubcriterio) {
+      if (filtroGrupoSubcriterio === '__DIRECTO__') {
+        if (row.i.grupo_subcriterio) return false;
+      } else if (row.i.grupo_subcriterio !== filtroGrupoSubcriterio) {
+        return false;
+      }
+    }
+    if (busquedaActividad.trim()) {
+      const q = busquedaActividad.toLowerCase();
+      return (
         row.i.nombre?.toLowerCase().includes(q) ||
         String(row.i.numero || '').includes(q) ||
+        row.i.grupo_subcriterio?.toLowerCase().includes(q) ||
         row.c.nombre?.toLowerCase().includes(q) ||
         row.ca.nombre?.toLowerCase().includes(q) ||
         row.i.responsable_nombre?.toLowerCase().includes(q)
@@ -779,7 +969,7 @@ export default function ParametrizacionAdmin() {
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-800 flex items-start space-x-2">
                     <Info size={16} className="text-blue-600 mt-0.5 flex-shrink-0" />
                     <span>
-                      Al crear el período se generarán automáticamente los 5 Criterios y 31 Subcriterios para las carreras de la facultad.
+                      Al crear el período se generarán automáticamente los 5 Criterios, 8 Subcriterios y 31 Actividades para las carreras de la facultad.
                     </span>
                   </div>
                   <FormField label="Universidad">
@@ -837,15 +1027,14 @@ export default function ParametrizacionAdmin() {
             </div>
           )}
 
-          {/* ══════════ CRITERIO (Filtros Rápidos + Tabla Protagonista + Formulario Colapsable) ══════════ */}
+          {/* ══════════ CRITERIO (5 Criterios Oficiales + Acceso a Subcriterios y Actividades) ══════════ */}
           {tab === 'criterio' && (
             <div className="space-y-4">
-              {/* Barra Compacta de Filtros de Contexto + Botón Nuevo Criterio */}
               <div className="bg-gray-50/70 border border-gray-200 rounded-xl p-4 space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
-                    <h3 className="text-sm font-bold text-navy-900">Criterios de Acreditación</h3>
-                    <p className="text-xs text-gray-500">Filtra por carrera o edita directamente en la tabla. Haz clic en los subcriterios de una fila para ver su detalle.</p>
+                    <h3 className="text-sm font-bold text-navy-900">Criterios de Acreditación (5 Criterios)</h3>
+                    <p className="text-xs text-gray-500">Filtra por carrera o navega con 1 clic hacia los Subcriterios o las Actividades de cada Criterio.</p>
                   </div>
                   <div className="flex items-center space-x-2">
                     {(fCrit.univId || fCrit.facId || fCrit.perId || fCrit.carrId) && (
@@ -869,7 +1058,7 @@ export default function ParametrizacionAdmin() {
                   </div>
                 </div>
 
-                {/* Selectores de Contexto Sincronizados (Universidad → Facultad → Carrera → Período) */}
+                {/* Selectores de Contexto Sincronizados */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                   <FormField label="Universidad">
                     <select
@@ -987,13 +1176,14 @@ export default function ParametrizacionAdmin() {
                           <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase">Criterio</th>
                           <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Carrera</th>
                           <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Período / Facultad</th>
-                          <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Subcriterios (1 Clic)</th>
+                          <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Subcriterios</th>
+                          <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Actividades</th>
                           <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Firma Digital</th>
                           <th className="text-right px-5 py-3 text-xs font-semibold text-gray-500 uppercase">Acciones</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100">
-                        {filasCriterios.map(({ u, f, p, ca, c, totalSubcriterios }) => {
+                        {filasCriterios.map(({ u, f, p, ca, c, totalSubcriteriosOficiales, totalActividades }) => {
                           const esEditando = editando?.tipo === 'criterio' && editando?.id === c.id;
                           const esEliminando = eliminandoId === c.id;
                           const meta = {
@@ -1043,11 +1233,31 @@ export default function ParametrizacionAdmin() {
                                     });
                                     setTab('subcriterio');
                                   }}
-                                  className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-md text-xs font-semibold bg-navy-50 text-navy-800 hover:bg-navy-100 border border-navy-200 transition-colors"
+                                  className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-md text-xs font-semibold bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200 transition-colors"
                                   title="Ver subcriterios de este criterio"
                                 >
+                                  <Layers size={12} />
+                                  <span>{totalSubcriteriosOficiales > 0 ? `${totalSubcriteriosOficiales} subcriterios →` : 'Directo →'}</span>
+                                </button>
+                              </td>
+                              <td className="px-4 py-3 text-center">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    sincronizarContexto({
+                                      univId: String(u.id),
+                                      facId: String(f.id),
+                                      perId: String(p.id),
+                                      carrId: String(ca.id),
+                                      critId: String(c.id),
+                                    });
+                                    setTab('actividad');
+                                  }}
+                                  className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-md text-xs font-semibold bg-navy-50 text-navy-800 hover:bg-navy-100 border border-navy-200 transition-colors"
+                                  title="Ver actividades de este criterio"
+                                >
                                   <Target size={12} />
-                                  <span>{totalSubcriterios} subcriterios →</span>
+                                  <span>{totalActividades} actividades →</span>
                                 </button>
                               </td>
                               <td className="px-4 py-3 text-center">
@@ -1106,23 +1316,22 @@ export default function ParametrizacionAdmin() {
             </div>
           )}
 
-          {/* ══════════ SUBCRITERIO (Filtros Rápidos + Tabla Protagonista + Salto Directo a PDFs) ══════════ */}
-          {(tab === 'subcriterio' || tab === 'indicador') && (
+          {/* ══════════ SUBCRITERIO (Los 8 Subcriterios Oficiales: 2.1, 2.2, 3.1, 3.2, 4.1, 4.2, 5.1, 5.2) ══════════ */}
+          {tab === 'subcriterio' && (
             <div className="space-y-4">
-              {/* Panel Superior Compacto: Filtros de Contexto + Botón Agregar Subcriterio */}
               <div className="bg-gray-50/70 border border-gray-200 rounded-xl p-4 space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
-                    <h3 className="text-sm font-bold text-navy-900">Subcriterios y Evidencias PDF</h3>
+                    <h3 className="text-sm font-bold text-navy-900">Subcriterios de Acreditación (2.1 al 5.2)</h3>
                     <p className="text-xs text-gray-500">
-                      Edita responsables o flujos en línea, o haz clic en <strong>PDFs</strong> para subir y gestionar documentos directamente.
+                      Agrupadores oficiales bajo cada Criterio. Haz clic en <strong>Ver actividades →</strong> para gestionar las actividades (1 a 31) y sus carpetas/PDFs.
                     </p>
                   </div>
                   <div className="flex items-center space-x-2">
                     {(fInd.univId || fInd.facId || fInd.perId || fInd.carrId || fInd.critId) && (
                       <button
                         type="button"
-                        onClick={() => sincronizarContexto({ univId: '', facId: '', perId: '', carrId: '', critId: '' })}
+                        onClick={() => sincronizarContexto({ univId: '', facId: '', perId: '', carrId: '', critId: '', grupoSub: '' })}
                         className="text-xs text-blue-600 hover:text-blue-800 font-medium px-2 py-1"
                       >
                         Ver todos
@@ -1140,7 +1349,7 @@ export default function ParametrizacionAdmin() {
                   </div>
                 </div>
 
-                {/* Selectores de Contexto Sincronizados (Universidad → Facultad → Carrera → Período → Criterio) */}
+                {/* Filtros de Contexto */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
                   <FormField label="Universidad">
                     <select
@@ -1188,13 +1397,7 @@ export default function ParametrizacionAdmin() {
                   <FormField label="Criterio">
                     <select
                       value={fInd.critId}
-                      onChange={e => setFInd({
-                        ...fInd,
-                        critId: e.target.value,
-                        numero: '',
-                        nombre: '',
-                        responsable_nombre: '',
-                      })}
+                      onChange={e => setFInd(prev => ({ ...prev, critId: e.target.value }))}
                       className={selectCls}
                       disabled={!fInd.carrId || !fInd.perId}
                     >
@@ -1204,17 +1407,366 @@ export default function ParametrizacionAdmin() {
                   </FormField>
                 </div>
 
-                {/* Formulario Colapsable de Nuevo Subcriterio */}
+                {/* Formulario Colapsable para Registrar un Nuevo Subcriterio Agrupador */}
                 {mostrarFormSubcriterio && (
+                  <form onSubmit={submitSubOficial} className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-end pt-3 border-t border-gray-200">
+                    <div className="lg:col-span-2">
+                      <FormField label="Código (Ej. 2.3)">
+                        <input
+                          value={fSubOficial.codigo}
+                          onChange={e => setFSubOficial(prev => ({ ...prev, codigo: e.target.value }))}
+                          placeholder="2.3"
+                          className={inputCls}
+                        />
+                      </FormField>
+                    </div>
+                    <div className="lg:col-span-4">
+                      <FormField label="Nombre del Subcriterio">
+                        <input
+                          value={fSubOficial.nombre}
+                          onChange={e => setFSubOficial(prev => ({ ...prev, nombre: e.target.value }))}
+                          placeholder="Ej. PERSONAL DE APOYO ACADÉMICO"
+                          className={inputCls}
+                        />
+                      </FormField>
+                    </div>
+                    <div className="lg:col-span-4">
+                      <FormField label="Descripción (Opcional)">
+                        <input
+                          value={fSubOficial.descripcion}
+                          onChange={e => setFSubOficial(prev => ({ ...prev, descripcion: e.target.value }))}
+                          placeholder="Descripción breve del subcriterio..."
+                          className={inputCls}
+                        />
+                      </FormField>
+                    </div>
+                    <div className="lg:col-span-2">
+                      <button
+                        type="submit"
+                        disabled={!fSubOficial.nombre.trim() || !critSelInd}
+                        className="w-full flex items-center justify-center space-x-1.5 px-4 py-2.5 bg-navy-900 text-white rounded-lg text-sm font-medium hover:bg-navy-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                        title={!critSelInd ? 'Selecciona primero una Carrera, Período y Criterio' : ''}
+                      >
+                        <Plus size={16} /><span>Crear Subcriterio</span>
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </div>
+
+              {/* Tabla de Subcriterios Oficiales */}
+              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-xs">
+                <div className="px-5 py-3.5 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center space-x-2">
+                    <Layers size={16} className="text-amber-600" />
+                    <h4 className="text-sm font-semibold text-navy-900">
+                      Tabla de Subcriterios ({filasSubcriteriosOficiales.length})
+                    </h4>
+                  </div>
+                  <div className="relative w-full sm:w-80">
+                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input
+                      type="text"
+                      value={busquedaSubcriterio}
+                      onChange={e => setBusquedaSubcriterio(e.target.value)}
+                      placeholder="Buscar por código (2.1..5.2), subcriterio o criterio..."
+                      className="w-full pl-8 pr-3 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-navy-500"
+                    />
+                  </div>
+                </div>
+
+                {filasSubcriteriosOficiales.length === 0 ? (
+                  <div className="py-12 text-center text-sm text-gray-400">
+                    No se encontraron subcriterios con los filtros seleccionados.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto max-h-[580px] overflow-y-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50 sticky top-0 z-10 border-b border-gray-100">
+                        <tr>
+                          <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase w-20">Código</th>
+                          <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Subcriterio</th>
+                          <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Criterio Padre</th>
+                          <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Carrera / Período</th>
+                          <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Actividades Incluidas</th>
+                          <th className="text-right px-5 py-3 text-xs font-semibold text-gray-500 uppercase">Ir a Actividades</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {filasSubcriteriosOficiales.map((row) => {
+                          const { key, u, f, p, ca, c, esDirecto, codigo, nombre, descripcion, actividades } = row;
+                          const esEditando = editando?.tipo === 'subcriterio_grupo' && editando?.id === key;
+                          const meta = {
+                            univId: u.id,
+                            facId: f.id,
+                            perId: p.id,
+                            carrId: ca.id,
+                            critId: c.id,
+                            actividadesAsociadas: actividades,
+                            valorEdicion: { nombre },
+                          };
+
+                          return (
+                            <tr key={key} className="hover:bg-gray-50/70 transition-colors align-top">
+                              <td className="px-4 py-3 text-center">
+                                <span className={`inline-flex items-center justify-center px-2.5 py-0.5 rounded-md text-xs font-bold ${esDirecto ? 'bg-gray-100 text-gray-700' : 'bg-amber-100 text-amber-900 border border-amber-200'}`}>
+                                  {esDirecto ? 'Directo' : codigo}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3">
+                                {esEditando ? (
+                                  <div className="flex items-center space-x-2">
+                                    <input
+                                      value={editando?.valor?.nombre || ''}
+                                      onChange={e => setEditando(prev => ({ ...prev, valor: { ...prev.valor, nombre: e.target.value } }))}
+                                      className={inputSmCls}
+                                    />
+                                    <button onClick={guardarEdicion} className="px-2.5 py-1 bg-navy-900 text-white text-xs rounded-lg hover:bg-navy-800 flex items-center space-x-1">
+                                      <Save size={12} /><span>Guardar</span>
+                                    </button>
+                                    <button onClick={cancelarEdicion} className="px-2 py-1 bg-gray-200 text-gray-700 text-xs rounded-lg hover:bg-gray-300">
+                                      <X size={12} />
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <div>
+                                    <div className="flex items-center space-x-1.5">
+                                      <FolderOpen size={14} className={esDirecto ? 'text-gray-400' : 'text-amber-600'} />
+                                      <span className="font-semibold text-navy-900 text-xs">{nombre}</span>
+                                    </div>
+                                    {descripcion && (
+                                      <p className="text-[11px] text-gray-400 mt-0.5">{descripcion}</p>
+                                    )}
+                                  </div>
+                                )}
+                              </td>
+                              <td className="px-4 py-3 text-xs font-medium text-gray-700">
+                                {c.nombre}
+                              </td>
+                              <td className="px-4 py-3">
+                                <div className="flex flex-col gap-0.5">
+                                  <span className="inline-flex items-center w-fit px-2 py-0.5 rounded-full text-[11px] font-medium bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                    {ca.nombre}
+                                  </span>
+                                  <span className="text-[11px] text-gray-400">{p.nombre} · {f.nombre}</span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3">
+                                <div className="flex flex-wrap gap-1 max-w-md">
+                                  {actividades.length === 0 ? (
+                                    <span className="text-xs text-gray-400 italic">Sin actividades aún</span>
+                                  ) : (
+                                    actividades.map(act => (
+                                      <span
+                                        key={act.id}
+                                        className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium bg-navy-50 text-navy-800 border border-navy-200"
+                                      >
+                                        [{act.numero}] {act.nombre}
+                                      </span>
+                                    ))
+                                  )}
+                                </div>
+                              </td>
+                              <td className="px-5 py-3 text-right">
+                                <div className="flex items-center justify-end space-x-1.5">
+                                  {!esDirecto && !esEditando && (
+                                    <button
+                                      type="button"
+                                      onClick={() => iniciarEdicion('subcriterio_grupo', key, meta.valorEdicion, meta)}
+                                      className="p-1.5 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
+                                      title="Renombrar Subcriterio"
+                                    >
+                                      <Pencil size={13} />
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      sincronizarContexto({
+                                        univId: String(u.id),
+                                        facId: String(f.id),
+                                        perId: String(p.id),
+                                        carrId: String(ca.id),
+                                        critId: String(c.id),
+                                        grupoSub: esDirecto ? '__DIRECTO__' : nombre,
+                                      });
+                                      setTab('actividad');
+                                    }}
+                                    className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-navy-900 text-white hover:bg-navy-800 transition-colors"
+                                  >
+                                    <Target size={12} />
+                                    <span>Ver {actividades.length} actividad{actividades.length === 1 ? '' : 'es'} →</span>
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ══════════ ACTIVIDAD (Las 31 Actividades [1] a [31] + Carpetas + Salto Directo a PDFs) ══════════ */}
+          {(tab === 'actividad' || tab === 'indicador') && (
+            <div className="space-y-4">
+              {/* Panel Superior Compacto: Filtros de Contexto + Botón Agregar Actividad */}
+              <div className="bg-gray-50/70 border border-gray-200 rounded-xl p-4 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h3 className="text-sm font-bold text-navy-900">Actividades de Acreditación (1 a 31) y Evidencias PDF</h3>
+                    <p className="text-xs text-gray-500">
+                      Cada actividad pertenece a su Criterio y Subcriterio oficial. Configura responsables o haz clic en <strong>PDFs</strong> para subir y gestionar documentos directamente.
+                    </p>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    {(fInd.univId || fInd.facId || fInd.perId || fInd.carrId || fInd.critId || filtroGrupoSubcriterio) && (
+                      <button
+                        type="button"
+                        onClick={() => sincronizarContexto({ univId: '', facId: '', perId: '', carrId: '', critId: '', grupoSub: '' })}
+                        className="text-xs text-blue-600 hover:text-blue-800 font-medium px-2 py-1"
+                      >
+                        Ver todas las actividades
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setMostrarFormActividad(v => !v)}
+                      className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-navy-900 text-white rounded-lg text-xs font-medium hover:bg-navy-800 transition-colors"
+                    >
+                      <Plus size={14} />
+                      <span>{mostrarFormActividad ? 'Ocultar formulario' : 'Agregar Actividad'}</span>
+                      {mostrarFormActividad ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Selectores de Contexto Sincronizados (Universidad → Facultad → Carrera → Período → Criterio → Subcriterio) */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
+                  <FormField label="Universidad">
+                    <select
+                      value={fInd.univId}
+                      onChange={e => sincronizarContexto({ univId: e.target.value, facId: '', carrId: '', perId: '', critId: '', grupoSub: '' })}
+                      className={selectCls}
+                    >
+                      <option value="">Todas...</option>
+                      {universidades.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                    </select>
+                  </FormField>
+                  <FormField label="Facultad">
+                    <select
+                      value={fInd.facId}
+                      onChange={e => sincronizarContexto({ univId: fInd.univId, facId: e.target.value, carrId: '', perId: '', critId: '', grupoSub: '' })}
+                      className={selectCls}
+                      disabled={!fInd.univId}
+                    >
+                      <option value="">Todas...</option>
+                      {univSelInd?.facultades.map(f => <option key={f.id} value={f.id}>{f.nombre}</option>)}
+                    </select>
+                  </FormField>
+                  <FormField label="Carrera">
+                    <select
+                      value={fInd.carrId}
+                      onChange={e => sincronizarContexto({ univId: fInd.univId, facId: fInd.facId, carrId: e.target.value, perId: '', critId: '', grupoSub: '' })}
+                      className={selectCls}
+                      disabled={!fInd.facId}
+                    >
+                      <option value="">Todas...</option>
+                      {(facSelInd?.carreras || []).map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                    </select>
+                  </FormField>
+                  <FormField label="Período">
+                    <select
+                      value={fInd.perId}
+                      onChange={e => sincronizarContexto({ univId: fInd.univId, facId: fInd.facId, carrId: fInd.carrId, perId: e.target.value, critId: '', grupoSub: '' })}
+                      className={selectCls}
+                      disabled={!fInd.facId}
+                    >
+                      <option value="">Todos...</option>
+                      {(carrSelInd?.periodos || facSelInd?.periodos || []).map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                    </select>
+                  </FormField>
+                  <FormField label="Criterio">
+                    <select
+                      value={fInd.critId}
+                      onChange={e => {
+                        setFInd({
+                          ...fInd,
+                          critId: e.target.value,
+                          grupo_subcriterio: '',
+                          numero: '',
+                          nombre: '',
+                          responsable_nombre: '',
+                        });
+                        setFiltroGrupoSubcriterio('');
+                      }}
+                      className={selectCls}
+                      disabled={!fInd.carrId || !fInd.perId}
+                    >
+                      <option value="">Todos los criterios...</option>
+                      {criteriosDisponiblesInd.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                    </select>
+                  </FormField>
+                  <FormField label="Subcriterio">
+                    <select
+                      value={filtroGrupoSubcriterio}
+                      onChange={e => {
+                        const val = e.target.value;
+                        setFiltroGrupoSubcriterio(val);
+                        setFInd(prev => ({
+                          ...prev,
+                          grupo_subcriterio: val === '__DIRECTO__' ? '' : val,
+                        }));
+                      }}
+                      className={selectCls}
+                    >
+                      <option value="">Todos los subcriterios...</option>
+                      {subcriteriosDelCriterioSel.map(s => (
+                        <option key={s.nombre} value={s.nombre}>{s.nombre}</option>
+                      ))}
+                      {(!critSelInd || critSelInd.nombre?.startsWith('1.')) && (
+                        <option value="__DIRECTO__">Directo (1. CURRÍCULO)</option>
+                      )}
+                    </select>
+                  </FormField>
+                </div>
+
+                {/* Formulario Colapsable de Nueva Actividad */}
+                {mostrarFormActividad && (
                   <form onSubmit={submitInd} className="space-y-3 pt-3 border-t border-gray-200">
                     <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
-                      <div className="lg:col-span-4">
-                        <FormField label="Subcriterio Predefinido">
+                      <div className="lg:col-span-3">
+                        <FormField label="Subcriterio Padre">
                           <select
-                            value={indicadoresFiltrados.some(i => i.nombre === fInd.nombre) ? fInd.nombre : ''}
+                            value={fInd.grupo_subcriterio || ''}
+                            onChange={e => setFInd(prev => ({ ...prev, grupo_subcriterio: e.target.value }))}
+                            disabled={!fInd.critId || subcriteriosDelCriterioSel.length === 0}
+                            className={selectCls}
+                          >
+                            <option value="">
+                              {!fInd.critId
+                                ? '-- Primero elija Criterio --'
+                                : subcriteriosDelCriterioSel.length === 0
+                                  ? 'Directo bajo 1. CURRÍCULO'
+                                  : '-- Seleccionar Subcriterio --'}
+                            </option>
+                            {subcriteriosDelCriterioSel.map(s => (
+                              <option key={s.nombre} value={s.nombre}>{s.nombre}</option>
+                            ))}
+                          </select>
+                        </FormField>
+                      </div>
+
+                      <div className="lg:col-span-3">
+                        <FormField label="Actividad Predefinida">
+                          <select
+                            value={actividadesFiltradas.some(i => i.nombre === fInd.nombre) ? fInd.nombre : ''}
                             disabled={!fInd.critId}
                             onChange={e => {
-                              const sel = indicadoresFiltrados.find(i => i.nombre === e.target.value);
+                              const sel = actividadesFiltradas.find(i => i.nombre === e.target.value);
                               if (sel) {
                                 setFInd(prev => ({
                                   ...prev,
@@ -1228,7 +1780,6 @@ export default function ParametrizacionAdmin() {
                                   ...prev,
                                   numero: '',
                                   nombre: '',
-                                  grupo_subcriterio: '',
                                   responsable_nombre: '',
                                 }));
                               }
@@ -1237,10 +1788,10 @@ export default function ParametrizacionAdmin() {
                           >
                             <option value="">
                               {fInd.critId
-                                ? `-- Elegir de los ${indicadoresFiltrados.length} disponibles --`
+                                ? `-- Elegir de las ${actividadesFiltradas.length} disponibles --`
                                 : '-- Primero elija un Criterio --'}
                             </option>
-                            {indicadoresFiltrados.map(ind => (
+                            {actividadesFiltradas.map(ind => (
                               <option key={`${ind.numero}-${ind.nombre}`} value={ind.nombre}>
                                 [{ind.numero}] {ind.nombre}
                               </option>
@@ -1261,8 +1812,8 @@ export default function ParametrizacionAdmin() {
                         </FormField>
                       </div>
 
-                      <div className="lg:col-span-4">
-                        <FormField label="Nombre del Subcriterio">
+                      <div className="lg:col-span-3">
+                        <FormField label="Nombre de la Actividad">
                           <input
                             value={fInd.nombre}
                             onChange={e => setFInd({...fInd, nombre: e.target.value})}
@@ -1272,10 +1823,10 @@ export default function ParametrizacionAdmin() {
                         </FormField>
                       </div>
 
-                      <div className="lg:col-span-3">
-                        <FormField label="Flujo de Firma (Opcional)">
+                      <div className="lg:col-span-2">
+                        <FormField label="Flujo de Firma">
                           <select value={fInd.flujo_id || ''} onChange={e => setFInd({...fInd, flujo_id: e.target.value})} className={selectCls}>
-                            <option value="">-- Flujo Global por Defecto --</option>
+                            <option value="">-- Flujo Global --</option>
                             {flujosFirma.map(fl => <option key={fl.id} value={fl.id}>{fl.nombre} {fl.es_global ? '(Global)' : ''}</option>)}
                           </select>
                         </FormField>
@@ -1288,7 +1839,7 @@ export default function ParametrizacionAdmin() {
                           <input
                             value={fInd.descripcion}
                             onChange={e => setFInd({...fInd, descripcion: e.target.value})}
-                            placeholder="Instrucciones que verá el docente al subir documentos en este subcriterio..."
+                            placeholder="Instrucciones que verá el docente al subir documentos en esta actividad..."
                             className={inputCls}
                           />
                         </FormField>
@@ -1327,7 +1878,7 @@ export default function ParametrizacionAdmin() {
                           disabled={!fInd.nombre || !fInd.numero || !fInd.univId || !fInd.facId || !fInd.perId || !fInd.carrId || !fInd.critId}
                           className="w-full flex items-center justify-center space-x-1.5 px-4 py-2.5 bg-navy-900 text-white rounded-lg text-sm font-medium hover:bg-navy-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                         >
-                          <Plus size={16} /><span>Crear Subcriterio</span>
+                          <Plus size={16} /><span>Crear Actividad</span>
                         </button>
                       </div>
                     </div>
@@ -1335,30 +1886,30 @@ export default function ParametrizacionAdmin() {
                 )}
               </div>
 
-              {/* Tabla Estructurada de Subcriterios */}
+              {/* Tabla Estructurada de Actividades */}
               <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-xs">
                 <div className="px-5 py-3.5 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div className="flex items-center space-x-2">
                     <Target size={16} className="text-navy-700" />
                     <h4 className="text-sm font-semibold text-navy-900">
-                      Tabla de Subcriterios ({filasSubcriterios.length})
+                      Tabla de Actividades ({filasActividades.length})
                     </h4>
                   </div>
                   <div className="relative w-full sm:w-80">
                     <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                     <input
                       type="text"
-                      value={busquedaSubcriterio}
-                      onChange={e => setBusquedaSubcriterio(e.target.value)}
-                      placeholder="Buscar por N°, subcriterio, criterio o responsable..."
+                      value={busquedaActividad}
+                      onChange={e => setBusquedaActividad(e.target.value)}
+                      placeholder="Buscar por N°, actividad, subcriterio o responsable..."
                       className="w-full pl-8 pr-3 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-navy-500"
                     />
                   </div>
                 </div>
 
-                {filasSubcriterios.length === 0 ? (
+                {filasActividades.length === 0 ? (
                   <div className="py-12 text-center text-sm text-gray-400">
-                    No se encontraron subcriterios con los filtros seleccionados.
+                    No se encontraron actividades con los filtros seleccionados.
                   </div>
                 ) : (
                   <div className="overflow-x-auto max-h-[580px] overflow-y-auto">
@@ -1366,21 +1917,22 @@ export default function ParametrizacionAdmin() {
                       <thead className="bg-gray-50 sticky top-0 z-10 border-b border-gray-100">
                         <tr>
                           <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase w-16">N°</th>
-                          <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Subcriterio</th>
-                          <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Criterio Padre</th>
+                          <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Actividad</th>
+                          <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Subcriterio / Criterio</th>
                           <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Carrera / Período</th>
                           <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Responsables</th>
-                          <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Carpetas / PDFs</th>
+                          <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase">PDFs / Carpetas (Opcional)</th>
                           <th className="text-right px-5 py-3 text-xs font-semibold text-gray-500 uppercase">Acciones</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100">
-                        {filasSubcriterios.map(({ u, f, p, ca, c, i }) => {
-                          const esEditando = (editando?.tipo === 'subcriterio' || editando?.tipo === 'indicador') && editando?.id === i.id;
+                        {filasActividades.map(({ u, f, p, ca, c, i }) => {
+                          const esEditando = (editando?.tipo === 'actividad' || editando?.tipo === 'subcriterio' || editando?.tipo === 'indicador') && editando?.id === i.id;
                           const esEliminando = eliminandoId === i.id;
                           const totalDocs = typeof i.cantidadDocumentos === 'number'
                             ? i.cantidadDocumentos
                             : (i.documentos?.length || 0);
+                          const subsDeEsteCrit = obtenerSubcriteriosDeCriterioNombre(c.nombre);
                           const meta = {
                             univId: u.id,
                             facId: f.id,
@@ -1390,6 +1942,7 @@ export default function ParametrizacionAdmin() {
                             valorEdicion: {
                               numero: i.numero,
                               nombre: i.nombre,
+                              grupo_subcriterio: i.grupo_subcriterio || '',
                               descripcion: i.descripcion || i.informacion_ayuda || '',
                               flujo_id: i.flujo_id || '',
                               requiere_firma: i.requiere_firma ?? true,
@@ -1420,7 +1973,7 @@ export default function ParametrizacionAdmin() {
                                     <input
                                       value={editando?.valor?.nombre || ''}
                                       onChange={e => setEditando(prev => ({ ...prev, valor: { ...prev.valor, nombre: e.target.value } }))}
-                                      placeholder="Nombre del subcriterio"
+                                      placeholder="Nombre de la actividad"
                                       className={inputSmCls}
                                     />
                                     <input
@@ -1451,19 +2004,35 @@ export default function ParametrizacionAdmin() {
                               </td>
 
                               <td className="px-4 py-3 text-xs text-gray-700 font-medium">
-                                <div className="space-y-1">
-                                  <div>{c.nombre}</div>
-                                  {(() => {
-                                    const defPre = INDICADORES_PREDEFINIDOS.find(p => Number(p.numero) === Number(i.numero));
-                                    const grupo = i.grupo_subcriterio ?? defPre?.grupo_subcriterio ?? null;
-                                    return grupo ? (
+                                {esEditando ? (
+                                  <div className="space-y-1">
+                                    <div className="text-[11px] text-gray-500">{c.nombre}</div>
+                                    <select
+                                      value={editando?.valor?.grupo_subcriterio || ''}
+                                      onChange={e => setEditando(prev => ({ ...prev, valor: { ...prev.valor, grupo_subcriterio: e.target.value } }))}
+                                      className={inputSmCls}
+                                    >
+                                      <option value="">-- Directo sin subcriterio --</option>
+                                      {subsDeEsteCrit.map(s => (
+                                        <option key={s.nombre} value={s.nombre}>{s.nombre}</option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                ) : (
+                                  <div className="space-y-1">
+                                    {i.grupo_subcriterio ? (
                                       <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-amber-50 text-amber-800 border border-amber-200">
-                                        <FolderOpen size={11} className="text-amber-600 flex-shrink-0" />
-                                        <span>{grupo}</span>
+                                        <Layers size={11} className="text-amber-600 flex-shrink-0" />
+                                        <span>{i.grupo_subcriterio}</span>
                                       </span>
-                                    ) : null;
-                                  })()}
-                                </div>
+                                    ) : (
+                                      <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium bg-gray-100 text-gray-600">
+                                        Directo bajo {c.nombre}
+                                      </span>
+                                    )}
+                                    <div className="text-[11px] text-gray-500">{c.nombre}</div>
+                                  </div>
+                                )}
                               </td>
 
                               <td className="px-4 py-3">
@@ -1520,18 +2089,6 @@ export default function ParametrizacionAdmin() {
                                 <div className="flex flex-col items-center gap-1.5">
                                   <button
                                     type="button"
-                                    onClick={() => {
-                                      setSubcriterioCarpetasModal({ u, f, p, ca, c, i });
-                                      setFCarpetaParam({ nombre: '', descripcion: '' });
-                                    }}
-                                    className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 transition-colors"
-                                    title="Crear o administrar carpetas dentro de este subcriterio"
-                                  >
-                                    <FolderOpen size={12} />
-                                    <span>{(i.carpetas || []).length} carpeta{(i.carpetas || []).length === 1 ? '' : 's'} (+ Crear)</span>
-                                  </button>
-                                  <button
-                                    type="button"
                                     onClick={() =>
                                       navegarA &&
                                       navegarA('explorador', {
@@ -1548,10 +2105,22 @@ export default function ParametrizacionAdmin() {
                                         ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
                                         : 'bg-navy-50 text-navy-800 border-navy-200 hover:bg-navy-100'
                                     }`}
-                                    title="Ir al explorador para ver carpetas y subir PDFs"
+                                    title="Ir al explorador para ver y subir PDFs directamente en esta actividad"
                                   >
                                     <FileText size={12} />
                                     <span>{totalDocs} PDF{totalDocs === 1 ? '' : 's'} →</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSubcriterioCarpetasModal({ u, f, p, ca, c, i });
+                                      setFCarpetaParam({ nombre: '', descripcion: '' });
+                                    }}
+                                    className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 transition-colors"
+                                    title="Crear o administrar carpetas opcionales dentro de esta actividad"
+                                  >
+                                    <FolderOpen size={11} />
+                                    <span>{(i.carpetas || []).length} carpeta{(i.carpetas || []).length === 1 ? '' : 's'} (+ Opcional)</span>
                                   </button>
                                 </div>
                               </td>
@@ -1569,17 +2138,17 @@ export default function ParametrizacionAdmin() {
                                 ) : (
                                   <div className="flex items-center justify-end space-x-1">
                                     <button
-                                      onClick={() => iniciarEdicion('subcriterio', i.id, meta.valorEdicion, meta)}
+                                      onClick={() => iniciarEdicion('actividad', i.id, meta.valorEdicion, meta)}
                                       className="p-1.5 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
-                                      title="Editar Subcriterio"
+                                      title="Editar Actividad"
                                     >
                                       <Pencil size={14} />
                                     </button>
                                     <button
-                                      onClick={() => handleEliminar('subcriterio', i.id, meta)}
+                                      onClick={() => handleEliminar('actividad', i.id, meta)}
                                       disabled={esEliminando}
                                       className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-40"
-                                      title="Eliminar Subcriterio"
+                                      title="Eliminar Actividad"
                                     >
                                       <Trash2 size={14} />
                                     </button>
@@ -1878,9 +2447,9 @@ export default function ParametrizacionAdmin() {
         }}
       />
 
-      {/* Modal para Gestionar Carpetas de un Subcriterio */}
+      {/* Modal para Gestionar Carpetas Opcionales de una Actividad */}
       {subcriterioCarpetasModal && (() => {
-        const filaActual = filasSubcriterios.find(row => row.i.id === subcriterioCarpetasModal.i.id) || subcriterioCarpetasModal;
+        const filaActual = filasActividades.find(row => row.i.id === subcriterioCarpetasModal.i.id) || subcriterioCarpetasModal;
         const subActual = filaActual.i;
         const carpetasList = subActual.carpetas || [];
         return (
@@ -1890,7 +2459,7 @@ export default function ParametrizacionAdmin() {
                 <div>
                   <h3 className="text-base font-bold text-navy-900 flex items-center space-x-2">
                     <FolderOpen size={18} className="text-amber-600" />
-                    <span>Carpetas del Subcriterio [{subActual.numero}]</span>
+                    <span>Carpetas Opcionales de la Actividad [{subActual.numero}]</span>
                   </h3>
                   <p className="text-xs text-gray-500 mt-0.5">
                     {subActual.nombre} · {filaActual.ca.nombre} ({filaActual.p.nombre})
@@ -1915,14 +2484,16 @@ export default function ParametrizacionAdmin() {
                       descripcion: fCarpetaParam.descripcion.trim() || undefined,
                     });
                     setFCarpetaParam({ nombre: '', descripcion: '' });
-                    mostrarExito('Carpeta creada exitosamente');
+                    mostrarExito('Carpeta opcional creada exitosamente');
                   } catch (err) {
                     mostrarError(err.message);
                   }
                 }}
                 className="bg-amber-50/60 border border-amber-200 rounded-xl p-3.5 space-y-2.5"
               >
-                <p className="text-xs font-semibold text-amber-900">Nueva Carpeta (se replicará en períodos de la carrera)</p>
+                <p className="text-xs font-semibold text-amber-900">
+                  Nueva Carpeta Opcional (no es obligatoria para subir PDFs; sirve para organizar documentos dentro de la actividad)
+                </p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <input
                     value={fCarpetaParam.nombre}
@@ -1952,8 +2523,8 @@ export default function ParametrizacionAdmin() {
 
               <div className="space-y-2 max-h-60 overflow-y-auto">
                 {carpetasList.length === 0 ? (
-                  <p className="text-xs text-gray-400 text-center py-6 border border-dashed border-gray-200 rounded-xl">
-                    Aún no hay carpetas creadas en este subcriterio. Crea una carpeta arriba para habilitar la carga de documentos PDF.
+                  <p className="text-xs text-gray-500 text-center py-6 border border-dashed border-gray-200 rounded-xl">
+                    Esta actividad no tiene carpetas adicionales. Los usuarios pueden subir PDFs directamente en la actividad sin necesidad de carpetas, o puedes crear carpetas opcionales arriba.
                   </p>
                 ) : (
                   carpetasList.map(carp => (

@@ -6,6 +6,8 @@ const {
 } = require('../Model');
 const {
   CRITERIOS_ACREDITACION,
+  SUBCRITERIOS_OFICIALES,
+  ACTIVIDADES_ACREDITACION,
   SUBCRITERIOS_ACREDITACION,
   generarEstructuraParaCarreraYPeriodo,
 } = require('../Utils/catalogoAcreditacion');
@@ -145,7 +147,7 @@ const carreraCtrl = {
       const { nombre, descripcion, facultad_id, generar_estructura = true } = req.body;
       const carrera = await Carrera.create({ nombre, descripcion, facultad_id }, { transaction: t });
 
-      // Si ya existen períodos activos en la facultad, generar automáticamente los 5 Criterios y 31 Subcriterios para esta carrera
+      // Si ya existen períodos activos en la facultad, generar automáticamente los 5 Criterios y 31 Actividades para esta carrera
       if (generar_estructura && facultad_id) {
         const periodosExistentes = await Periodo.findAll({
           where: { facultad_id, activo: true },
@@ -205,7 +207,7 @@ const periodoCtrl = {
         { transaction: t }
       );
 
-      // Auto-generación de carpetas por carrera si generar_estructura es true
+      // Auto-generación de estructura por carrera si generar_estructura es true
       if (generar_estructura && finalFacultadId) {
         const carreras = await Carrera.findAll({
           where: { facultad_id: finalFacultadId, activo: true },
@@ -260,18 +262,18 @@ const criterioCtrl = {
       const { nombre, descripcion, requiere_firma = true, flujo_id = null, carrera_id, periodo_id } = req.body;
       const registro = await Criterio.create(req.body);
 
-      // Si el criterio coincide con alguno del catálogo base, generar sus subcriterios por defecto
+      // Si el criterio coincide con alguno del catálogo base, generar sus actividades por defecto
       try {
         const defCrit = (CRITERIOS_ACREDITACION || []).find(c => c.nombre === nombre);
         if (defCrit && Subcriterio && typeof Subcriterio.findOrCreate === 'function') {
-          const subsDef = (SUBCRITERIOS_ACREDITACION || []).filter(s => s.criterioIdx === defCrit.idx);
+          const subsDef = (ACTIVIDADES_ACREDITACION || SUBCRITERIOS_ACREDITACION || []).filter(s => s.criterioIdx === defCrit.idx);
           for (const s of subsDef) {
             await Subcriterio.findOrCreate({
               where: { numero: s.numero, criterio_id: registro.id },
               defaults: {
                 nombre: s.nombre,
                 grupo_subcriterio: s.grupo_subcriterio || null,
-                descripcion: `Subir los documentos PDF respaldatorios para el subcriterio [${s.numero}] ${s.nombre}.`,
+                descripcion: `Subir los documentos PDF respaldatorios para la actividad [${s.numero}] ${s.nombre}.`,
                 criterio_id: registro.id,
                 responsable_nombre: s.responsableTexto,
                 requiere_firma: true,
@@ -341,6 +343,7 @@ const subcriterioCtrl = {
           where: { criterio_id: sub.criterio_id, numero: sub.numero },
           defaults: {
             nombre: sub.nombre,
+            grupo_subcriterio: sub.grupo_subcriterio || null,
             descripcion: sub.descripcion,
             criterio_id: sub.criterio_id,
             responsable_nombre: sub.responsable_nombre,
@@ -348,7 +351,7 @@ const subcriterioCtrl = {
         }).catch(() => {});
       }
 
-      // Propagar este subcriterio al mismo criterio en los demás períodos activos de la carrera
+      // Propagar esta actividad al mismo criterio en los demás períodos activos de la carrera
       try {
         if (Criterio && typeof Criterio.findByPk === 'function' && typeof Criterio.findAll === 'function') {
           const critPadre = await Criterio.findByPk(sub.criterio_id);
@@ -407,6 +410,7 @@ const subcriterioCtrl = {
           {
             ...(payload.nombre !== undefined ? { nombre: payload.nombre } : {}),
             ...(payload.numero !== undefined ? { numero: payload.numero } : {}),
+            ...(payload.grupo_subcriterio !== undefined ? { grupo_subcriterio: payload.grupo_subcriterio } : {}),
             ...(payload.descripcion !== undefined ? { descripcion: payload.descripcion } : {}),
             ...(payload.responsable_nombre !== undefined ? { responsable_nombre: payload.responsable_nombre } : {}),
           },
@@ -457,6 +461,7 @@ const indicadorCtrl = {
           where: { criterio_id: ind.criterio_id, numero: ind.numero },
           defaults: {
             nombre: ind.nombre,
+            grupo_subcriterio: ind.grupo_subcriterio || null,
             descripcion: ind.descripcion,
             criterio_id: ind.criterio_id,
             responsable_nombre: ind.responsable_nombre,
@@ -492,6 +497,7 @@ const indicadorCtrl = {
             {
               ...(payload.nombre !== undefined ? { nombre: payload.nombre } : {}),
               ...(payload.numero !== undefined ? { numero: payload.numero } : {}),
+              ...(payload.grupo_subcriterio !== undefined ? { grupo_subcriterio: payload.grupo_subcriterio } : {}),
               ...(payload.descripcion !== undefined ? { descripcion: payload.descripcion } : {}),
             },
             { where: { criterio_id: sub.criterio_id, numero: numAnt } }
@@ -576,7 +582,7 @@ const carpetaCtrl = {
         creado_por_id: req.usuario?.id || null,
       });
 
-      // Propagar la carpeta al mismo subcriterio en los demás períodos activos de la carrera
+      // Propagar la carpeta a la misma actividad en los demás períodos activos de la carrera
       try {
         if (Subcriterio && Criterio && typeof Subcriterio.findByPk === 'function') {
           const subPadre = await Subcriterio.findByPk(subcriterio_id, {
@@ -667,8 +673,8 @@ async function generarEstructuraCarrera(req, res) {
   }
 }
 
-// ─── Estructura jerárquica completa (6 niveles: Documentos en Subcriterio) ──
-// Universidad → Facultad → Período → Carrera → Criterio → Subcriterio → Documentos
+// ─── Estructura jerárquica completa ────────────────────────────────────────
+// Universidad → Facultad → Carrera → Período → Criterio → Subcriterio (8 oficiales) → Actividad (31) → Carpetas → Documentos
 async function estructura(req, res) {
   try {
     const universidades = await Universidad.findAll({ where: { activo: true }, order: [['id', 'ASC']] });
@@ -678,7 +684,7 @@ async function estructura(req, res) {
     let criterios       = await Criterio.findAll({ where: { activo: true }, order: [['id', 'ASC']] });
     let subcriteriosPre = Subcriterio ? await Subcriterio.findAll({ where: { activo: true }, attributes: ['id', 'criterio_id'] }) : [];
 
-    // Auto-generar los 5 Criterios y 31 Subcriterios para cualquier (Período, Carrera) activa de una misma Facultad que aún no los tenga completos
+    // Auto-generar los 5 Criterios y 31 Actividades para cualquier (Período, Carrera) activa de una misma Facultad que aún no los tenga completos
     let huboAutogeneracion = false;
     for (const f of facultades) {
       const facCarreras = carreras.filter(ca => ca.facultad_id === f.id);
@@ -775,12 +781,14 @@ async function estructura(req, res) {
             documentos: [],
           };
         });
-      const defCatalogo = (SUBCRITERIOS_ACREDITACION || []).find(s => Number(s.numero) === Number(item.numero));
+      const defCatalogo = (ACTIVIDADES_ACREDITACION || SUBCRITERIOS_ACREDITACION || []).find(s => Number(s.numero) === Number(item.numero));
+      const grupoSub = item.grupo_subcriterio ?? defCatalogo?.grupo_subcriterio ?? null;
       return {
         id: item.id,
         numero: item.numero,
         nombre: item.nombre,
-        grupo_subcriterio: item.grupo_subcriterio ?? defCatalogo?.grupo_subcriterio ?? null,
+        grupo_subcriterio: grupoSub,
+        subcriterio_nombre: grupoSub,
         descripcion: item.descripcion || '',
         informacion_ayuda: item.descripcion || '',
         requiere_firma: item.requiere_firma ?? true,
@@ -791,6 +799,35 @@ async function estructura(req, res) {
         carpetas: carpetasSub,
         documentos: [],
       };
+    };
+
+    const construirSubcriteriosOficiales = (c, itemsMapeados) => {
+      const oficialesBase = (SUBCRITERIOS_OFICIALES || []).filter(so => so.criterioNombre === c.nombre);
+      const resultadoOficiales = oficialesBase.map(so => ({
+        codigo: so.codigo,
+        nombre: so.nombre,
+        descripcion: so.descripcion,
+        criterio_id: c.id,
+        criterio_nombre: c.nombre,
+        actividades: itemsMapeados.filter(act => act.grupo_subcriterio === so.nombre),
+      }));
+
+      // Agregar cualquier grupo_subcriterio personalizado creado por el Admin en este criterio
+      const nombresRegistrados = new Set(resultadoOficiales.map(r => r.nombre));
+      for (const act of itemsMapeados) {
+        if (act.grupo_subcriterio && !nombresRegistrados.has(act.grupo_subcriterio)) {
+          nombresRegistrados.add(act.grupo_subcriterio);
+          resultadoOficiales.push({
+            codigo: act.grupo_subcriterio.split(' ')[0] || '',
+            nombre: act.grupo_subcriterio,
+            descripcion: 'Subcriterio configurado',
+            criterio_id: c.id,
+            criterio_nombre: c.nombre,
+            actividades: itemsMapeados.filter(a => a.grupo_subcriterio === act.grupo_subcriterio),
+          });
+        }
+      }
+      return resultadoOficiales;
     };
 
     const resultado = universidades.map(u => ({
@@ -813,7 +850,7 @@ async function estructura(req, res) {
             id: f.id,
             nombre: f.nombre,
             descripcion: f.descripcion,
-            // Flujo principal: Facultad → Carrera → Período → Criterio → Subcriterio → Carpetas
+            // Flujo principal: Facultad → Carrera → Período → Criterio → Subcriterio → Actividad → Carpetas
             carreras: facCarreras.map(ca => ({
               id: ca.id,
               nombre: ca.nombre,
@@ -839,6 +876,8 @@ async function estructura(req, res) {
                       descripcion: c.descripcion,
                       requiere_firma: c.requiere_firma,
                       flujo_id: c.flujo_id || null,
+                      subcriterios_oficiales: construirSubcriteriosOficiales(c, itemsMapeados),
+                      actividades: itemsMapeados,
                       subcriterios: itemsMapeados,
                       indicadores: itemsMapeados,
                     };
@@ -872,6 +911,8 @@ async function estructura(req, res) {
                       descripcion: c.descripcion,
                       requiere_firma: c.requiere_firma,
                       flujo_id: c.flujo_id || null,
+                      subcriterios_oficiales: construirSubcriteriosOficiales(c, itemsMapeados),
+                      actividades: itemsMapeados,
                       subcriterios: itemsMapeados,
                       indicadores: itemsMapeados,
                     };

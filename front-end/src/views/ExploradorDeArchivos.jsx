@@ -4,7 +4,6 @@ import {
   Upload,
   Eye,
   PenLine,
-  Info,
   FileText,
   ChevronRight,
   ChevronDown,
@@ -20,9 +19,7 @@ import {
   Filter,
   AlertTriangle,
   CheckCircle2,
-  Clock,
   FolderOpen,
-  FolderPlus,
   Plus,
   Layers,
   LayoutGrid,
@@ -31,7 +28,7 @@ import {
 import Breadcrumbs from '../components/common/Breadcrumbs';
 import Badge from '../components/common/Badge';
 import { useApp } from '../context/useApp';
-import { INDICADORES_PREDEFINIDOS } from '../data/parametrosPredefinidos';
+import { ACTIVIDADES_PREDEFINIDAS, INDICADORES_PREDEFINIDOS } from '../data/parametrosPredefinidos';
 
 const STORAGE_CTX_KEY = 'gestdoc_explorador_ctx_v1';
 
@@ -212,18 +209,13 @@ export default function ExploradorDeArchivos() {
   const [selIndId, setSelIndId] = useState(null);
   const [selCarpetaId, setSelCarpetaId] = useState(null);
 
-  // Modal de creación de carpeta (solo Administrador)
-  const [modalNuevaCarpeta, setModalNuevaCarpeta] = useState(null); // { subId, nombre: '', descripcion: '' }
-  const [creandoCarpeta, setCreandoCarpeta] = useState(false);
-
-  // Vista rápida en Carrera: tabla unificada vs carpetas
+  // Vista rápida en Carrera: tabla unificada vs tarjetas
   const [modoVistaCarrera, setModoVistaCarrera] = useState('tabla'); // 'tabla' | 'carpetas'
   const [filtroCriterioId, setFiltroCriterioId] = useState('TODOS');
   const [filtroGrupoSub, setFiltroGrupoSub] = useState('TODOS');
   const [filtroEvidencia, setFiltroEvidencia] = useState('TODOS'); // 'TODOS' | 'CON_DOCS' | 'PENDIENTES'
   const [subExpandidoId, setSubExpandidoId] = useState(null);
   const [subSubiendoId, setSubSubiendoId] = useState(null);
-  const [subArrastrandoId, setSubArrastrandoId] = useState(null);
   const [exitoRapido, setExitoRapido] = useState('');
 
   const [arrastrandoDrop, setArrastrandoDrop] = useState(false);
@@ -231,6 +223,8 @@ export default function ExploradorDeArchivos() {
   const [errorSubida, setErrorSubida] = useState('');
   const [cargandoDocs, setCargandoDocs] = useState(false);
   const [modalEdit, setModalEdit] = useState(null);
+  const [modalCrearCarpeta, setModalCrearCarpeta] = useState(null);
+  const [errorCrearCarpeta, setErrorCrearCarpeta] = useState('');
   const [modalConfirm, setModalConfirm] = useState({ abierto: false, titulo: '', mensaje: '', onConfirm: null });
   const [errorEdit, setErrorEdit] = useState('');
   const [eliminandoDocId, setEliminandoDocId] = useState(null);
@@ -257,7 +251,7 @@ export default function ExploradorDeArchivos() {
       }
       if (subId) {
         autoInitRef.current = true;
-        entrarSubcriterio(Number(subId));
+        entrarSubcriterio(Number(subId), critId ? Number(critId) : null);
         return;
       } else if (perId && carrId) {
         autoInitRef.current = true;
@@ -272,7 +266,7 @@ export default function ExploradorDeArchivos() {
   }, [navParams, universidades]);
 
   // 2. Auto-selección inteligente y restauración de contexto en localStorage
-  // Flujo jerárquico: Universidad → Facultad → Carrera → Período → Criterio → Subcriterio
+  // Flujo jerárquico: Universidad → Facultad → Carrera → Período → Criterio → Subcriterio → Actividad → Documentos PDF
   useEffect(() => {
     if (!universidades || universidades.length === 0 || autoInitRef.current) return;
     autoInitRef.current = true;
@@ -350,7 +344,6 @@ export default function ExploradorDeArchivos() {
 
   const userRoles = usuario?.roles || [];
   const esAdmin = userRoles.includes('ADMINISTRADOR') || userRoles.includes('RECTOR') || userRoles.includes('DECANO');
-  const soloAdmin = userRoles.includes('ADMINISTRADOR');
 
   const uniActual  = (universidades ?? []).find(u => u.id === Number(selUniId));
   const facActual  = uniActual?.facultades?.find(f => f.id === Number(selFacId));
@@ -363,12 +356,12 @@ export default function ExploradorDeArchivos() {
     [];
   const critActual = criteriosActivos.find(c => c.id === Number(selCritId));
   const subActual  = (
+    critActual?.actividades ||
     critActual?.subcriterios ||
     critActual?.indicadores ||
-    criteriosActivos.flatMap(cr => cr.subcriterios || cr.indicadores || [])
+    criteriosActivos.flatMap(cr => cr.actividades || cr.subcriterios || cr.indicadores || [])
   )?.find(i => i.id === Number(selIndId));
-  const carpetasSubActual = subActual?.carpetas || [];
-  const carpetaActual = carpetasSubActual.find(cp => cp.id === Number(selCarpetaId));
+  const carpetaActual = (subActual?.carpetas || []).find(cp => cp.id === Number(selCarpetaId)) || null;
 
   // Handlers de cambio rápido en la barra superior (Universidad → Facultad → Carrera → Período)
   function handleSelectRapidoUni(id) {
@@ -464,18 +457,18 @@ export default function ExploradorDeArchivos() {
 
   function breadcrumbItems() {
     const items = [{ label: 'Inicio', onClick: () => setNivel('universidades') }];
-    if (['facultades','carreras','periodos','criterios','subcriterios','indicadores','carpetas','documentos'].includes(nivel) && uniActual)
+    if (['facultades','carreras','periodos','criterios','subcriterios','indicadores','documentos'].includes(nivel) && uniActual)
       items.push({ label: uniActual?.siglas || uniActual?.nombre, onClick: () => setNivel('facultades') });
-    if (['carreras','periodos','criterios','subcriterios','indicadores','carpetas','documentos'].includes(nivel) && facActual)
+    if (['carreras','periodos','criterios','subcriterios','indicadores','documentos'].includes(nivel) && facActual)
       items.push({ label: facActual?.nombre, onClick: () => setNivel('carreras') });
-    if (['periodos','criterios','subcriterios','indicadores','carpetas','documentos'].includes(nivel) && carrActual)
+    if (['periodos','criterios','subcriterios','indicadores','documentos'].includes(nivel) && carrActual)
       items.push({ label: carrActual?.nombre, onClick: () => setNivel('periodos') });
-    if (['criterios','subcriterios','indicadores','carpetas','documentos'].includes(nivel) && periActual)
+    if (['criterios','subcriterios','indicadores','documentos'].includes(nivel) && periActual)
       items.push({ label: periActual?.nombre, onClick: () => { setFiltroCriterioId('TODOS'); setFiltroGrupoSub('TODOS'); setNivel('criterios'); } });
-    if (['subcriterios','indicadores','carpetas','documentos'].includes(nivel) && critActual)
+    if (['subcriterios','indicadores','documentos'].includes(nivel) && critActual)
       items.push({ label: critActual?.nombre, onClick: () => { setFiltroCriterioId(String(critActual.id)); setFiltroGrupoSub('TODOS'); setNivel('criterios'); } });
-    if (['carpetas','documentos'].includes(nivel) && subActual) {
-      const defPre = INDICADORES_PREDEFINIDOS.find(p => Number(p.numero) === Number(subActual.numero));
+    if (nivel === 'documentos' && subActual) {
+      const defPre = (ACTIVIDADES_PREDEFINIDAS || INDICADORES_PREDEFINIDOS).find(p => Number(p.numero) === Number(subActual.numero));
       const grupoNombre = subActual.grupo_subcriterio ?? defPre?.grupo_subcriterio ?? null;
       if (grupoNombre) {
         items.push({
@@ -489,69 +482,54 @@ export default function ExploradorDeArchivos() {
       }
       items.push({
         label: `[${subActual.numero}] ${subActual.nombre}`,
-        onClick: nivel === 'documentos' ? () => { setSelCarpetaId(null); setNivel('carpetas'); } : null,
+        onClick: carpetaActual ? () => setSelCarpetaId(null) : null,
       });
+      if (carpetaActual) {
+        items.push({
+          label: `📁 ${carpetaActual.nombre}`,
+          onClick: null,
+        });
+      }
     }
-    if (nivel === 'documentos' && carpetaActual)
-      items.push({ label: carpetaActual.nombre, onClick: null });
     return items;
   }
 
-  function entrarSubcriterio(subId, critIdOpcional = null) {
+  async function entrarSubcriterio(subId, critIdOpcional = null, carpetaIdOpcional = null) {
     if (critIdOpcional) setSelCritId(critIdOpcional);
     setSelIndId(subId);
-    setSelCarpetaId(null);
-    setNivel('carpetas');
-  }
-
-  async function entrarCarpeta(carpetaId, subIdOpcional = selIndId, critIdOpcional = null) {
-    if (critIdOpcional) setSelCritId(critIdOpcional);
-    if (subIdOpcional) setSelIndId(subIdOpcional);
-    setSelCarpetaId(carpetaId);
+    setSelCarpetaId(carpetaIdOpcional);
     setNivel('documentos');
     setCargandoDocs(true);
     try {
-      const docs = await cargarDocsFn(subIdOpcional, carpetaId);
-      inyectarDocsFn(subIdOpcional, docs, carpetaId);
+      const docs = await cargarDocsFn(subId, null);
+      inyectarDocsFn(subId, docs, null);
     } finally {
       setCargandoDocs(false);
     }
   }
 
-  function toggleExpandirSubcriterio(subId, critIdOpcional = null) {
+  async function toggleExpandirSubcriterio(subId, critIdOpcional = null) {
     if (subExpandidoId === subId) {
       setSubExpandidoId(null);
       return;
     }
     if (critIdOpcional) setSelCritId(critIdOpcional);
     setSubExpandidoId(subId);
-  }
-
-  async function handleGuardarNuevaCarpeta(e) {
-    if (e) e.preventDefault();
-    if (!modalNuevaCarpeta || !modalNuevaCarpeta.nombre.trim()) return;
-    setCreandoCarpeta(true);
+    setCargandoDocs(true);
     try {
-      await agregarCarpeta(modalNuevaCarpeta.subId, {
-        nombre: modalNuevaCarpeta.nombre.trim(),
-        descripcion: modalNuevaCarpeta.descripcion?.trim() || null,
-      });
-      setModalNuevaCarpeta(null);
-      setExitoRapido(`Carpeta "${modalNuevaCarpeta.nombre.trim()}" creada exitosamente.`);
-      setTimeout(() => setExitoRapido(''), 3500);
-    } catch (err) {
-      setErrorSubida(err.message || 'Error al crear la carpeta');
+      const docs = await cargarDocsFn(subId, null);
+      inyectarDocsFn(subId, docs, null);
     } finally {
-      setCreandoCarpeta(false);
+      setCargandoDocs(false);
     }
   }
 
-  async function recargarDocs(subIdTarget = selIndId, carpetaIdTarget = selCarpetaId) {
+  async function recargarDocs(subIdTarget = selIndId) {
     if (!subIdTarget) return;
     setCargandoDocs(true);
     try {
-      const docs = await cargarDocsFn(subIdTarget, carpetaIdTarget);
-      inyectarDocsFn(subIdTarget, docs, carpetaIdTarget);
+      const docs = await cargarDocsFn(subIdTarget, null);
+      inyectarDocsFn(subIdTarget, docs, null);
     } finally {
       setCargandoDocs(false);
     }
@@ -562,19 +540,23 @@ export default function ExploradorDeArchivos() {
       setErrorSubida('Solo se aceptan archivos PDF');
       return;
     }
-    if (!subIdDestino || !carpetaIdDestino) {
-      setErrorSubida('Primero debes entrar o seleccionar una carpeta dentro del subcriterio para subir el documento.');
+    if (!subIdDestino) {
+      setErrorSubida('Primero debes seleccionar una actividad para subir el documento PDF.');
       return;
     }
 
     setErrorSubida('');
     setSubiendo(true);
-    setSubSubiendoId(carpetaIdDestino);
+    setSubSubiendoId(subIdDestino);
     try {
-      await subirDocumento(file, subIdDestino, facActual?.id, carpetaIdDestino);
-      const docs = await cargarDocsFn(subIdDestino, carpetaIdDestino);
-      inyectarDocsFn(subIdDestino, docs, carpetaIdDestino);
-      setExitoRapido(`PDF "${file.name}" subido correctamente a la carpeta.`);
+      await subirDocumento(file, subIdDestino, facActual?.id, carpetaIdDestino || null);
+      const docs = await cargarDocsFn(subIdDestino, null);
+      inyectarDocsFn(subIdDestino, docs, null);
+      setExitoRapido(
+        carpetaIdDestino
+          ? `PDF "${file.name}" subido correctamente en la carpeta.`
+          : `PDF "${file.name}" subido directamente en la actividad.`
+      );
       setTimeout(() => setExitoRapido(''), 3500);
     } catch (err) {
       setErrorSubida(err.message || 'Error al subir el archivo');
@@ -590,7 +572,7 @@ export default function ExploradorDeArchivos() {
     manejarArchivo(e.dataTransfer.files[0], selIndId, selCarpetaId);
   }
 
-  function handleEliminarDoc(doc, subIdContext = selIndId, carpetaIdContext = selCarpetaId) {
+  function handleEliminarDoc(doc, subIdContext = selIndId) {
     setModalConfirm({
       abierto: true,
       titulo: 'Eliminar documento',
@@ -598,7 +580,7 @@ export default function ExploradorDeArchivos() {
       onConfirm: async () => {
         setEliminandoDocId(doc.id);
         try {
-          await eliminarDocumento(doc.id, subIdContext, carpetaIdContext);
+          await eliminarDocumento(doc.id, subIdContext, doc.carpeta_id || null);
         } catch (err) {
           alert(err.message);
         } finally {
@@ -617,6 +599,23 @@ export default function ExploradorDeArchivos() {
     if (!doc.estado || doc.estado === 'COMPLETADO' || doc.estado === 'RECHAZADO') return false;
     // eslint-disable-next-line eqeqeq
     return doc.firmante_actual_id == usuario?.id;
+  }
+
+  // ── Crear Carpeta Opcional en Actividad ──────────────────────────────────
+  async function guardarCrearCarpeta() {
+    if (!modalCrearCarpeta || !modalCrearCarpeta.nombre?.trim()) return;
+    setErrorCrearCarpeta('');
+    try {
+      const nueva = await agregarCarpeta(modalCrearCarpeta.subId, {
+        nombre: modalCrearCarpeta.nombre.trim(),
+        descripcion: modalCrearCarpeta.descripcion?.trim() || undefined,
+      });
+      setModalCrearCarpeta(null);
+      setExitoRapido(`Carpeta opcional "${nueva.nombre}" creada en la actividad [${modalCrearCarpeta.subNumero}].`);
+      setTimeout(() => setExitoRapido(''), 3500);
+    } catch (err) {
+      setErrorCrearCarpeta(err.message || 'Error al crear la carpeta');
+    }
   }
 
   // ── Editar ────────────────────────────────────────────────────────────────
@@ -640,10 +639,10 @@ export default function ExploradorDeArchivos() {
         await actualizarPeriodo(id, meta.univId, meta.facId, meta.carrId, { nombre: nombreEdit });
       } else if (tipo === 'criterio') {
         await actualizarCriterio(id, meta.univId, meta.facId, meta.carrId, meta.perId, { nombre: nombreEdit, requiere_firma: meta.requiere_firma });
-      } else if (tipo === 'indicador' || tipo === 'subcriterio') {
+      } else if (tipo === 'indicador' || tipo === 'subcriterio' || tipo === 'actividad') {
         await actualizarIndicador(id, meta.univId, meta.facId, meta.carrId, meta.perId, meta.critId, { nombre: nombreEdit });
       } else if (tipo === 'carpeta') {
-        await actualizarCarpeta(id, { nombre: nombreEdit });
+        await actualizarCarpeta(id, { nombre: nombreEdit, descripcion: meta.descripcion });
       }
       setModalEdit(null);
     } catch (err) {
@@ -675,15 +674,12 @@ export default function ExploradorDeArchivos() {
           } else if (tipo === 'criterio') {
             await eliminarCriterio(id, meta.univId, meta.facId, meta.carrId, meta.perId);
             if (selCritId === id) setNivel('criterios');
-          } else if (tipo === 'indicador' || tipo === 'subcriterio') {
+          } else if (tipo === 'indicador' || tipo === 'subcriterio' || tipo === 'actividad') {
             await eliminarIndicador(id, meta.univId, meta.facId, meta.carrId, meta.perId, meta.critId);
             if (selIndId === id) setNivel('criterios');
           } else if (tipo === 'carpeta') {
             await eliminarCarpeta(id);
-            if (selCarpetaId === id) {
-              setSelCarpetaId(null);
-              setNivel('carpetas');
-            }
+            if (Number(selCarpetaId) === Number(id)) setSelCarpetaId(null);
           }
         } catch (err) {
           alert(err.message);
@@ -692,7 +688,10 @@ export default function ExploradorDeArchivos() {
     });
   }
 
-  const docsActual = carpetaActual?.documentos || subActual?.documentos || [];
+  const todosDocsDeActividad = subActual?.documentos || [];
+  const docsActual = selCarpetaId
+    ? todosDocsDeActividad.filter(d => Number(d.carpeta_id) === Number(selCarpetaId))
+    : todosDocsDeActividad;
 
   const getFiltrados = (lista) => {
     if (!lista) return [];
@@ -718,13 +717,13 @@ export default function ExploradorDeArchivos() {
     });
   };
 
-  // Cálculo de subcriterios y avance de la carrera y período seleccionados
-  const todosSubcriteriosCarrera = (criteriosActivos || []).flatMap(cr =>
-    (cr.subcriterios || cr.indicadores || []).map(sub => {
+  // Cálculo de actividades y avance de la carrera y período seleccionados (sin duplicados)
+  const _actividadesCrudas = (criteriosActivos || []).flatMap(cr =>
+    (cr.actividades || cr.subcriterios || cr.indicadores || []).map(sub => {
       const totalDocs = typeof sub.cantidadDocumentos === 'number'
         ? sub.cantidadDocumentos
         : (sub.documentos?.length || 0);
-      const defPre = INDICADORES_PREDEFINIDOS.find(p => Number(p.numero) === Number(sub.numero));
+      const defPre = (ACTIVIDADES_PREDEFINIDAS || INDICADORES_PREDEFINIDOS).find(p => Number(p.numero) === Number(sub.numero));
       const grupo_subcriterio = sub.grupo_subcriterio ?? defPre?.grupo_subcriterio ?? null;
       return {
         ...sub,
@@ -735,23 +734,31 @@ export default function ExploradorDeArchivos() {
         totalDocs,
       };
     })
-  ).sort((a, b) => (a.numero || 0) - (b.numero || 0));
+  );
+  const _idsVistos = new Set();
+  const todasActividadesCarrera = _actividadesCrudas
+    .filter(item => {
+      if (_idsVistos.has(item.id)) return false;
+      _idsVistos.add(item.id);
+      return true;
+    })
+    .sort((a, b) => (a.numero || 0) - (b.numero || 0));
 
-  const totalSubsCarrera = todosSubcriteriosCarrera.length;
-  const subsConEvidencia = todosSubcriteriosCarrera.filter(s => s.totalDocs > 0).length;
-  const totalPdfsCarrera = todosSubcriteriosCarrera.reduce((acc, s) => acc + s.totalDocs, 0);
+  const totalSubsCarrera = todasActividadesCarrera.length;
+  const subsConEvidencia = todasActividadesCarrera.filter(s => s.totalDocs > 0).length;
+  const totalPdfsCarrera = todasActividadesCarrera.reduce((acc, s) => acc + s.totalDocs, 0);
   const porcentajeAvance = totalSubsCarrera > 0 ? Math.round((subsConEvidencia / totalSubsCarrera) * 100) : 0;
 
-  // Subcriterios del criterio activo (antes de filtrar por grupo_subcriterio)
-  const subcriteriosDeCriterioSeleccionado = todosSubcriteriosCarrera.filter(sub =>
+  // Actividades del criterio activo (antes de filtrar por grupo_subcriterio)
+  const actividadesDeCriterioSeleccionado = todasActividadesCarrera.filter(sub =>
     filtroCriterioId === 'TODOS' ? true : String(sub.criterioId) === String(filtroCriterioId)
   );
 
   const gruposDisponiblesEnCriterio = Array.from(
-    new Set(subcriteriosDeCriterioSeleccionado.map(s => s.grupo_subcriterio).filter(Boolean))
+    new Set(actividadesDeCriterioSeleccionado.map(s => s.grupo_subcriterio).filter(Boolean))
   );
 
-  const subcriteriosCarreraFiltrados = subcriteriosDeCriterioSeleccionado.filter(sub => {
+  const subcriteriosCarreraFiltrados = actividadesDeCriterioSeleccionado.filter(sub => {
     if (filtroGrupoSub !== 'TODOS' && sub.grupo_subcriterio !== filtroGrupoSub) {
       return false;
     }
@@ -776,7 +783,7 @@ export default function ExploradorDeArchivos() {
     <div className="flex flex-col h-full">
       <Breadcrumbs items={breadcrumbItems()} />
 
-      {/* Input oculto para subida rápida en 1 clic a una carpeta específica */}
+      {/* Input oculto para subida rápida en 1 clic directamente a la Actividad o a una carpeta opcional */}
       <input
         ref={quickFileInputRef}
         type="file"
@@ -784,91 +791,13 @@ export default function ExploradorDeArchivos() {
         className="hidden"
         onChange={e => {
           const file = e.target.files?.[0];
-          if (file && targetSubIdParaUpload && targetCarpetaIdParaUpload) {
+          if (file && targetSubIdParaUpload) {
             manejarArchivo(file, targetSubIdParaUpload, targetCarpetaIdParaUpload);
           }
+          setTargetCarpetaIdParaUpload(null);
           e.target.value = '';
         }}
       />
-
-      {/* Modal crear nueva carpeta dentro de un Subcriterio (solo Administrador) */}
-      {modalNuevaCarpeta && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
-          <form
-            onSubmit={handleGuardarNuevaCarpeta}
-            className="bg-white rounded-2xl shadow-xl border border-gray-100 p-6 w-full max-w-md space-y-4"
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2.5">
-                <div className="w-9 h-9 rounded-xl bg-navy-50 flex items-center justify-center text-navy-700">
-                  <FolderPlus size={18} />
-                </div>
-                <div>
-                  <h3 className="text-sm font-semibold text-navy-900">Nueva Carpeta</h3>
-                  <p className="text-xs text-gray-400">
-                    Se creará dentro del subcriterio seleccionado
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setModalNuevaCarpeta(null)}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="space-y-3">
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">
-                  Nombre de la carpeta <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={modalNuevaCarpeta.nombre}
-                  onChange={e => setModalNuevaCarpeta(p => ({ ...p, nombre: e.target.value }))}
-                  placeholder="Ej: Sílabos 2026, Actas de Reunión, Informes..."
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-navy-500"
-                  autoFocus
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">
-                  Descripción (opcional)
-                </label>
-                <input
-                  type="text"
-                  value={modalNuevaCarpeta.descripcion || ''}
-                  onChange={e => setModalNuevaCarpeta(p => ({ ...p, descripcion: e.target.value }))}
-                  placeholder="Descripción breve de los documentos que irán en esta carpeta"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-navy-500"
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center space-x-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setModalNuevaCarpeta(null)}
-                className="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200 transition-colors"
-              >
-                Cancelar
-              </button>
-              <button
-                type="submit"
-                disabled={creandoCarpeta || !modalNuevaCarpeta.nombre.trim()}
-                className="flex-1 flex items-center justify-center space-x-1.5 px-4 py-2.5 bg-navy-900 text-white text-sm font-medium rounded-lg hover:bg-navy-800 transition-colors disabled:opacity-50"
-              >
-                {creandoCarpeta ? <RefreshCw size={14} className="animate-spin" /> : <FolderPlus size={14} />}
-                <span>{creandoCarpeta ? 'Creando...' : 'Crear Carpeta'}</span>
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
 
       {/* ── Barra Superior de Salto Rápido (Contexto en 1 Clic) ── */}
       <div className="bg-white border-b border-gray-200 px-6 py-3">
@@ -909,7 +838,7 @@ export default function ExploradorDeArchivos() {
             ))}
           </select>
 
-          {/* Selector Carrera (primero) */}
+          {/* Selector Carrera */}
           <select
             value={selCarrId || ''}
             onChange={e => handleSelectRapidoCarr(e.target.value)}
@@ -922,7 +851,7 @@ export default function ExploradorDeArchivos() {
             ))}
           </select>
 
-          {/* Selector Período (después de Carrera) */}
+          {/* Selector Período */}
           <select
             value={selPerId || ''}
             onChange={e => handleSelectRapidoPer(e.target.value)}
@@ -942,7 +871,7 @@ export default function ExploradorDeArchivos() {
               type="text"
               placeholder={
                 carrActual && (nivel === 'criterios' || nivel === 'subcriterios')
-                  ? 'Buscar por N° (1..31), subcriterio, criterio o responsable...'
+                  ? 'Buscar por N° (1..31), actividad, subcriterio o responsable...'
                   : 'Buscar por nombre...'
               }
               value={busqueda}
@@ -1018,7 +947,40 @@ export default function ExploradorDeArchivos() {
                   placeholder="Siglas (ESPE, UIO...)"
                 />
               )}
+              {modalEdit.tipo === 'carpeta' && (
+                <input
+                  value={modalEdit.meta.descripcion || ''}
+                  onChange={e => setModalEdit(p => ({ ...p, meta: { ...p.meta, descripcion: e.target.value } }))}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy-500"
+                  placeholder="Descripción de la carpeta (opcional)"
+                />
+              )}
               {errorEdit && <p className="text-xs text-red-600">{errorEdit}</p>}
+            </>
+          }
+        />
+      )}
+
+      {/* Modal Crear Carpeta Opcional en Actividad */}
+      {modalCrearCarpeta && (
+        <ModalEditar
+          titulo={`Nueva Carpeta Opcional en [${modalCrearCarpeta.subNumero}]`}
+          valor={modalCrearCarpeta.nombre}
+          onChange={v => setModalCrearCarpeta(p => ({ ...p, nombre: v }))}
+          onGuardar={guardarCrearCarpeta}
+          onCancelar={() => { setModalCrearCarpeta(null); setErrorCrearCarpeta(''); }}
+          extraCampos={
+            <>
+              <p className="text-xs text-gray-500">
+                Actividad: <strong>[{modalCrearCarpeta.subNumero}] {modalCrearCarpeta.subNombre}</strong>. Las carpetas son opcionales; también puedes subir PDFs directamente sin carpeta.
+              </p>
+              <input
+                value={modalCrearCarpeta.descripcion || ''}
+                onChange={e => setModalCrearCarpeta(p => ({ ...p, descripcion: e.target.value }))}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy-500"
+                placeholder="Descripción de la carpeta (opcional)"
+              />
+              {errorCrearCarpeta && <p className="text-xs text-red-600">{errorCrearCarpeta}</p>}
             </>
           }
         />
@@ -1084,7 +1046,7 @@ export default function ExploradorDeArchivos() {
           </div>
         )}
 
-        {/* Nivel 3: Carreras (Primero Carrera) */}
+        {/* Nivel 3: Carreras */}
         {nivel === 'carreras' && (
           <div>
             <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold mb-4">
@@ -1110,7 +1072,7 @@ export default function ExploradorDeArchivos() {
           </div>
         )}
 
-        {/* Nivel 4: Períodos (Después de Carrera) */}
+        {/* Nivel 4: Períodos */}
         {nivel === 'periodos' && (
           <div>
             <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold mb-4">
@@ -1119,14 +1081,14 @@ export default function ExploradorDeArchivos() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {getFiltrados(carrActual?.periodos || facActual?.periodos).map(p => {
                 const crits = p.criterios || p.carreras?.find(ca => ca.id === Number(selCarrId))?.criterios || [];
-                const subs = crits.flatMap(cr => cr.subcriterios || cr.indicadores || []);
+                const subs = crits.flatMap(cr => cr.actividades || cr.subcriterios || cr.indicadores || []);
                 const conDoc = subs.filter(s => (typeof s.cantidadDocumentos === 'number' ? s.cantidadDocumentos : (s.documentos?.length || 0)) > 0).length;
                 return (
                   <CarpetaCard
                     key={p.id}
                     nombre={p.nombre}
-                    descripcion={`${crits.length} criterios · ${subs.length} subcriterios`}
-                    badgeText={`${conDoc} / ${subs.length} subcriterios con PDF`}
+                    descripcion={`${crits.length} criterios · 8 subcriterios · ${subs.length} actividades`}
+                    badgeText={`${conDoc} / ${subs.length} actividades con PDF`}
                     badgeColor={conDoc > 0 ? 'green' : 'amber'}
                     onClick={() => handleSelectRapidoPer(p.id)}
                     onEdit={esAdmin ? () => abrirEditar('periodo', p.id, p.nombre, { univId: selUniId, facId: selFacId, carrId: selCarrId }) : null}
@@ -1139,7 +1101,7 @@ export default function ExploradorDeArchivos() {
         )}
 
         {/* ══════════════════════════════════════════════════════════════════
-            VISTA UNIFICADA DE CARRERA Y PERÍODO (Criterios + 31 Subcriterios en 1 paso)
+            VISTA UNIFICADA DE CARRERA Y PERÍODO (5 Criterios → 8 Subcriterios → 31 Actividades)
            ══════════════════════════════════════════════════════════════════ */}
         {(nivel === 'criterios' || nivel === 'subcriterios' || nivel === 'indicadores') && carrActual && periActual && (
           <div className="space-y-4">
@@ -1158,7 +1120,7 @@ export default function ExploradorDeArchivos() {
                   </span>
                 </div>
                 <p className="text-xs text-gray-500 mt-1">
-                  Sube o consulta los PDFs directamente en cada uno de los {totalSubsCarrera} subcriterios sin cambiar de pantalla.
+                  Sube o consulta los documentos PDF directamente en cada una de las {totalSubsCarrera} actividades de acreditación.
                 </p>
               </div>
 
@@ -1167,7 +1129,7 @@ export default function ExploradorDeArchivos() {
                 <div className="min-w-[210px]">
                   <div className="flex items-center justify-between text-xs mb-1">
                     <span className="font-medium text-gray-600">
-                      Avance: <strong className="text-navy-900">{subsConEvidencia}/{totalSubsCarrera}</strong> subcriterios
+                      Avance: <strong className="text-navy-900">{subsConEvidencia}/{totalSubsCarrera}</strong> actividades
                     </span>
                     <span className="font-bold text-navy-800">{porcentajeAvance}%</span>
                   </div>
@@ -1182,7 +1144,7 @@ export default function ExploradorDeArchivos() {
                   </p>
                 </div>
 
-                {/* Conmutador Tabla Rápida vs Carpetas */}
+                {/* Conmutador Tabla Rápida vs Tarjetas */}
                 <div className="flex items-center bg-gray-100 p-1 rounded-lg border border-gray-200">
                   <button
                     type="button"
@@ -1190,7 +1152,7 @@ export default function ExploradorDeArchivos() {
                     className={`flex items-center space-x-1 px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
                       modoVistaCarrera === 'tabla' ? 'bg-white text-navy-900 shadow-2xs' : 'text-gray-500 hover:text-gray-700'
                     }`}
-                    title="Vista de Tabla Directa (1 paso)"
+                    title="Vista de Tabla Directa"
                   >
                     <TableIcon size={13} />
                     <span>Tabla Rápida</span>
@@ -1201,10 +1163,10 @@ export default function ExploradorDeArchivos() {
                     className={`flex items-center space-x-1 px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
                       modoVistaCarrera === 'carpetas' ? 'bg-white text-navy-900 shadow-2xs' : 'text-gray-500 hover:text-gray-700'
                     }`}
-                    title="Vista por Carpetas"
+                    title="Vista por Subcriterios y Actividades"
                   >
                     <LayoutGrid size={13} />
-                    <span>Carpetas</span>
+                    <span>Tarjetas</span>
                   </button>
                 </div>
               </div>
@@ -1229,7 +1191,7 @@ export default function ExploradorDeArchivos() {
                     Todos ({totalSubsCarrera})
                   </button>
                   {criteriosActivos.map(c => {
-                    const cant = (c.subcriterios || c.indicadores || []).length;
+                    const cant = (c.actividades || c.subcriterios || c.indicadores || []).length;
                     const activo = String(filtroCriterioId) === String(c.id);
                     return (
                       <button
@@ -1254,9 +1216,9 @@ export default function ExploradorDeArchivos() {
                 {/* Filtro rápido por estado de documentos */}
                 <div className="flex items-center gap-1.5">
                   {[
-                    { id: 'TODOS', label: 'Todos' },
+                    { id: 'TODOS', label: 'Todas' },
                     { id: 'CON_DOCS', label: `Con PDF (${subsConEvidencia})` },
-                    { id: 'PENDIENTES', label: `Vacíos (${totalSubsCarrera - subsConEvidencia})` },
+                    { id: 'PENDIENTES', label: `Vacías (${totalSubsCarrera - subsConEvidencia})` },
                   ].map(op => (
                     <button
                       key={op.id}
@@ -1274,7 +1236,7 @@ export default function ExploradorDeArchivos() {
                 </div>
               </div>
 
-              {/* Sub-píldoras de Subcriterios Agrupadores (Criterios 2 al 5: 2.1, 2.2, 3.1, 3.2, 4.1, 4.2, 5.1, 5.2) */}
+              {/* Sub-píldoras de Subcriterios Oficiales (2.1, 2.2, 3.1, 3.2, 4.1, 4.2, 5.1, 5.2) */}
               {gruposDisponiblesEnCriterio.length > 0 && (
                 <div className="flex flex-wrap items-center gap-1.5 bg-slate-100/80 border border-gray-200 rounded-xl px-3 py-2">
                   <span className="text-[11px] font-bold text-navy-800 uppercase tracking-wide mr-1 flex items-center space-x-1">
@@ -1290,10 +1252,10 @@ export default function ExploradorDeArchivos() {
                         : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
                     }`}
                   >
-                    Todos ({subcriteriosDeCriterioSeleccionado.length})
+                    Todos ({actividadesDeCriterioSeleccionado.length})
                   </button>
                   {gruposDisponiblesEnCriterio.map(grupo => {
-                    const cantGrupo = subcriteriosDeCriterioSeleccionado.filter(s => s.grupo_subcriterio === grupo).length;
+                    const cantGrupo = actividadesDeCriterioSeleccionado.filter(s => s.grupo_subcriterio === grupo).length;
                     const activo = filtroGrupoSub === grupo;
                     return (
                       <button
@@ -1315,12 +1277,12 @@ export default function ExploradorDeArchivos() {
               )}
             </div>
 
-            {/* MODO 1: TABLA RÁPIDA DE SUBCRITERIOS Y SUS CARPETAS */}
+            {/* MODO 1: TABLA RÁPIDA DE ACTIVIDADES CON SUBIDA DIRECTA DE PDF */}
             {modoVistaCarrera === 'tabla' ? (
               <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-xs">
                 {subcriteriosCarreraFiltrados.length === 0 ? (
                   <div className="py-12 text-center text-sm text-gray-400">
-                    No hay subcriterios que coincidan con el filtro seleccionado.
+                    No hay actividades que coincidan con el filtro seleccionado.
                   </div>
                 ) : (
                   <div className="overflow-x-auto">
@@ -1328,17 +1290,18 @@ export default function ExploradorDeArchivos() {
                       <thead className="bg-gray-50 border-b border-gray-100">
                         <tr>
                           <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase w-16">N°</th>
-                          <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Subcriterio</th>
-                          <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Criterio</th>
+                          <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Actividad</th>
+                          <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Subcriterio / Criterio</th>
                           <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Responsable</th>
-                          <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Carpetas / PDFs</th>
+                          <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Evidencias PDF</th>
                           <th className="text-right px-5 py-3 text-xs font-semibold text-gray-500 uppercase">Acciones</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100">
                         {subcriteriosCarreraFiltrados.map((sub, idx) => {
                           const expandido = subExpandidoId === sub.id;
-                          const carpetasDeSub = sub.carpetas || [];
+                          const docsDeSub = sub.documentos || [];
+                          const subiendoEnEsta = subSubiendoId === sub.id;
                           const respTexto = sub.responsables?.length > 0
                             ? sub.responsables.map(r => r.nombre).join(', ')
                             : sub.responsable_nombre;
@@ -1346,7 +1309,7 @@ export default function ExploradorDeArchivos() {
                           const mostrarCabeceraGrupo = Boolean(sub.grupo_subcriterio && sub.grupo_subcriterio !== prevGrupo);
 
                           return (
-                            <React.Fragment key={sub.id}>
+                            <React.Fragment key={`act-${sub.criterioId}-${sub.id}`}>
                               {mostrarCabeceraGrupo && (
                                 <tr className="bg-amber-50/80 border-y border-amber-200/80">
                                   <td colSpan={6} className="px-4 py-2">
@@ -1354,7 +1317,7 @@ export default function ExploradorDeArchivos() {
                                       <div className="flex items-center space-x-2">
                                         <FolderOpen size={15} className="text-amber-600 flex-shrink-0" />
                                         <span className="text-xs font-extrabold text-navy-900 tracking-wide">
-                                          {sub.grupo_subcriterio}
+                                          Subcriterio: {sub.grupo_subcriterio}
                                         </span>
                                         <span className="text-[11px] font-medium text-gray-500">
                                           · {sub.criterioNombre}
@@ -1365,7 +1328,7 @@ export default function ExploradorDeArchivos() {
                                         onClick={() => setFiltroGrupoSub(filtroGrupoSub === sub.grupo_subcriterio ? 'TODOS' : sub.grupo_subcriterio)}
                                         className="text-[11px] font-semibold text-amber-800 hover:underline"
                                       >
-                                        {filtroGrupoSub === sub.grupo_subcriterio ? 'Ver todos' : 'Filtrar este grupo'}
+                                        {filtroGrupoSub === sub.grupo_subcriterio ? 'Ver todos los subcriterios' : 'Filtrar este subcriterio'}
                                       </button>
                                     </div>
                                   </td>
@@ -1400,7 +1363,12 @@ export default function ExploradorDeArchivos() {
                                 </td>
 
                                 <td className="px-4 py-3">
-                                  <span className="text-xs text-gray-600 font-medium">{sub.criterioNombre}</span>
+                                  <div className="space-y-0.5">
+                                    {sub.grupo_subcriterio && (
+                                      <div className="text-[11px] font-semibold text-amber-800">{sub.grupo_subcriterio}</div>
+                                    )}
+                                    <div className="text-xs text-gray-600 font-medium">{sub.criterioNombre}</div>
+                                  </div>
                                 </td>
 
                                 <td className="px-4 py-3">
@@ -1412,73 +1380,125 @@ export default function ExploradorDeArchivos() {
                                 </td>
 
                                 <td className="px-4 py-3 text-center">
-                                  <button
-                                    type="button"
-                                    onClick={() => toggleExpandirSubcriterio(sub.id, sub.criterioId)}
-                                    className={`inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border transition-colors ${
-                                      sub.totalDocs > 0
-                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
-                                        : carpetasDeSub.length > 0
-                                          ? 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
-                                          : 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'
-                                    }`}
-                                  >
-                                    <Folder size={12} />
-                                    <span>
-                                      {carpetasDeSub.length} carpeta{carpetasDeSub.length === 1 ? '' : 's'} · {sub.totalDocs} PDF{sub.totalDocs === 1 ? '' : 's'}
-                                    </span>
-                                    {expandido ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-                                  </button>
+                                  <div className="flex flex-col items-center gap-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleExpandirSubcriterio(sub.id, sub.criterioId)}
+                                      className={`inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border transition-colors ${
+                                        sub.totalDocs > 0
+                                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                                          : 'bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-200'
+                                      }`}
+                                    >
+                                      <FileText size={12} />
+                                      <span>
+                                        {sub.totalDocs} PDF{sub.totalDocs === 1 ? '' : 's'}
+                                      </span>
+                                      {expandido ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                                    </button>
+                                    {(sub.carpetas || []).length > 0 && (
+                                      <span className="inline-flex items-center space-x-1 text-[10px] font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                                        <Folder size={10} />
+                                        <span>{sub.carpetas.length} carpeta{sub.carpetas.length === 1 ? '' : 's'}</span>
+                                      </span>
+                                    )}
+                                  </div>
                                 </td>
 
                                 <td className="px-5 py-3 text-right">
                                   <div className="flex items-center justify-end space-x-1.5">
-                                    {soloAdmin && (
+                                    <button
+                                      type="button"
+                                      disabled={subiendoEnEsta}
+                                      onClick={() => {
+                                        setTargetSubIdParaUpload(sub.id);
+                                        setTargetCarpetaIdParaUpload(null);
+                                        quickFileInputRef.current?.click();
+                                      }}
+                                      className="inline-flex items-center space-x-1 px-2.5 py-1.5 bg-navy-900 text-white text-xs font-medium rounded-lg hover:bg-navy-800 transition-colors shadow-2xs disabled:opacity-50"
+                                      title="Subir archivo PDF directamente en esta actividad (sin requerir carpeta)"
+                                    >
+                                      {subiendoEnEsta ? <RefreshCw size={12} className="animate-spin" /> : <Upload size={12} />}
+                                      <span>Subir PDF</span>
+                                    </button>
+
+                                    {esAdmin && (
                                       <button
                                         type="button"
-                                        onClick={() => setModalNuevaCarpeta({ subId: sub.id, nombre: '', descripcion: '' })}
-                                        className="inline-flex items-center space-x-1 px-2.5 py-1.5 bg-indigo-50 text-indigo-700 border border-indigo-200 text-xs font-medium rounded-lg hover:bg-indigo-100 transition-colors"
-                                        title="Crear carpeta en este subcriterio"
+                                        onClick={() => {
+                                          setErrorCrearCarpeta('');
+                                          setModalCrearCarpeta({
+                                            subId: sub.id,
+                                            subNumero: sub.numero,
+                                            subNombre: sub.nombre,
+                                            nombre: '',
+                                            descripcion: '',
+                                          });
+                                        }}
+                                        className="inline-flex items-center space-x-1 px-2 py-1.5 bg-amber-50 text-amber-800 border border-amber-200 text-xs font-medium rounded-lg hover:bg-amber-100 transition-colors"
+                                        title="Crear carpeta opcional dentro de esta actividad"
                                       >
-                                        <FolderPlus size={12} />
-                                        <span>+ Carpeta</span>
+                                        <Plus size={12} />
+                                        <span>Carpeta</span>
                                       </button>
                                     )}
 
                                     <button
                                       type="button"
                                       onClick={() => entrarSubcriterio(sub.id, sub.criterioId)}
-                                      className="inline-flex items-center space-x-1 px-3 py-1.5 bg-navy-900 text-white text-xs font-medium rounded-lg hover:bg-navy-800 transition-colors shadow-2xs"
-                                      title="Ver carpetas del subcriterio"
+                                      className="inline-flex items-center space-x-1 px-2.5 py-1.5 bg-navy-50 text-navy-800 border border-navy-200 text-xs font-medium rounded-lg hover:bg-navy-100 transition-colors"
+                                      title="Abrir actividad para ver documentos y carpetas opcionales"
                                     >
-                                      <FolderOpen size={12} />
-                                      <span>Ver Carpetas</span>
+                                      <Eye size={12} />
+                                      <span>Abrir</span>
                                     </button>
                                   </div>
                                 </td>
                               </tr>
 
-                              {/* Fila Expandida con las Carpetas del Subcriterio */}
+                              {/* Fila Expandida con Carpetas Opcionales y Documentos PDF de la Actividad */}
                               {expandido && (
                                 <tr className="bg-slate-50/70">
                                   <td colSpan={6} className="px-6 py-3 border-t border-gray-100">
                                     <div className="bg-white rounded-lg border border-gray-200 p-3.5 space-y-3">
-                                      <div className="flex items-center justify-between">
+                                      <div className="flex flex-wrap items-center justify-between gap-2">
                                         <span className="text-xs font-semibold text-navy-900 flex items-center space-x-1.5">
-                                          <Folder size={14} className="text-navy-700" />
-                                          <span>Carpetas dentro de [{sub.numero}] {sub.nombre}</span>
+                                          <FileText size={14} className="text-navy-700" />
+                                          <span>Actividad [{sub.numero}] {sub.nombre}</span>
                                         </span>
                                         <div className="flex items-center space-x-2">
-                                          {soloAdmin && (
+                                          {esAdmin && (
                                             <button
                                               type="button"
-                                              onClick={() => setModalNuevaCarpeta({ subId: sub.id, nombre: '', descripcion: '' })}
-                                              className="inline-flex items-center space-x-1 px-2.5 py-1 bg-navy-900 text-white text-xs font-medium rounded-md hover:bg-navy-800"
+                                              onClick={() => {
+                                                setErrorCrearCarpeta('');
+                                                setModalCrearCarpeta({
+                                                  subId: sub.id,
+                                                  subNumero: sub.numero,
+                                                  subNombre: sub.nombre,
+                                                  nombre: '',
+                                                  descripcion: '',
+                                                });
+                                              }}
+                                              className="inline-flex items-center space-x-1 px-2.5 py-1 bg-amber-50 text-amber-800 border border-amber-200 text-xs font-medium rounded-md hover:bg-amber-100"
                                             >
                                               <Plus size={12} />
-                                              <span>Nueva Carpeta</span>
+                                              <span>Crear Carpeta (Opcional)</span>
                                             </button>
                                           )}
+                                          <button
+                                            type="button"
+                                            disabled={subiendoEnEsta}
+                                            onClick={() => {
+                                              setTargetSubIdParaUpload(sub.id);
+                                              setTargetCarpetaIdParaUpload(null);
+                                              quickFileInputRef.current?.click();
+                                            }}
+                                            className="inline-flex items-center space-x-1 px-2.5 py-1 bg-navy-900 text-white text-xs font-medium rounded-md hover:bg-navy-800 disabled:opacity-50"
+                                          >
+                                            <Upload size={12} />
+                                            <span>Subir PDF directo</span>
+                                          </button>
                                           <button
                                             type="button"
                                             onClick={() => setSubExpandidoId(null)}
@@ -1489,58 +1509,114 @@ export default function ExploradorDeArchivos() {
                                         </div>
                                       </div>
 
-                                      {carpetasDeSub.length === 0 ? (
+                                      {/* Carpetas opcionales de la actividad (si existen) */}
+                                      {(sub.carpetas || []).length > 0 && (
+                                        <div className="flex flex-wrap items-center gap-2 pt-1 pb-2 border-b border-gray-100">
+                                          <span className="text-[11px] font-semibold text-gray-500">Carpetas opcionales:</span>
+                                          {(sub.carpetas || []).map(carp => (
+                                            <div
+                                              key={carp.id}
+                                              className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-amber-50/80 border border-amber-200 text-xs"
+                                            >
+                                              <button
+                                                type="button"
+                                                onClick={() => entrarSubcriterio(sub.id, sub.criterioId, carp.id)}
+                                                className="inline-flex items-center space-x-1 font-semibold text-amber-900 hover:underline"
+                                                title="Abrir esta carpeta"
+                                              >
+                                                <FolderOpen size={12} className="text-amber-600" />
+                                                <span>{carp.nombre}</span>
+                                              </button>
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  setTargetSubIdParaUpload(sub.id);
+                                                  setTargetCarpetaIdParaUpload(carp.id);
+                                                  quickFileInputRef.current?.click();
+                                                }}
+                                                className="px-1.5 py-0.5 bg-white text-navy-800 border border-amber-200 rounded text-[10px] font-medium hover:bg-navy-50"
+                                                title={`Subir PDF dentro de la carpeta "${carp.nombre}"`}
+                                              >
+                                                + PDF aquí
+                                              </button>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+
+                                      {cargandoDocs && docsDeSub.length === 0 ? (
+                                        <div className="py-4 flex justify-center">
+                                          <RefreshCw size={18} className="text-navy-500 animate-spin" />
+                                        </div>
+                                      ) : docsDeSub.length === 0 ? (
                                         <div className="py-3 text-center">
                                           <p className="text-xs text-gray-500">
-                                            {soloAdmin
-                                              ? 'Aún no hay carpetas en este subcriterio. Crea una carpeta para poder subir documentos PDF.'
-                                              : 'El Administrador aún no ha creado carpetas en este subcriterio.'}
+                                            Aún no hay documentos PDF subidos en esta actividad. Haz clic en "Subir PDF directo" para cargar sin carpeta, o usa una carpeta opcional.
                                           </p>
                                         </div>
                                       ) : (
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
-                                          {carpetasDeSub.map(carp => {
-                                            const subiendoEnEsta = subSubiendoId === carp.id;
+                                        <div className="space-y-1.5">
+                                          {docsDeSub.map(doc => {
+                                            const nombreCarpeta =
+                                              doc.carpeta_nombre ||
+                                              (sub.carpetas || []).find(cp => Number(cp.id) === Number(doc.carpeta_id))?.nombre ||
+                                              null;
                                             return (
                                               <div
-                                                key={carp.id}
-                                                className="flex items-center justify-between p-2.5 rounded-lg border border-gray-200 hover:border-navy-300 bg-gray-50/60 hover:bg-white transition-all"
+                                                key={doc.id}
+                                                className="flex items-center justify-between px-3 py-2 rounded-lg border border-gray-100 bg-gray-50/70 hover:bg-white transition-colors"
                                               >
-                                                <button
-                                                  type="button"
-                                                  onClick={() => entrarCarpeta(carp.id, sub.id, sub.criterioId)}
-                                                  className="flex items-center space-x-2.5 min-w-0 flex-1 text-left"
-                                                >
-                                                  <Folder size={18} className="text-navy-700 flex-shrink-0" />
-                                                  <div className="min-w-0">
-                                                    <p className="text-xs font-semibold text-navy-900 truncate">{carp.nombre}</p>
-                                                    <p className="text-[11px] text-gray-500">
-                                                      {carp.cantidadDocumentos || 0} PDF{(carp.cantidadDocumentos || 0) === 1 ? '' : 's'}
-                                                    </p>
-                                                  </div>
-                                                </button>
-                                                <div className="flex items-center space-x-1 flex-shrink-0 ml-2">
+                                                <div className="flex items-center space-x-2.5 min-w-0">
+                                                  <FileText size={15} className="text-red-500 flex-shrink-0" />
+                                                  <span className="text-xs font-medium text-navy-900 truncate">{doc.nombre}</span>
+                                                  {nombreCarpeta && (
+                                                    <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-50 text-amber-800 border border-amber-200">
+                                                      <Folder size={10} />
+                                                      <span>{nombreCarpeta}</span>
+                                                    </span>
+                                                  )}
+                                                  <Badge tipo={doc.estado} />
+                                                  {doc.subido_por && (
+                                                    <span className="text-[11px] text-gray-400">· {doc.subido_por}</span>
+                                                  )}
+                                                </div>
+                                                <div className="flex items-center space-x-1.5 flex-shrink-0 ml-2">
                                                   <button
                                                     type="button"
-                                                    disabled={subiendoEnEsta}
-                                                    onClick={() => {
-                                                      setTargetSubIdParaUpload(sub.id);
-                                                      setTargetCarpetaIdParaUpload(carp.id);
-                                                      quickFileInputRef.current?.click();
-                                                    }}
-                                                    className="inline-flex items-center space-x-1 px-2 py-1 bg-navy-900 text-white text-[11px] font-medium rounded hover:bg-navy-800 disabled:opacity-50"
-                                                    title="Subir PDF a esta carpeta"
+                                                    onClick={() => setDocumentoSeleccionado(doc)}
+                                                    className="inline-flex items-center space-x-1 px-2 py-1 text-[11px] font-medium text-navy-700 bg-navy-50 rounded hover:bg-navy-100"
                                                   >
-                                                    {subiendoEnEsta ? <RefreshCw size={11} className="animate-spin" /> : <Upload size={11} />}
-                                                    <span>Subir PDF</span>
+                                                    <Eye size={11} />
+                                                    <span>Ver</span>
                                                   </button>
+                                                  {puedeFirmar(doc) && (
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => setDocumentoSeleccionado(doc)}
+                                                      className="inline-flex items-center space-x-1 px-2 py-1 text-[11px] font-medium text-white bg-navy-800 rounded hover:bg-navy-700"
+                                                    >
+                                                      <PenLine size={11} />
+                                                      <span>Firmar</span>
+                                                    </button>
+                                                  )}
                                                   <button
                                                     type="button"
-                                                    onClick={() => entrarCarpeta(carp.id, sub.id, sub.criterioId)}
-                                                    className="px-2 py-1 bg-gray-200/70 hover:bg-gray-200 text-gray-700 text-[11px] font-medium rounded"
+                                                    onClick={() => handleDescargar(doc)}
+                                                    className="p-1 text-gray-400 hover:text-navy-700 rounded"
+                                                    title="Descargar PDF"
                                                   >
-                                                    Abrir
+                                                    <Download size={12} />
                                                   </button>
+                                                  {puedeEliminarDoc(doc) && (
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => handleEliminarDoc(doc, sub.id)}
+                                                      className="p-1 text-red-400 hover:text-red-600 rounded"
+                                                      title="Eliminar PDF"
+                                                    >
+                                                      <Trash2 size={12} />
+                                                    </button>
+                                                  )}
                                                 </div>
                                               </div>
                                             );
@@ -1560,13 +1636,13 @@ export default function ExploradorDeArchivos() {
                 )}
               </div>
             ) : (
-              /* MODO 2: CARPETAS DE SUBCRITERIOS (Agrupando Criterios 2 al 5 por 2.1, 2.2, 3.1, etc.; Criterio 1 directo) */
+              /* MODO 2: TARJETAS DE SUBCRITERIOS Y ACTIVIDADES */
               <div className="space-y-4">
                 {filtroGrupoSub !== 'TODOS' && (
                   <div className="flex items-center justify-between bg-amber-50/70 border border-amber-200 rounded-xl px-4 py-2.5">
                     <div className="flex items-center space-x-2">
                       <FolderOpen size={16} className="text-amber-600" />
-                      <span className="text-xs font-bold text-navy-900">{filtroGrupoSub}</span>
+                      <span className="text-xs font-bold text-navy-900">Subcriterio: {filtroGrupoSub}</span>
                     </div>
                     <button
                       type="button"
@@ -1580,31 +1656,30 @@ export default function ExploradorDeArchivos() {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {(() => {
-                    // Si hay un grupo seleccionado (ej. 2.1 PERSONAL ACADÉMICO) o búsqueda activa, mostrar los ítems individuales
+                    // Si hay un Subcriterio seleccionado (ej. 2.1 PERSONAL ACADÉMICO) o búsqueda activa, mostrar las Actividades individuales
                     if (filtroGrupoSub !== 'TODOS' || busqueda.trim()) {
                       return subcriteriosCarreraFiltrados.map(i => {
                         const respTexto = i.responsables?.length > 0
                           ? i.responsables.map(r => r.nombre).join(', ')
                           : i.responsable_nombre;
-                        const numCarpetas = (i.carpetas || []).length;
                         return (
                           <CarpetaCard
                             key={i.id}
                             nombre={`[${i.numero}] ${i.nombre}`}
                             descripcion={`${i.grupo_subcriterio ? `${i.grupo_subcriterio} · ` : ''}${i.criterioNombre}${respTexto ? ` · Resp: ${respTexto}` : ''}`}
-                            badgeText={`${numCarpetas} carpeta${numCarpetas === 1 ? '' : 's'} · ${i.totalDocs} PDF${i.totalDocs === 1 ? '' : 's'}`}
-                            badgeColor={i.totalDocs > 0 ? 'green' : numCarpetas > 0 ? 'blue' : 'amber'}
+                            badgeText={`${i.totalDocs} documento${i.totalDocs === 1 ? '' : 's'} PDF`}
+                            badgeColor={i.totalDocs > 0 ? 'green' : 'amber'}
                             onClick={() => entrarSubcriterio(i.id, i.criterioId)}
-                            onEdit={esAdmin ? () => abrirEditar('subcriterio', i.id, i.nombre, { univId: selUniId, facId: selFacId, carrId: selCarrId, perId: selPerId, critId: i.criterioId }) : null}
-                            onDelete={esAdmin ? () => handleEliminar('subcriterio', i.id, i.nombre, { univId: selUniId, facId: selFacId, carrId: selCarrId, perId: selPerId, critId: i.criterioId }) : null}
+                            onEdit={esAdmin ? () => abrirEditar('actividad', i.id, i.nombre, { univId: selUniId, facId: selFacId, carrId: selCarrId, perId: selPerId, critId: i.criterioId }) : null}
+                            onDelete={esAdmin ? () => handleEliminar('actividad', i.id, i.nombre, { univId: selUniId, facId: selFacId, carrId: selCarrId, perId: selPerId, critId: i.criterioId }) : null}
                           />
                         );
                       });
                     }
 
                     // Cuando filtroGrupoSub === 'TODOS':
-                    // - Ítems sin grupo (Criterio 1) se muestran directamente
-                    // - Ítems con grupo (Criterios 2..5) se muestran primero como tarjetas de su Subcriterio Agrupador (2.1, 2.2, etc.)
+                    // - Actividades sin subcriterio (Criterio 1) se muestran directamente
+                    // - Actividades con subcriterio (Criterios 2..5) se agrupan bajo tarjetas de su Subcriterio (2.1, 2.2, etc.)
                     const cards = [];
                     const gruposVistos = new Set();
 
@@ -1613,17 +1688,16 @@ export default function ExploradorDeArchivos() {
                         const respTexto = i.responsables?.length > 0
                           ? i.responsables.map(r => r.nombre).join(', ')
                           : i.responsable_nombre;
-                        const numCarpetas = (i.carpetas || []).length;
                         cards.push(
                           <CarpetaCard
                             key={`item-${i.id}`}
                             nombre={`[${i.numero}] ${i.nombre}`}
                             descripcion={`${i.criterioNombre}${respTexto ? ` · Resp: ${respTexto}` : ''}`}
-                            badgeText={`${numCarpetas} carpeta${numCarpetas === 1 ? '' : 's'} · ${i.totalDocs} PDF${i.totalDocs === 1 ? '' : 's'}`}
-                            badgeColor={i.totalDocs > 0 ? 'green' : numCarpetas > 0 ? 'blue' : 'amber'}
+                            badgeText={`${i.totalDocs} documento${i.totalDocs === 1 ? '' : 's'} PDF`}
+                            badgeColor={i.totalDocs > 0 ? 'green' : 'amber'}
                             onClick={() => entrarSubcriterio(i.id, i.criterioId)}
-                            onEdit={esAdmin ? () => abrirEditar('subcriterio', i.id, i.nombre, { univId: selUniId, facId: selFacId, carrId: selCarrId, perId: selPerId, critId: i.criterioId }) : null}
-                            onDelete={esAdmin ? () => handleEliminar('subcriterio', i.id, i.nombre, { univId: selUniId, facId: selFacId, carrId: selCarrId, perId: selPerId, critId: i.criterioId }) : null}
+                            onEdit={esAdmin ? () => abrirEditar('actividad', i.id, i.nombre, { univId: selUniId, facId: selFacId, carrId: selCarrId, perId: selPerId, critId: i.criterioId }) : null}
+                            onDelete={esAdmin ? () => handleEliminar('actividad', i.id, i.nombre, { univId: selUniId, facId: selFacId, carrId: selCarrId, perId: selPerId, critId: i.criterioId }) : null}
                           />
                         );
                       } else if (!gruposVistos.has(i.grupo_subcriterio)) {
@@ -1636,8 +1710,8 @@ export default function ExploradorDeArchivos() {
                           <CarpetaCard
                             key={`grupo-${i.grupo_subcriterio}`}
                             nombre={i.grupo_subcriterio}
-                            descripcion={`${i.criterioNombre} · Ítems: ${itemsDelGrupo.map(x => `[${x.numero}]`).join(', ')}`}
-                            badgeText={`${itemsDelGrupo.length} subcriterio${itemsDelGrupo.length === 1 ? '' : 's'} · ${docsDelGrupo} PDF${docsDelGrupo === 1 ? '' : 's'}`}
+                            descripcion={`${i.criterioNombre} · Actividades: ${itemsDelGrupo.map(x => `[${x.numero}]`).join(', ')}`}
+                            badgeText={`${itemsDelGrupo.length} actividad${itemsDelGrupo.length === 1 ? '' : 'es'} · ${docsDelGrupo} PDF${docsDelGrupo === 1 ? '' : 's'}`}
                             badgeColor={docsDelGrupo > 0 ? 'green' : 'blue'}
                             onClick={() => setFiltroGrupoSub(i.grupo_subcriterio)}
                           />
@@ -1653,127 +1727,147 @@ export default function ExploradorDeArchivos() {
           </div>
         )}
 
-        {/* Nivel Carpetas dentro de un Subcriterio */}
-        {nivel === 'carpetas' && subActual && (
+        {/* Nivel Detalle de una Actividad: Subida directa Drag & Drop + Carpetas Opcionales + Tabla de documentos PDF */}
+        {nivel === 'documentos' && subActual && (
           <div className="space-y-5">
-            <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <button
                 type="button"
-                onClick={() => setNivel('criterios')}
+                onClick={() => {
+                  setSelCarpetaId(null);
+                  setNivel('criterios');
+                }}
                 className="inline-flex items-center space-x-1.5 text-xs font-semibold text-navy-700 hover:text-navy-900 bg-white border border-gray-200 px-3 py-1.5 rounded-lg shadow-2xs"
               >
-                <span>← Volver a los Subcriterios de {carrActual?.nombre}</span>
+                <span>← Volver a las Actividades de {carrActual?.nombre}</span>
               </button>
 
-              {soloAdmin && (
+              {esAdmin && (
                 <button
                   type="button"
-                  onClick={() => setModalNuevaCarpeta({ subId: subActual.id, nombre: '', descripcion: '' })}
-                  className="inline-flex items-center space-x-2 px-4 py-2 bg-navy-900 text-white text-xs font-semibold rounded-xl hover:bg-navy-800 transition-colors shadow-sm"
+                  onClick={() => {
+                    setErrorCrearCarpeta('');
+                    setModalCrearCarpeta({
+                      subId: subActual.id,
+                      subNumero: subActual.numero,
+                      subNombre: subActual.nombre,
+                      nombre: '',
+                      descripcion: '',
+                    });
+                  }}
+                  className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-amber-50 text-amber-800 border border-amber-200 rounded-lg text-xs font-semibold hover:bg-amber-100 transition-colors"
                 >
-                  <FolderPlus size={15} />
-                  <span>+ Crear Carpeta</span>
+                  <Plus size={14} />
+                  <span>Crear Carpeta (Opcional)</span>
                 </button>
               )}
             </div>
 
-            <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div>
-                <span className="text-xs font-bold text-indigo-700 bg-indigo-50 px-2.5 py-0.5 rounded-full border border-indigo-200">
-                  Subcriterio [{subActual.numero}]
-                </span>
-                <h2 className="text-base font-bold text-navy-900 mt-1">{subActual.nombre}</h2>
-                {(subActual.informacion_ayuda || subActual.descripcion) && (
-                  <p className="text-xs text-gray-500 mt-0.5">{subActual.informacion_ayuda || subActual.descripcion}</p>
-                )}
-              </div>
-              <div className="text-right">
-                <span className="text-xs font-semibold text-gray-600">
-                  {carpetasSubActual.length} carpeta{carpetasSubActual.length === 1 ? '' : 's'} disponible{carpetasSubActual.length === 1 ? '' : 's'}
-                </span>
+            <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 flex items-start space-x-3">
+              <FileText size={18} className="text-blue-600 flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-sm font-semibold text-navy-900">
+                    Actividad [{subActual.numero}] — {subActual.nombre}
+                  </p>
+                  {subActual.grupo_subcriterio && (
+                    <span className="text-[11px] font-semibold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                      {subActual.grupo_subcriterio}
+                    </span>
+                  )}
+                  {carpetaActual && (
+                    <span className="text-[11px] font-semibold text-navy-800 bg-white px-2.5 py-0.5 rounded-full border border-navy-200">
+                      📁 Carpeta: {carpetaActual.nombre}
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-blue-800 mt-0.5">
+                  {subActual.informacion_ayuda || subActual.descripcion || `Puedes subir tus archivos PDF directamente en la actividad [${subActual.numero}] ${subActual.nombre}, o si prefieres organizarlos en carpetas opcionales.`}
+                </p>
               </div>
             </div>
 
-            {carpetasSubActual.length === 0 ? (
-              <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-12 text-center space-y-3">
-                <div className="w-14 h-14 bg-navy-50 rounded-2xl flex items-center justify-center mx-auto text-navy-700">
-                  <Folder size={28} />
+            {/* Sección de Carpetas Opcionales de la Actividad (visible cuando existen carpetas) */}
+            {(subActual.carpetas || []).length > 0 && (
+              <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-2.5 shadow-2xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-navy-900 flex items-center space-x-1.5">
+                    <FolderOpen size={15} className="text-amber-600" />
+                    <span>Carpetas de la Actividad (Opcional)</span>
+                  </span>
+                  {selCarpetaId && (
+                    <button
+                      type="button"
+                      onClick={() => setSelCarpetaId(null)}
+                      className="text-xs font-semibold text-blue-600 hover:underline"
+                    >
+                      Ver todos los documentos de la actividad (sin filtro de carpeta)
+                    </button>
+                  )}
                 </div>
-                <h3 className="text-sm font-semibold text-navy-900">
-                  No hay carpetas creadas en este subcriterio
-                </h3>
-                <p className="text-xs text-gray-500 max-w-md mx-auto">
-                  {soloAdmin
-                    ? 'Crea primero una carpeta dentro de este subcriterio para que los usuarios puedan subir los documentos PDF.'
-                    : 'El Administrador aún no ha creado carpetas en este subcriterio. Solicita la creación de la carpeta correspondiente para subir tu documento PDF.'}
-                </p>
-                {soloAdmin && (
+
+                <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => setModalNuevaCarpeta({ subId: subActual.id, nombre: '', descripcion: '' })}
-                    className="inline-flex items-center space-x-2 px-4 py-2.5 bg-navy-900 text-white text-xs font-semibold rounded-xl hover:bg-navy-800 transition-colors"
+                    onClick={() => setSelCarpetaId(null)}
+                    className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+                      !selCarpetaId
+                        ? 'bg-navy-900 text-white border-navy-900 shadow-2xs'
+                        : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
+                    }`}
                   >
-                    <FolderPlus size={15} />
-                    <span>Crear primera carpeta</span>
+                    <FileText size={13} />
+                    <span>Todos / Directo en Actividad ({todosDocsDeActividad.length})</span>
                   </button>
-                )}
-              </div>
-            ) : (
-              <div>
-                <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold mb-3">
-                  Selecciona una carpeta para subir o revisar documentos PDF
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {getFiltrados(carpetasSubActual).map(carp => {
-                    const cant = carp.cantidadDocumentos ?? (carp.documentos?.length || 0);
+
+                  {(subActual.carpetas || []).map(carp => {
+                    const activa = Number(selCarpetaId) === Number(carp.id);
+                    const cantEnCarp = todosDocsDeActividad.filter(d => Number(d.carpeta_id) === Number(carp.id)).length;
                     return (
-                      <CarpetaCard
+                      <div
                         key={carp.id}
-                        nombre={carp.nombre}
-                        descripcion={carp.descripcion || `Carpeta de [${subActual.numero}] ${subActual.nombre}`}
-                        badgeText={`${cant} documento${cant === 1 ? '' : 's'} PDF`}
-                        badgeColor={cant > 0 ? 'green' : 'blue'}
-                        onClick={() => entrarCarpeta(carp.id, subActual.id, critActual?.id)}
-                        onEdit={soloAdmin ? () => abrirEditar('carpeta', carp.id, carp.nombre) : null}
-                        onDelete={soloAdmin ? () => handleEliminar('carpeta', carp.id, carp.nombre) : null}
-                      />
+                        className={`inline-flex items-center rounded-lg border transition-colors ${
+                          activa
+                            ? 'bg-amber-600 text-white border-amber-600 shadow-2xs'
+                            : 'bg-amber-50/70 text-navy-900 border-amber-200 hover:bg-amber-100/80'
+                        }`}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => setSelCarpetaId(activa ? null : carp.id)}
+                          className="inline-flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold"
+                        >
+                          <Folder size={13} className={activa ? 'text-white' : 'text-amber-600'} />
+                          <span>{carp.nombre} ({cantEnCarp})</span>
+                        </button>
+                        {esAdmin && (
+                          <div className="flex items-center pr-1.5 space-x-0.5">
+                            <button
+                              type="button"
+                              onClick={() => abrirEditar('carpeta', carp.id, carp.nombre, { descripcion: carp.descripcion })}
+                              className={`p-1 rounded hover:bg-black/10 ${activa ? 'text-white' : 'text-gray-500'}`}
+                              title="Editar nombre de carpeta"
+                            >
+                              <Pencil size={11} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleEliminar('carpeta', carp.id, carp.nombre)}
+                              className={`p-1 rounded hover:bg-black/10 ${activa ? 'text-white' : 'text-red-500'}`}
+                              title="Eliminar carpeta"
+                            >
+                              <Trash2 size={11} />
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     );
                   })}
                 </div>
               </div>
             )}
-          </div>
-        )}
 
-        {/* Nivel Detalle de una Carpeta dentro del Subcriterio: Subida drag & drop + Tabla de documentos */}
-        {nivel === 'documentos' && subActual && carpetaActual && (
-          <div className="space-y-5">
-            <div className="flex items-center justify-between">
-              <button
-                type="button"
-                onClick={() => {
-                  setSelCarpetaId(null);
-                  setNivel('carpetas');
-                }}
-                className="inline-flex items-center space-x-1.5 text-xs font-semibold text-navy-700 hover:text-navy-900 bg-white border border-gray-200 px-3 py-1.5 rounded-lg shadow-2xs"
-              >
-                <span>← Volver a las carpetas de [{subActual.numero}] {subActual.nombre}</span>
-              </button>
-            </div>
-
-            <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 flex items-start space-x-3">
-              <Folder size={18} className="text-blue-600 flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="text-sm font-semibold text-navy-900">
-                  Carpeta: {carpetaActual.nombre}
-                </p>
-                <p className="text-xs text-blue-800 mt-0.5">
-                  {carpetaActual.descripcion || `Subcriterio [${subActual.numero}] ${subActual.nombre}`}
-                </p>
-              </div>
-            </div>
-
-            {/* Subida directa en la Carpeta */}
+            {/* Subida directa en la Actividad (o en la carpeta opcional seleccionada) */}
             <div>
               <div
                 onDragOver={e => { e.preventDefault(); setArrastrandoDrop(true); }}
@@ -1786,20 +1880,26 @@ export default function ExploradorDeArchivos() {
                 {subiendo ? (
                   <div className="flex flex-col items-center space-y-2">
                     <RefreshCw size={28} className="text-navy-500 animate-spin" />
-                    <p className="text-sm text-navy-700 font-medium">Subiendo documento a la carpeta "{carpetaActual.nombre}"...</p>
+                    <p className="text-sm text-navy-700 font-medium">
+                      Subiendo documento {carpetaActual ? `en la carpeta "${carpetaActual.nombre}"` : `directamente en la actividad "[${subActual.numero}] ${subActual.nombre}"`}...
+                    </p>
                   </div>
                 ) : (
                   <>
                     <Upload size={28} className={`mx-auto mb-3 ${arrastrandoDrop ? 'text-navy-600' : 'text-gray-300'}`} />
                     <p className="text-sm font-medium text-gray-700">
-                      Arrastra tu PDF aquí para la carpeta <span className="font-bold text-navy-900">"{carpetaActual.nombre}"</span>
+                      {carpetaActual ? (
+                        <>Arrastra tu PDF aquí para subirlo en la carpeta <span className="font-bold text-amber-800">"{carpetaActual.nombre}"</span></>
+                      ) : (
+                        <>Arrastra tu PDF aquí para subirlo directamente en la actividad <span className="font-bold text-navy-900">"[{subActual.numero}] {subActual.nombre}"</span> (sin necesidad de carpeta)</>
+                      )}
                     </p>
                     <p className="text-xs text-gray-400 mt-1">o</p>
                     <button
                       onClick={() => fileInputRef.current?.click()}
                       className="mt-2 px-4 py-2 bg-navy-900 text-white text-xs font-medium rounded-lg hover:bg-navy-800 transition-colors"
                     >
-                      Seleccionar archivo PDF
+                      {carpetaActual ? `Seleccionar PDF para "${carpetaActual.nombre}"` : 'Seleccionar archivo PDF'}
                     </button>
                     <input
                       ref={fileInputRef}
@@ -1813,15 +1913,19 @@ export default function ExploradorDeArchivos() {
               </div>
             </div>
 
-            {/* Tabla de documentos de la carpeta */}
+            {/* Tabla de documentos de la Actividad */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
               <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
                 <h3 className="text-sm font-semibold text-navy-900 flex items-center space-x-2">
                   <FileText size={16} className="text-navy-700" />
-                  <span>Documentos en "{carpetaActual.nombre}" ({docsActual.length})</span>
+                  <span>
+                    {carpetaActual
+                      ? `Documentos en carpeta "${carpetaActual.nombre}" (${docsActual.length})`
+                      : `Documentos en "[{subActual.numero}] ${subActual.nombre}" (${docsActual.length})`}
+                  </span>
                 </h3>
                 <button
-                  onClick={() => recargarDocs(selIndId, selCarpetaId)}
+                  onClick={() => recargarDocs(selIndId)}
                   disabled={cargandoDocs}
                   className="flex items-center space-x-1 text-xs text-gray-500 hover:text-navy-700 transition-colors disabled:opacity-40"
                 >
@@ -1837,7 +1941,11 @@ export default function ExploradorDeArchivos() {
               ) : docsActual.length === 0 ? (
                 <div className="py-12 text-center">
                   <FileText size={32} className="mx-auto text-gray-200 mb-2" />
-                  <p className="text-sm text-gray-400">Sin documentos en esta carpeta. Suba el primero.</p>
+                  <p className="text-sm text-gray-400">
+                    {carpetaActual
+                      ? `Sin documentos en la carpeta "${carpetaActual.nombre}". Suba el primero arriba.`
+                      : 'Sin documentos en esta actividad. Suba el primero arriba directamente.'}
+                  </p>
                 </div>
               ) : (
                 <div className="overflow-x-auto">
@@ -1845,6 +1953,7 @@ export default function ExploradorDeArchivos() {
                     <thead className="bg-gray-50">
                       <tr>
                         <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase">Nombre</th>
+                        <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase">Ubicación</th>
                         <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase">Estado</th>
                         <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase">Subido por</th>
                         <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase">Fecha</th>
@@ -1852,20 +1961,35 @@ export default function ExploradorDeArchivos() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
-                      {getFiltrados(docsActual).map(doc => (
-                        <tr
-                          key={doc.id}
-                          className={`hover:bg-gray-50/50 transition-colors ${doc.estado === 'RECHAZADO' ? 'bg-red-50/30' : ''}`}
-                        >
-                          <td className="px-5 py-3">
-                            <div className="flex items-center space-x-2">
-                              <FileText size={14} className={doc.estado === 'RECHAZADO' ? 'text-red-300' : 'text-red-400'} />
-                              <span className="font-medium text-gray-800 text-xs">{doc.nombre}</span>
-                            </div>
-                          </td>
-                          <td className="px-5 py-3">
-                            <Badge tipo={doc.estado} />
-                          </td>
+                      {getFiltrados(docsActual).map(doc => {
+                        const nombreCarpeta =
+                          doc.carpeta_nombre ||
+                          (subActual.carpetas || []).find(cp => Number(cp.id) === Number(doc.carpeta_id))?.nombre ||
+                          null;
+                        return (
+                          <tr
+                            key={doc.id}
+                            className={`hover:bg-gray-50/50 transition-colors ${doc.estado === 'RECHAZADO' ? 'bg-red-50/30' : ''}`}
+                          >
+                            <td className="px-5 py-3">
+                              <div className="flex items-center space-x-2">
+                                <FileText size={14} className={doc.estado === 'RECHAZADO' ? 'text-red-300' : 'text-red-400'} />
+                                <span className="font-medium text-gray-800 text-xs">{doc.nombre}</span>
+                              </div>
+                            </td>
+                            <td className="px-5 py-3">
+                              {nombreCarpeta ? (
+                                <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-50 text-amber-800 border border-amber-200">
+                                  <Folder size={11} />
+                                  <span>{nombreCarpeta}</span>
+                                </span>
+                              ) : (
+                                <span className="text-xs text-gray-500">Directo en actividad</span>
+                              )}
+                            </td>
+                            <td className="px-5 py-3">
+                              <Badge tipo={doc.estado} />
+                            </td>
                           <td className="px-5 py-3 text-gray-600 text-xs">{doc.subido_por}</td>
                           <td className="px-5 py-3 text-gray-400 text-xs">{doc.fecha}</td>
                           <td className="px-5 py-3">
@@ -1904,7 +2028,7 @@ export default function ExploradorDeArchivos() {
 
                               {puedeEliminarDoc(doc) && (
                                 <button
-                                  onClick={() => handleEliminarDoc(doc, selIndId, selCarpetaId)}
+                                  onClick={() => handleEliminarDoc(doc, selIndId)}
                                   disabled={eliminandoDocId === doc.id}
                                   className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-40"
                                   title="Eliminar documento"
@@ -1918,7 +2042,8 @@ export default function ExploradorDeArchivos() {
                             </div>
                           </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

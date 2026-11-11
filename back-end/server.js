@@ -139,6 +139,7 @@ async function iniciar() {
     await sequelize.sync({ alter: true });
     await sequelize.query('ALTER TABLE periodos ALTER COLUMN carrera_id DROP NOT NULL;').catch(() => {});
     await sequelize.query('ALTER TABLE actividades ALTER COLUMN indicador_id DROP NOT NULL;').catch(() => {});
+    await sequelize.query('ALTER TABLE documentos ALTER COLUMN carpeta_id DROP NOT NULL;').catch(() => {});
     console.log('Modelos sincronizados con la base de datos');
 
     try {
